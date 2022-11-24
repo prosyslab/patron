@@ -12,7 +12,8 @@ let main () =
       prerr_endline "Error: No work directory specified";
       exit 1
   | Some work_dir ->
-      init work_dir;
-      Patmat.pattern_match work_dir
+      (* init work_dir; *)
+      (* Patmat.pattern_match work_dir *)
+      Patmat.pattern_match ()
 
 let _ = main ()
