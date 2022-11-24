@@ -28,6 +28,13 @@ let one = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 1
 let two = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 2
 let three = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 3
 
+let fact func args =
+  Z3.Fixedpoint.add_rule solver (Z3.FuncDecl.apply func args) None
+
+let make_rule vars cons =
+  Z3.Quantifier.mk_forall_const z3ctx vars cons None [] [] None None
+  |> Z3.Quantifier.expr_of_quantifier
+
 module AST = struct
   (* TODO: pick necessary ast nodes as logical relations in clang ast *)
   let stmt = Z3.FiniteDomain.mk_sort_s z3ctx "stmt" 65536L
@@ -78,9 +85,6 @@ let _ =
   Z3.Fixedpoint.register_relation solver Dataflow.duedge;
   Z3.Fixedpoint.register_relation solver Dataflow.dupath;
   Z3.Fixedpoint.register_relation solver bug
-
-let fact func args =
-  Z3.Fixedpoint.add_rule solver (Z3.FuncDecl.apply func args) None
 
 (* TODO: make facts from given ast & dataflow *)
 let mk_facts () =
@@ -146,7 +150,11 @@ let extract_bug_pattern () =
       ]
   in
   let bug = Z3.FuncDecl.apply bug [] in
-  Z3.Fixedpoint.add_rule solver (Z3.Boolean.mk_implies z3ctx predicate bug) None
+  let vars =
+    [ src; snk; lv; rv; getenv; args0; call; sprintf; args1; arg10; h; nop ]
+  in
+  make_rule vars (Z3.Boolean.mk_implies z3ctx predicate bug) |> fun rule ->
+  Z3.Fixedpoint.add_rule solver rule None
 
 let pattern_match () =
   print_endline "Pattern matching...";
@@ -154,6 +162,7 @@ let pattern_match () =
   print_endline "Make facts done";
   extract_bug_pattern ();
   print_endline "Make pattern done";
+  print_endline (Z3.Fixedpoint.to_string solver);
   let status = Z3.Fixedpoint.query solver (Z3.FuncDecl.apply bug []) in
   match status with
   | Z3.Solver.UNSATISFIABLE -> print_endline "No bug found"
