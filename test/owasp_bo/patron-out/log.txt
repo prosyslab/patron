@@ -1,0 +1,260 @@
+[20221206-20:31:16] Pattern matching...
+[20221206-20:31:16] Symbol table:
+[20221206-20:31:16] 34 -> sprintf
+[20221206-20:31:16] 16 -> Exp-15
+[20221206-20:31:16] 22 -> main-14
+[20221206-20:31:16] 10 -> ArgList-1
+[20221206-20:31:16] 49 -> Lval-5
+[20221206-20:31:16] 53 -> Exp-16
+[20221206-20:31:16] 42 -> Lval-4
+[20221206-20:31:16] 4 -> 0
+[20221206-20:31:16] 39 -> Lval-9
+[20221206-20:31:16] 8 -> 2
+[20221206-20:31:16] 15 -> Lval-3
+[20221206-20:31:16] 3 -> ArgList-0
+[20221206-20:31:16] 47 -> h
+[20221206-20:31:16] 40 -> main
+[20221206-20:31:16] 0 -> main-7
+[20221206-20:31:16] 11 -> Exp-6
+[20221206-20:31:16] 25 -> main-6
+[20221206-20:31:16] 5 -> Exp-1
+[20221206-20:31:16] 20 -> ArgList-3
+[20221206-20:31:16] 23 -> main-21
+[20221206-20:31:16] 37 -> Lval-7
+[20221206-20:31:16] 14 -> main-8
+[20221206-20:31:16] 9 -> Exp-4
+[20221206-20:31:16] 21 -> main-16
+[20221206-20:31:16] 31 -> _G_-ENTRY
+[20221206-20:31:16] 1 -> Lval-8
+[20221206-20:31:16] 24 -> main-19
+[20221206-20:31:16] 55 -> main-22
+[20221206-20:31:16] 19 -> Exp-20
+[20221206-20:31:16] 57 -> main-2
+[20221206-20:31:16] 54 -> Exp-13
+[20221206-20:31:16] 17 -> _G_-24
+[20221206-20:31:16] 50 -> __cil_tmp4
+[20221206-20:31:16] 28 -> main-9
+[20221206-20:31:16] 6 -> 1
+[20221206-20:31:16] 33 -> Lval-2
+[20221206-20:31:16] 43 -> Exp-5
+[20221206-20:31:16] 38 -> printf
+[20221206-20:31:16] 44 -> Exp-7
+[20221206-20:31:16] 36 -> getenv
+[20221206-20:31:16] 7 -> Exp-2
+[20221206-20:31:16] 45 -> Lval-0
+[20221206-20:31:16] 13 -> Exp-8
+[20221206-20:31:16] 35 -> Lval-6
+[20221206-20:31:16] 46 -> __cil_tmp5
+[20221206-20:31:16] 29 -> _G_-23
+[20221206-20:31:16] 32 -> __DONOTCARE__
+[20221206-20:31:16] 58 -> _G_-25
+[20221206-20:31:16] 18 -> Lval-1
+[20221206-20:31:16] 2 -> Exp-17
+[20221206-20:31:16] 30 -> main-10
+[20221206-20:31:16] 48 -> ptr_h
+[20221206-20:31:16] 12 -> ArgList-2
+[20221206-20:31:16] 27 -> main-13
+[20221206-20:31:16] 26 -> main-17
+[20221206-20:31:16] 56 -> main-20
+[20221206-20:31:16] 51 -> __cil_tmp3
+[20221206-20:31:16] 52 -> Exp-3
+[20221206-20:31:16] 41 -> Exp-0
+[20221206-20:31:19] Unknown: main-16(21),main-8(14)
+[20221206-20:31:20] Unknown: _G_-ENTRY(31),main-21(23)
+[20221206-20:31:20] Unknown: _G_-ENTRY(31),main-13(27)
+[20221206-20:31:21] Unknown: main-19(24),main-8(14)
+[20221206-20:31:24] Unknown: main-9(28),main-8(14)
+[20221206-20:31:26] Unknown: _G_-23(29),main-8(14)
+[20221206-20:31:28] Unknown: main-10(30),main-8(14)
+[20221206-20:31:33] Make facts done
+[20221206-20:31:33] Make pattern done
+[20221206-20:31:33] SMT Encoding Result:
+(declare-rel DUEdge (node node))
+(declare-rel Alloc (node lval expr))
+(declare-rel Call (node lval expr arg_list))
+(declare-rel SAlloc (node lval))
+(declare-rel DUPath (node node))
+(declare-rel Var (lval identifier))
+(declare-rel Set (node lval expr))
+(declare-rel Return (node expr))
+(declare-rel LvalExp (expr lval))
+(declare-rel Skip (node))
+(declare-rel Arg (arg_list Int expr))
+(declare-var A node)
+(declare-var B node)
+(declare-var C node)
+(rule (Alloc 0 1 2))
+(rule (Arg 3 4 5))
+(rule (Arg 3 6 7))
+(rule (Arg 3 8 9))
+(rule (Arg 10 4 11))
+(rule (Arg 12 4 13))
+(rule (Arg 12 6 5))
+(rule (Set 14 15 16))
+(rule (Call 17 18 19 20))
+(rule (DUEdge 21 22))
+(rule (DUEdge 22 23))
+(rule (DUEdge 24 25))
+(rule (DUEdge 24 26))
+(rule (DUEdge 14 27))
+(rule (DUEdge 14 26))
+(rule (DUEdge 28 25))
+(rule (DUEdge 29 17))
+(rule (DUEdge 30 25))
+(rule (DUEdge 30 26))
+(rule (DUEdge 0 14))
+(rule (DUEdge 31 29))
+(rule (DUEdge 31 0))
+(rule (DUEdge 31 21))
+(rule (DUEdge 31 24))
+(rule (Var 18 32))
+(rule (Var 33 34))
+(rule (Var 35 36))
+(rule (Var 37 38))
+(rule (Var 39 40))
+(rule (Call 26 18 41 3))
+(rule (Call 22 42 43 10))
+(rule (Call 27 18 44 12))
+(rule (Var 45 46))
+(rule (Var 15 47))
+(rule (Var 42 48))
+(rule (Var 49 50))
+(rule (Var 1 51))
+(rule (LvalExp 41 33))
+(rule (LvalExp 52 45))
+(rule (LvalExp 9 42))
+(rule (LvalExp 43 35))
+(rule (LvalExp 11 49))
+(rule (LvalExp 44 37))
+(rule (LvalExp 53 1))
+(rule (LvalExp 19 39))
+(rule (Return 25 54))
+(rule (SAlloc 24 45))
+(rule (SAlloc 21 49))
+(rule (Skip 55))
+(rule (Skip 23))
+(rule (Skip 56))
+(rule (Skip 57))
+(rule (Skip 58))
+(rule (=> (DUEdge B A) (DUPath B A)))
+(rule (=> (and (DUEdge A B) (DUEdge C A)) (DUPath C B)))
+(rule (DUPath 22 23))
+(rule (DUPath 0 14))
+(rule (DUPath 0 27))
+(rule (DUPath 0 26))
+(rule (DUPath 14 27))
+(rule (DUPath 14 26))
+(rule (DUPath 21 22))
+(rule (DUPath 21 23))
+(rule (DUPath 31 22))
+(rule (DUPath 31 0))
+(rule (DUPath 31 25))
+(rule (DUPath 31 14))
+(rule (DUPath 31 21))
+(rule (DUPath 31 24))
+(rule (DUPath 31 17))
+(rule (DUPath 31 29))
+(rule (DUPath 31 26))
+(rule (DUPath 24 25))
+(rule (DUPath 24 26))
+(rule (DUPath 28 25))
+(rule (DUPath 29 17))
+(rule (DUPath 30 25))
+(rule (DUPath 30 26))
+
+[20221206-20:31:33] NEW SMT Encoding Result:
+
+[20221206-20:31:33] OLD SMT Encoding Result:
+(declare-rel DUEdge (node node))
+(declare-rel Alloc (node lval expr))
+(declare-rel Call (node lval expr arg_list))
+(declare-rel SAlloc (node lval))
+(declare-rel DUPath (node node))
+(declare-rel Var (lval identifier))
+(declare-rel Set (node lval expr))
+(declare-rel Return (node expr))
+(declare-rel LvalExp (expr lval))
+(declare-rel Skip (node))
+(declare-rel Arg (arg_list Int expr))
+(declare-var A node)
+(declare-var B node)
+(declare-var C node)
+(rule (Alloc 0 1 2))
+(rule (Arg 3 4 5))
+(rule (Arg 3 6 7))
+(rule (Arg 3 8 9))
+(rule (Arg 10 4 11))
+(rule (Arg 12 4 13))
+(rule (Arg 12 6 5))
+(rule (Set 14 15 16))
+(rule (Call 17 18 19 20))
+(rule (DUEdge 21 22))
+(rule (DUEdge 22 23))
+(rule (DUEdge 24 25))
+(rule (DUEdge 24 26))
+(rule (DUEdge 14 27))
+(rule (DUEdge 14 26))
+(rule (DUEdge 28 25))
+(rule (DUEdge 29 17))
+(rule (DUEdge 30 25))
+(rule (DUEdge 30 26))
+(rule (DUEdge 0 14))
+(rule (DUEdge 31 29))
+(rule (DUEdge 31 0))
+(rule (DUEdge 31 21))
+(rule (DUEdge 31 24))
+(rule (Var 18 32))
+(rule (Var 33 34))
+(rule (Var 35 36))
+(rule (Var 37 38))
+(rule (Var 39 40))
+(rule (Call 26 18 41 3))
+(rule (Call 22 42 43 10))
+(rule (Call 27 18 44 12))
+(rule (Var 45 46))
+(rule (Var 15 47))
+(rule (Var 42 48))
+(rule (Var 49 50))
+(rule (Var 1 51))
+(rule (LvalExp 41 33))
+(rule (LvalExp 52 45))
+(rule (LvalExp 9 42))
+(rule (LvalExp 43 35))
+(rule (LvalExp 11 49))
+(rule (LvalExp 44 37))
+(rule (LvalExp 53 1))
+(rule (LvalExp 19 39))
+(rule (Return 25 54))
+(rule (SAlloc 24 45))
+(rule (SAlloc 21 49))
+(rule (Skip 55))
+(rule (Skip 23))
+(rule (Skip 56))
+(rule (Skip 57))
+(rule (Skip 58))
+(rule (=> (DUEdge B A) (DUPath B A)))
+(rule (=> (and (DUEdge A B) (DUEdge C A)) (DUPath C B)))
+(rule (DUPath 22 23))
+(rule (DUPath 0 14))
+(rule (DUPath 0 27))
+(rule (DUPath 0 26))
+(rule (DUPath 14 27))
+(rule (DUPath 14 26))
+(rule (DUPath 21 22))
+(rule (DUPath 21 23))
+(rule (DUPath 31 22))
+(rule (DUPath 31 0))
+(rule (DUPath 31 25))
+(rule (DUPath 31 14))
+(rule (DUPath 31 21))
+(rule (DUPath 31 24))
+(rule (DUPath 31 17))
+(rule (DUPath 31 29))
+(rule (DUPath 31 26))
+(rule (DUPath 24 25))
+(rule (DUPath 24 26))
+(rule (DUPath 28 25))
+(rule (DUPath 29 17))
+(rule (DUPath 30 25))
+(rule (DUPath 30 26))
+
