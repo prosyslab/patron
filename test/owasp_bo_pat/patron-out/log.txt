@@ -1,0 +1,314 @@
+[20221207-19:50:28] Pattern matching...
+[20221207-19:50:28] Symbol table:
+[20221207-19:50:28] 34 -> sprintf
+[20221207-19:50:28] 16 -> Exp-15
+[20221207-19:50:28] 22 -> main-14
+[20221207-19:50:28] 10 -> ArgList-1
+[20221207-19:50:28] 49 -> Lval-5
+[20221207-19:50:28] 53 -> Exp-16
+[20221207-19:50:28] 42 -> Lval-4
+[20221207-19:50:28] 4 -> 0
+[20221207-19:50:28] 39 -> Lval-9
+[20221207-19:50:28] 8 -> 2
+[20221207-19:50:28] 15 -> Lval-3
+[20221207-19:50:28] 3 -> ArgList-0
+[20221207-19:50:28] 47 -> h
+[20221207-19:50:28] 40 -> main
+[20221207-19:50:28] 0 -> main-7
+[20221207-19:50:28] 11 -> Exp-6
+[20221207-19:50:28] 25 -> main-6
+[20221207-19:50:28] 5 -> Exp-1
+[20221207-19:50:28] 20 -> ArgList-3
+[20221207-19:50:28] 23 -> main-21
+[20221207-19:50:28] 37 -> Lval-7
+[20221207-19:50:28] 14 -> main-8
+[20221207-19:50:28] 9 -> Exp-4
+[20221207-19:50:28] 21 -> main-16
+[20221207-19:50:28] 31 -> _G_-ENTRY
+[20221207-19:50:28] 1 -> Lval-8
+[20221207-19:50:28] 24 -> main-19
+[20221207-19:50:28] 55 -> main-22
+[20221207-19:50:28] 19 -> Exp-20
+[20221207-19:50:28] 57 -> main-2
+[20221207-19:50:28] 54 -> Exp-13
+[20221207-19:50:28] 17 -> _G_-24
+[20221207-19:50:28] 50 -> __cil_tmp4
+[20221207-19:50:28] 28 -> main-9
+[20221207-19:50:28] 6 -> 1
+[20221207-19:50:28] 33 -> Lval-2
+[20221207-19:50:28] 43 -> Exp-5
+[20221207-19:50:28] 38 -> printf
+[20221207-19:50:28] 44 -> Exp-7
+[20221207-19:50:28] 36 -> getenv
+[20221207-19:50:28] 7 -> Exp-2
+[20221207-19:50:28] 45 -> Lval-0
+[20221207-19:50:28] 13 -> Exp-8
+[20221207-19:50:28] 35 -> Lval-6
+[20221207-19:50:28] 46 -> __cil_tmp5
+[20221207-19:50:28] 29 -> _G_-23
+[20221207-19:50:28] 32 -> __DONOTCARE__
+[20221207-19:50:28] 58 -> _G_-25
+[20221207-19:50:28] 18 -> Lval-1
+[20221207-19:50:28] 2 -> Exp-17
+[20221207-19:50:28] 30 -> main-10
+[20221207-19:50:28] 48 -> ptr_h
+[20221207-19:50:28] 12 -> ArgList-2
+[20221207-19:50:28] 27 -> main-13
+[20221207-19:50:28] 26 -> main-17
+[20221207-19:50:28] 56 -> main-20
+[20221207-19:50:28] 51 -> __cil_tmp3
+[20221207-19:50:28] 52 -> Exp-3
+[20221207-19:50:28] 41 -> Exp-0
+[20221207-19:50:31] Unknown: main-16(21),main-8(14)
+[20221207-19:50:31] Unknown: _G_-ENTRY(31),main-21(23)
+[20221207-19:50:32] Unknown: _G_-ENTRY(31),main-13(27)
+[20221207-19:50:32] Unknown: main-19(24),main-8(14)
+[20221207-19:50:36] Unknown: main-9(28),main-8(14)
+[20221207-19:50:38] Unknown: _G_-23(29),main-8(14)
+[20221207-19:50:40] Unknown: main-10(30),main-8(14)
+[20221207-19:50:45] Symbol table:
+[20221207-19:50:45] 83 -> main-14
+[20221207-19:50:45] 65 -> ArgList-1
+[20221207-19:50:45] 113 -> main-18
+[20221207-19:50:45] 76 -> Lval-5
+[20221207-19:50:45] 77 -> Exp-16
+[20221207-19:50:45] 95 -> Lval-4
+[20221207-19:50:45] 63 -> 0
+[20221207-19:50:45] 78 -> _G_-21
+[20221207-19:50:45] 111 -> Exp-14
+[20221207-19:50:45] 71 -> 2
+[20221207-19:50:45] 79 -> Lval-3
+[20221207-19:50:45] 62 -> ArgList-0
+[20221207-19:50:45] 108 -> h
+[20221207-19:50:45] 86 -> _G_-20
+[20221207-19:50:45] 100 -> main
+[20221207-19:50:45] 59 -> main-7
+[20221207-19:50:45] 70 -> Exp-6
+[20221207-19:50:45] 89 -> main-6
+[20221207-19:50:45] 64 -> Exp-1
+[20221207-19:50:45] 81 -> ArgList-3
+[20221207-19:50:45] 61 -> Exp-18
+[20221207-19:50:45] 60 -> Lval-7
+[20221207-19:50:45] 75 -> main-8
+[20221207-19:50:45] 68 -> Exp-4
+[20221207-19:50:45] 82 -> main-16
+[20221207-19:50:45] 91 -> _G_-ENTRY
+[20221207-19:50:45] 99 -> Lval-8
+[20221207-19:50:45] 112 -> main-19
+[20221207-19:50:45] 115 -> _G_-22
+[20221207-19:50:45] 114 -> main-2
+[20221207-19:50:45] 106 -> __cil_tmp4
+[20221207-19:50:45] 88 -> main-9
+[20221207-19:50:45] 67 -> 1
+[20221207-19:50:45] 92 -> Lval-2
+[20221207-19:50:45] 104 -> Exp-5
+[20221207-19:50:45] 96 -> printf
+[20221207-19:50:45] 98 -> snprintf
+[20221207-19:50:45] 73 -> 3
+[20221207-19:50:45] 93 -> getenv
+[20221207-19:50:45] 103 -> Exp-2
+[20221207-19:50:45] 105 -> Lval-0
+[20221207-19:50:45] 72 -> Exp-8
+[20221207-19:50:45] 97 -> Lval-6
+[20221207-19:50:45] 74 -> Exp-9
+[20221207-19:50:45] 94 -> __DONOTCARE__
+[20221207-19:50:45] 101 -> Lval-1
+[20221207-19:50:45] 110 -> Exp-17
+[20221207-19:50:45] 90 -> main-10
+[20221207-19:50:45] 107 -> ptr_h
+[20221207-19:50:45] 69 -> ArgList-2
+[20221207-19:50:45] 87 -> main-13
+[20221207-19:50:45] 85 -> main-17
+[20221207-19:50:45] 109 -> __cil_tmp3
+[20221207-19:50:45] 84 -> main-12
+[20221207-19:50:45] 66 -> Exp-3
+[20221207-19:50:45] 102 -> Exp-0
+[20221207-19:50:45] 80 -> Exp-21
+[20221207-19:51:04] Unknown: main-12(84),main-8(75)
+[20221207-19:51:06] Make facts done
+[20221207-19:51:06] Make pattern done
+[20221207-19:51:06] SMT Encoding Result - Donor:
+(declare-rel DUEdge (node node))
+(declare-rel Alloc (node lval expr))
+(declare-rel Call (node lval expr arg_list))
+(declare-rel SAlloc (node lval))
+(declare-rel DUPath (node node))
+(declare-rel Var (lval identifier))
+(declare-rel Set (node lval expr))
+(declare-rel Return (node expr))
+(declare-rel LvalExp (expr lval))
+(declare-rel Skip (node))
+(declare-rel Arg (arg_list Int expr))
+(declare-var A node)
+(declare-var B node)
+(declare-var C node)
+(rule (Alloc 0 1 2))
+(rule (Arg 3 4 5))
+(rule (Arg 3 6 7))
+(rule (Arg 3 8 9))
+(rule (Arg 10 4 11))
+(rule (Arg 12 4 13))
+(rule (Arg 12 6 5))
+(rule (Set 14 15 16))
+(rule (Call 17 18 19 20))
+(rule (DUEdge 21 22))
+(rule (DUEdge 22 23))
+(rule (DUEdge 24 25))
+(rule (DUEdge 24 26))
+(rule (DUEdge 14 27))
+(rule (DUEdge 14 26))
+(rule (DUEdge 28 25))
+(rule (DUEdge 29 17))
+(rule (DUEdge 30 25))
+(rule (DUEdge 30 26))
+(rule (DUEdge 0 14))
+(rule (DUEdge 31 29))
+(rule (DUEdge 31 0))
+(rule (DUEdge 31 21))
+(rule (DUEdge 31 24))
+(rule (Var 18 32))
+(rule (Var 33 34))
+(rule (Var 35 36))
+(rule (Var 37 38))
+(rule (Var 39 40))
+(rule (Call 26 18 41 3))
+(rule (Call 22 42 43 10))
+(rule (Call 27 18 44 12))
+(rule (Var 45 46))
+(rule (Var 15 47))
+(rule (Var 42 48))
+(rule (Var 49 50))
+(rule (Var 1 51))
+(rule (LvalExp 41 33))
+(rule (LvalExp 52 45))
+(rule (LvalExp 9 42))
+(rule (LvalExp 43 35))
+(rule (LvalExp 11 49))
+(rule (LvalExp 44 37))
+(rule (LvalExp 53 1))
+(rule (LvalExp 19 39))
+(rule (Return 25 54))
+(rule (SAlloc 24 45))
+(rule (SAlloc 21 49))
+(rule (Skip 55))
+(rule (Skip 23))
+(rule (Skip 56))
+(rule (Skip 57))
+(rule (Skip 58))
+(rule (=> (DUEdge B A) (DUPath B A)))
+(rule (=> (and (DUEdge A B) (DUEdge C A)) (DUPath C B)))
+(rule (DUPath 22 23))
+(rule (DUPath 0 14))
+(rule (DUPath 0 27))
+(rule (DUPath 0 26))
+(rule (DUPath 14 27))
+(rule (DUPath 14 26))
+(rule (DUPath 21 22))
+(rule (DUPath 21 23))
+(rule (DUPath 31 22))
+(rule (DUPath 31 0))
+(rule (DUPath 31 25))
+(rule (DUPath 31 14))
+(rule (DUPath 31 21))
+(rule (DUPath 31 24))
+(rule (DUPath 31 17))
+(rule (DUPath 31 29))
+(rule (DUPath 31 26))
+(rule (DUPath 24 25))
+(rule (DUPath 24 26))
+(rule (DUPath 28 25))
+(rule (DUPath 29 17))
+(rule (DUPath 30 25))
+(rule (DUPath 30 26))
+
+[20221207-19:51:06] SMT Encoding Result - Donee:
+(declare-rel DUEdge (node node))
+(declare-rel Alloc (node lval expr))
+(declare-rel Call (node lval expr arg_list))
+(declare-rel SAlloc (node lval))
+(declare-rel DUPath (node node))
+(declare-rel Var (lval identifier))
+(declare-rel Set (node lval expr))
+(declare-rel Return (node expr))
+(declare-rel LvalExp (expr lval))
+(declare-rel Skip (node))
+(declare-rel Arg (arg_list Int expr))
+(declare-var A node)
+(declare-var B node)
+(declare-var C node)
+(rule (Alloc 59 60 61))
+(rule (Arg 62 63 64))
+(rule (Arg 65 63 66))
+(rule (Arg 65 67 68))
+(rule (Arg 69 63 68))
+(rule (Arg 69 67 70))
+(rule (Arg 69 71 72))
+(rule (Arg 69 73 74))
+(rule (Set 75 76 77))
+(rule (Call 78 79 80 81))
+(rule (DUEdge 82 83))
+(rule (DUEdge 83 84))
+(rule (DUEdge 83 85))
+(rule (DUEdge 86 78))
+(rule (DUEdge 75 84))
+(rule (DUEdge 75 87))
+(rule (DUEdge 88 89))
+(rule (DUEdge 90 89))
+(rule (DUEdge 90 84))
+(rule (DUEdge 59 75))
+(rule (DUEdge 91 86))
+(rule (DUEdge 91 59))
+(rule (DUEdge 91 82))
+(rule (DUEdge 84 89))
+(rule (Var 92 93))
+(rule (Var 79 94))
+(rule (Var 95 96))
+(rule (Var 97 98))
+(rule (Var 99 100))
+(rule (Call 83 101 102 62))
+(rule (Call 87 79 103 65))
+(rule (Call 84 79 104 69))
+(rule (Var 105 106))
+(rule (Var 101 107))
+(rule (Var 76 108))
+(rule (Var 60 109))
+(rule (LvalExp 102 92))
+(rule (LvalExp 64 105))
+(rule (LvalExp 103 95))
+(rule (LvalExp 104 97))
+(rule (LvalExp 74 101))
+(rule (LvalExp 110 60))
+(rule (LvalExp 80 99))
+(rule (Return 89 111))
+(rule (SAlloc 82 105))
+(rule (Skip 112))
+(rule (Skip 113))
+(rule (Skip 85))
+(rule (Skip 114))
+(rule (Skip 115))
+(rule (=> (DUEdge B A) (DUPath B A)))
+(rule (=> (and (DUEdge A B) (DUEdge C A)) (DUPath C B)))
+(rule (DUPath 83 89))
+(rule (DUPath 83 85))
+(rule (DUPath 83 84))
+(rule (DUPath 86 78))
+(rule (DUPath 59 75))
+(rule (DUPath 59 87))
+(rule (DUPath 59 84))
+(rule (DUPath 75 89))
+(rule (DUPath 75 87))
+(rule (DUPath 75 84))
+(rule (DUPath 82 83))
+(rule (DUPath 82 85))
+(rule (DUPath 82 84))
+(rule (DUPath 91 83))
+(rule (DUPath 91 78))
+(rule (DUPath 91 86))
+(rule (DUPath 91 59))
+(rule (DUPath 91 75))
+(rule (DUPath 91 82))
+(rule (DUPath 88 89))
+(rule (DUPath 90 89))
+(rule (DUPath 90 84))
+(rule (DUPath 84 89))
+
