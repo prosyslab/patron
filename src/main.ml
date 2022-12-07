@@ -16,6 +16,7 @@ let main () =
   else
     let donor_dir, donee_dir = (!Cmdline.donor_dir, !Cmdline.donee_dir) in
     init donee_dir;
-    Patmat.pattern_match donor_dir donee_dir
+    let z3env = Z3env.mk_env () in
+    Patmat.pattern_match donor_dir donee_dir z3env
 
 let _ = main ()

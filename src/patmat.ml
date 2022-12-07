@@ -1,8 +1,8 @@
 module F = Format
 open Z3env
 
-let sym_map = Hashtbl.create 1000
 let cnt = ref 0
+let sym_map = Hashtbl.create 1000
 let node_map = Hashtbl.create 1000
 
 let mk_facts z3env solver work_dir =
@@ -66,24 +66,9 @@ let get_transitive_closure z3env solver =
         node_map)
     node_map
 
-let abstract_bug_pattern donor donee = ()
-
-let pattern_match donor_dir donee_dir =
-  Logger.log "Pattern matching...";
-  let z3env = Z3env.mk_env () in
-  mk_facts z3env z3env.donor_solver donor_dir;
-  get_transitive_closure z3env z3env.donor_solver;
-  mk_facts z3env z3env.donee_solver donee_dir;
-  get_transitive_closure z3env z3env.donee_solver;
-  Logger.log "Make facts done";
-  let donor = () in
-  let donee = () in
-  abstract_bug_pattern donor donee;
-  Logger.log "Make pattern done";
-  Logger.log "SMT Encoding Result - Donor:\n%s"
-    (Z3.Fixedpoint.to_string z3env.donor_solver);
-  Logger.log "SMT Encoding Result - Donee:\n%s"
-    (Z3.Fixedpoint.to_string z3env.donee_solver);
+let abstract_bug_pattern z3env =
+  (* TODO: find abstract strategy (e.g. how to order relations?) *)
+  let donor_facts = Z3.Fixedpoint.get_rules z3env.donor_solver in
   let status =
     Z3.Fixedpoint.query z3env.donee_solver (Z3.FuncDecl.apply z3env.bug [])
   in
@@ -97,3 +82,19 @@ let pattern_match donor_dir donee_dir =
           print_endline "Instances:";
           answer |> Z3.Expr.to_string |> print_endline)
   | Z3.Solver.UNKNOWN -> print_endline "Unknown"
+
+let pattern_match donor_dir donee_dir z3env =
+  Logger.log "Pattern matching...";
+  mk_facts z3env z3env.donor_solver donor_dir;
+  get_transitive_closure z3env z3env.donor_solver;
+  mk_facts z3env z3env.donee_solver donee_dir;
+  get_transitive_closure z3env z3env.donee_solver;
+  Logger.log "Make facts done";
+  abstract_bug_pattern z3env;
+  Logger.log "Make pattern done";
+  Logger.log "SMT Encoding Result - Donor:\n%s"
+    (Z3.Fixedpoint.to_string z3env.donor_solver);
+  Logger.log "SMT Encoding Result - Donee:\n%s"
+    (Z3.Fixedpoint.to_string z3env.donee_solver);
+  Logger.log "SMT Encoding Result - Bug:\n%s"
+    (Z3.Fixedpoint.to_string z3env.pattern_solver)

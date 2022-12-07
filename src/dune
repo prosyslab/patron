@@ -1,4 +1,4 @@
 (executable
  (name main)
- (modules main cmdline z3env patmat)
+ (modules main cmdline z3env patmat patgen)
  (libraries unix yojson core z3 logger))
