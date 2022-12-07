@@ -1,6 +1,8 @@
 type t = {
   z3ctx : Z3.context;
-  solver : Z3.Fixedpoint.fixedpoint;
+  donor_solver : Z3.Fixedpoint.fixedpoint;
+  donee_solver : Z3.Fixedpoint.fixedpoint;
+  pattern_solver : Z3.Fixedpoint.fixedpoint;
   boolean_sort : Z3.Sort.sort;
   int_sort : Z3.Sort.sort;
   str_sort : Z3.Sort.sort;
@@ -59,12 +61,30 @@ let mk_fixedpoint z3ctx =
   Z3.Fixedpoint.set_parameters s param;
   s
 
+let reg_rel_to_solver env solver =
+  Z3.Fixedpoint.register_relation solver env.skip;
+  Z3.Fixedpoint.register_relation solver env.set;
+  Z3.Fixedpoint.register_relation solver env.alloc;
+  Z3.Fixedpoint.register_relation solver env.salloc;
+  Z3.Fixedpoint.register_relation solver env.lval_exp;
+  Z3.Fixedpoint.register_relation solver env.var;
+  Z3.Fixedpoint.register_relation solver env.call;
+  Z3.Fixedpoint.register_relation solver env.arg;
+  Z3.Fixedpoint.register_relation solver env.subexp;
+  Z3.Fixedpoint.register_relation solver env.constexp;
+  Z3.Fixedpoint.register_relation solver env.ret;
+  Z3.Fixedpoint.register_relation solver env.duedge;
+  Z3.Fixedpoint.register_relation solver env.dupath;
+  Z3.Fixedpoint.register_relation solver env.bug
+
 let mk_env () =
   let z3ctx =
     Z3.mk_context
       [ ("model", "true"); ("proof", "true"); ("unsat_core", "true") ]
   in
-  let solver = mk_fixedpoint z3ctx in
+  let donor_solver = mk_fixedpoint z3ctx in
+  let donee_solver = mk_fixedpoint z3ctx in
+  let pattern_solver = mk_fixedpoint z3ctx in
   let boolean_sort = Z3.Boolean.mk_sort z3ctx in
   let int_sort = Z3.Arithmetic.Integer.mk_sort z3ctx in
   let str_sort = Z3.Seq.mk_string_sort z3ctx in
@@ -141,20 +161,6 @@ let mk_env () =
          (Z3.FuncDecl.apply dupath [ x; y ]))
   in
   let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [] boolean_sort in
-  Z3.Fixedpoint.register_relation solver skip;
-  Z3.Fixedpoint.register_relation solver set;
-  Z3.Fixedpoint.register_relation solver alloc;
-  Z3.Fixedpoint.register_relation solver salloc;
-  Z3.Fixedpoint.register_relation solver lval_exp;
-  Z3.Fixedpoint.register_relation solver var;
-  Z3.Fixedpoint.register_relation solver call;
-  Z3.Fixedpoint.register_relation solver arg;
-  Z3.Fixedpoint.register_relation solver subexp;
-  Z3.Fixedpoint.register_relation solver constexp;
-  Z3.Fixedpoint.register_relation solver ret;
-  Z3.Fixedpoint.register_relation solver duedge;
-  Z3.Fixedpoint.register_relation solver dupath;
-  Z3.Fixedpoint.register_relation solver bug;
   let facts =
     [
       ("Alloc.facts", alloc, [ node; lval; expr ]);
@@ -218,40 +224,48 @@ let mk_env () =
       (* "UnOpExp.facts" *)
     ]
   in
-  {
-    z3ctx;
-    solver;
-    boolean_sort;
-    int_sort;
-    str_sort;
-    zero;
-    one;
-    two;
-    three;
-    node;
-    lval;
-    expr;
-    identifier;
-    arg_list;
-    str_literal;
-    skip;
-    set;
-    alloc;
-    salloc;
-    lval_exp;
-    var;
-    call;
-    arg;
-    subexp;
-    constexp;
-    ret;
-    duedge;
-    dupath;
-    dupath_r0;
-    dupath_r1;
-    bug;
-    facts;
-  }
+  let env =
+    {
+      z3ctx;
+      donor_solver;
+      donee_solver;
+      pattern_solver;
+      boolean_sort;
+      int_sort;
+      str_sort;
+      zero;
+      one;
+      two;
+      three;
+      node;
+      lval;
+      expr;
+      identifier;
+      arg_list;
+      str_literal;
+      skip;
+      set;
+      alloc;
+      salloc;
+      lval_exp;
+      var;
+      call;
+      arg;
+      subexp;
+      constexp;
+      ret;
+      duedge;
+      dupath;
+      dupath_r0;
+      dupath_r1;
+      bug;
+      facts;
+    }
+  in
+  reg_rel_to_solver env env.donor_solver;
+  reg_rel_to_solver env env.donee_solver;
+  reg_rel_to_solver env env.pattern_solver;
+  env
 
 let reset () =
   Z3.Memory.reset ();

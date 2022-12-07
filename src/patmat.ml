@@ -5,7 +5,7 @@ let sym_map = Hashtbl.create 1000
 let cnt = ref 0
 let node_map = Hashtbl.create 1000
 
-let mk_facts z3env work_dir =
+let mk_facts z3env solver work_dir =
   Hashtbl.reset sym_map;
   Hashtbl.reset node_map;
   let datalog_dir = Filename.concat work_dir "sparrow-out/interval/datalog" in
@@ -32,7 +32,7 @@ let mk_facts z3env work_dir =
             arg_sorts
           |> List.rev
         in
-        Z3env.add_fact z3env.solver func args;
+        Z3env.add_fact solver func args;
         loop ()
       with End_of_file -> ()
     in
@@ -45,15 +45,15 @@ let mk_facts z3env work_dir =
     (fun sym z3sym -> Logger.log "%s -> %s" (Z3.Expr.to_string z3sym) sym)
     sym_map
 
-let get_transitive_closure z3env =
-  Z3.Fixedpoint.add_rule z3env.solver z3env.dupath_r0 None;
-  Z3.Fixedpoint.add_rule z3env.solver z3env.dupath_r1 None;
+let get_transitive_closure z3env solver =
+  Z3.Fixedpoint.add_rule solver z3env.dupath_r0 None;
+  Z3.Fixedpoint.add_rule solver z3env.dupath_r1 None;
   Hashtbl.iter
     (fun n1 s1 ->
       Hashtbl.iter
         (fun n2 s2 ->
           let status =
-            Z3.Fixedpoint.query z3env.solver
+            Z3.Fixedpoint.query solver
               (Z3.FuncDecl.apply z3env.dupath [ s1; s2 ])
           in
           match status with
@@ -62,39 +62,38 @@ let get_transitive_closure z3env =
               Logger.log "Unknown: %s(%s),%s(%s)" n1 (Z3.Expr.to_string s1) n2
                 (Z3.Expr.to_string s2)
           | Z3.Solver.SATISFIABLE ->
-              F.printf "DUPath(%s(%s),%s(%s))\n" n1 (Z3.Expr.to_string s1) n2
-                (Z3.Expr.to_string s2);
-              Z3env.add_fact z3env.solver z3env.dupath [ s1; s2 ])
+              Z3env.add_fact solver z3env.dupath [ s1; s2 ])
         node_map)
     node_map
 
-let abstract_bug_pattern work_dir = ()
+let abstract_bug_pattern donor donee = ()
 
-let pattern_match work_dir =
+let pattern_match donor_dir donee_dir =
   Logger.log "Pattern matching...";
   let z3env = Z3env.mk_env () in
-  mk_facts z3env work_dir;
-  get_transitive_closure z3env;
+  mk_facts z3env z3env.donor_solver donor_dir;
+  get_transitive_closure z3env z3env.donor_solver;
+  mk_facts z3env z3env.donee_solver donee_dir;
+  get_transitive_closure z3env z3env.donee_solver;
   Logger.log "Make facts done";
-  abstract_bug_pattern work_dir;
+  let donor = () in
+  let donee = () in
+  abstract_bug_pattern donor donee;
   Logger.log "Make pattern done";
-  Logger.log "SMT Encoding Result:\n%s" (Z3.Fixedpoint.to_string z3env.solver);
+  Logger.log "SMT Encoding Result - Donor:\n%s"
+    (Z3.Fixedpoint.to_string z3env.donor_solver);
+  Logger.log "SMT Encoding Result - Donee:\n%s"
+    (Z3.Fixedpoint.to_string z3env.donee_solver);
   let status =
-    Z3.Fixedpoint.query z3env.solver (Z3.FuncDecl.apply z3env.bug [])
+    Z3.Fixedpoint.query z3env.donee_solver (Z3.FuncDecl.apply z3env.bug [])
   in
-  (match status with
+  match status with
   | Z3.Solver.UNSATISFIABLE -> print_endline "No bug found"
   | Z3.Solver.SATISFIABLE -> (
       print_endline "Bug found";
-      match Z3.Fixedpoint.get_answer z3env.solver with
+      match Z3.Fixedpoint.get_answer z3env.donee_solver with
       | None -> print_endline "No answer"
       | Some answer ->
           print_endline "Instances:";
           answer |> Z3.Expr.to_string |> print_endline)
-  | Z3.Solver.UNKNOWN -> print_endline "Unknown");
-  let rules = Z3.Fixedpoint.get_rules z3env.solver in
-  List.iter (fun r -> F.printf "%s\n" (Z3.Expr.to_string r)) rules;
-  let new_solver = Z3env.mk_fixedpoint z3env.z3ctx in
-  Logger.log "NEW SMT Encoding Result:\n%s" (Z3.Fixedpoint.to_string new_solver);
-  Logger.log "OLD SMT Encoding Result:\n%s"
-    (Z3.Fixedpoint.to_string z3env.solver)
+  | Z3.Solver.UNKNOWN -> print_endline "Unknown"
