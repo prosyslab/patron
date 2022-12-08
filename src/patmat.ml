@@ -39,11 +39,7 @@ let mk_facts z3env solver work_dir =
     loop ();
     close_in ic
   in
-  List.iter app_fact z3env.facts;
-  Logger.log "Symbol table:";
-  Hashtbl.iter
-    (fun sym z3sym -> Logger.log "%s -> %s" (Z3.Expr.to_string z3sym) sym)
-    sym_map
+  List.iter app_fact z3env.facts
 
 let get_transitive_closure z3env solver =
   Z3.Fixedpoint.add_rule solver z3env.dupath_r0 None;
@@ -83,18 +79,28 @@ let abstract_bug_pattern z3env =
           answer |> Z3.Expr.to_string |> print_endline)
   | Z3.Solver.UNKNOWN -> print_endline "Unknown"
 
+let dump ver_name sym_map solver out_dir =
+  let sym_map_file = ver_name ^ "_symbol.map" |> Filename.concat out_dir in
+  let sym_map_oc = open_out sym_map_file in
+  Hashtbl.iter
+    (fun sym z3sym ->
+      Printf.fprintf sym_map_oc "%s\t%s\n" (Z3.Expr.to_string z3sym) sym)
+    sym_map;
+  close_out sym_map_oc;
+  let solver_file = ver_name ^ ".smt2" |> Filename.concat out_dir in
+  let solver_oc = open_out solver_file in
+  Z3.Fixedpoint.to_string solver |> output_string solver_oc;
+  close_out solver_oc
+
 let pattern_match donor_dir donee_dir z3env =
+  let out_dir = Filename.concat donee_dir !Cmdline.out_dir in
   Logger.log "Pattern matching...";
   mk_facts z3env z3env.donor_solver donor_dir;
   get_transitive_closure z3env z3env.donor_solver;
+  dump "donor" sym_map z3env.donor_solver out_dir;
   mk_facts z3env z3env.donee_solver donee_dir;
   get_transitive_closure z3env z3env.donee_solver;
+  dump "donee" sym_map z3env.donor_solver out_dir;
   Logger.log "Make facts done";
   abstract_bug_pattern z3env;
-  Logger.log "Make pattern done";
-  Logger.log "SMT Encoding Result - Donor:\n%s"
-    (Z3.Fixedpoint.to_string z3env.donor_solver);
-  Logger.log "SMT Encoding Result - Donee:\n%s"
-    (Z3.Fixedpoint.to_string z3env.donee_solver);
-  Logger.log "SMT Encoding Result - Bug:\n%s"
-    (Z3.Fixedpoint.to_string z3env.pattern_solver)
+  Logger.log "Make pattern done"
