@@ -1,6 +1,7 @@
 type t = {
   z3ctx : Z3.context;
   donor_solver : Z3.Fixedpoint.fixedpoint;
+  patch_solver : Z3.Fixedpoint.fixedpoint;
   donee_solver : Z3.Fixedpoint.fixedpoint;
   pattern_solver : Z3.Fixedpoint.fixedpoint;
   boolean_sort : Z3.Sort.sort;
@@ -23,6 +24,7 @@ type t = {
   lval_exp : Z3.FuncDecl.func_decl;
   var : Z3.FuncDecl.func_decl;
   call : Z3.FuncDecl.func_decl;
+  libcall : Z3.FuncDecl.func_decl;
   arg : Z3.FuncDecl.func_decl;
   (* SubExp e1 e2: e2 is subexp of e1 *)
   subexp : Z3.FuncDecl.func_decl;
@@ -69,6 +71,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.lval_exp;
   Z3.Fixedpoint.register_relation solver env.var;
   Z3.Fixedpoint.register_relation solver env.call;
+  Z3.Fixedpoint.register_relation solver env.libcall;
   Z3.Fixedpoint.register_relation solver env.arg;
   Z3.Fixedpoint.register_relation solver env.subexp;
   Z3.Fixedpoint.register_relation solver env.constexp;
@@ -83,6 +86,7 @@ let mk_env () =
       [ ("model", "true"); ("proof", "true"); ("unsat_core", "true") ]
   in
   let donor_solver = mk_fixedpoint z3ctx in
+  let patch_solver = mk_fixedpoint z3ctx in
   let donee_solver = mk_fixedpoint z3ctx in
   let pattern_solver = mk_fixedpoint z3ctx in
   let boolean_sort = Z3.Boolean.mk_sort z3ctx in
@@ -116,6 +120,11 @@ let mk_env () =
   in
   let call =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Call"
+      [ node; lval; expr; arg_list ]
+      boolean_sort
+  in
+  let libcall =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "LibCall"
       [ node; lval; expr; arg_list ]
       boolean_sort
   in
@@ -193,7 +202,7 @@ let mk_env () =
       (* "Join.facts" *)
       (* "LAnd.facts" *)
       (* "Le.facts" *)
-      ("LibCall.facts", call, [ node; lval; expr; arg_list ]);
+      ("LibCall.facts", libcall, [ node; lval; expr; arg_list ]);
       (* "LNot.facts" *)
       ("LocalVar.facts", var, [ lval; identifier ]);
       (* "LoopHead.facts" *)
@@ -228,6 +237,7 @@ let mk_env () =
     {
       z3ctx;
       donor_solver;
+      patch_solver;
       donee_solver;
       pattern_solver;
       boolean_sort;
@@ -250,6 +260,7 @@ let mk_env () =
       lval_exp;
       var;
       call;
+      libcall;
       arg;
       subexp;
       constexp;
@@ -263,6 +274,7 @@ let mk_env () =
     }
   in
   reg_rel_to_solver env env.donor_solver;
+  reg_rel_to_solver env env.patch_solver;
   reg_rel_to_solver env env.donee_solver;
   reg_rel_to_solver env env.pattern_solver;
   env
