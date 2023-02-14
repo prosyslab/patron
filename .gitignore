@@ -27,6 +27,7 @@ sparrow-out
 
 # Patron Binary
 patron
+transformer
 
 # Patron out
 patron-out
