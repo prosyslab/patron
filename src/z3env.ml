@@ -17,11 +17,16 @@ type t = {
   identifier : Z3.Sort.sort;
   arg_list : Z3.Sort.sort;
   str_literal : Z3.Sort.sort;
+  value : Z3.Sort.sort;
+  (* Functions for specifying source, sink *)
+  src : Z3.FuncDecl.func_decl;
+  snk : Z3.FuncDecl.func_decl;
   skip : Z3.FuncDecl.func_decl;
   set : Z3.FuncDecl.func_decl;
   alloc : Z3.FuncDecl.func_decl;
   salloc : Z3.FuncDecl.func_decl;
   lval_exp : Z3.FuncDecl.func_decl;
+  startof : Z3.FuncDecl.func_decl;
   var : Z3.FuncDecl.func_decl;
   call : Z3.FuncDecl.func_decl;
   libcall : Z3.FuncDecl.func_decl;
@@ -35,6 +40,12 @@ type t = {
   dupath : Z3.FuncDecl.func_decl;
   dupath_r0 : Z3.Expr.expr;
   dupath_r1 : Z3.Expr.expr;
+  (* Functions for Semantic Constraint *)
+  evallv : Z3.FuncDecl.func_decl;
+  eval : Z3.FuncDecl.func_decl;
+  memory : Z3.FuncDecl.func_decl;
+  sizeof : Z3.FuncDecl.func_decl;
+  formatstr : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
   facts : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
 }
@@ -64,11 +75,14 @@ let mk_fixedpoint z3ctx =
   s
 
 let reg_rel_to_solver env solver =
+  Z3.Fixedpoint.register_relation solver env.src;
+  Z3.Fixedpoint.register_relation solver env.snk;
   Z3.Fixedpoint.register_relation solver env.skip;
   Z3.Fixedpoint.register_relation solver env.set;
   Z3.Fixedpoint.register_relation solver env.alloc;
   Z3.Fixedpoint.register_relation solver env.salloc;
   Z3.Fixedpoint.register_relation solver env.lval_exp;
+  Z3.Fixedpoint.register_relation solver env.startof;
   Z3.Fixedpoint.register_relation solver env.var;
   Z3.Fixedpoint.register_relation solver env.call;
   Z3.Fixedpoint.register_relation solver env.libcall;
@@ -78,6 +92,11 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.ret;
   Z3.Fixedpoint.register_relation solver env.duedge;
   Z3.Fixedpoint.register_relation solver env.dupath;
+  Z3.Fixedpoint.register_relation solver env.evallv;
+  Z3.Fixedpoint.register_relation solver env.eval;
+  Z3.Fixedpoint.register_relation solver env.memory;
+  Z3.Fixedpoint.register_relation solver env.sizeof;
+  Z3.Fixedpoint.register_relation solver env.formatstr;
   Z3.Fixedpoint.register_relation solver env.bug
 
 let mk_env () =
@@ -102,6 +121,9 @@ let mk_env () =
   let identifier = Z3.FiniteDomain.mk_sort_s z3ctx "identifier" 65536L in
   let arg_list = Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" 65536L in
   let str_literal = Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" 65536L in
+  let value = Z3.FiniteDomain.mk_sort_s z3ctx "value" 65536L in
+  let src = Z3.FuncDecl.mk_func_decl_s z3ctx "Src" [ node ] boolean_sort in
+  let snk = Z3.FuncDecl.mk_func_decl_s z3ctx "Snk" [ node ] boolean_sort in
   let skip = Z3.FuncDecl.mk_func_decl_s z3ctx "Skip" [ node ] boolean_sort in
   let set =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Set" [ node; lval; expr ] boolean_sort
@@ -114,6 +136,9 @@ let mk_env () =
   in
   let lval_exp =
     Z3.FuncDecl.mk_func_decl_s z3ctx "LvalExp" [ expr; lval ] boolean_sort
+  in
+  let startof =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "StarOf" [ expr; lval ] boolean_sort
   in
   let var =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Var" [ lval; identifier ] boolean_sort
@@ -168,6 +193,21 @@ let mk_env () =
               Z3.FuncDecl.apply duedge [ z; y ];
             ])
          (Z3.FuncDecl.apply dupath [ x; y ]))
+  in
+  let evallv =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "EvalLv" [ node; lval; value ] boolean_sort
+  in
+  let eval =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Eval" [ node; expr; value ] boolean_sort
+  in
+  let memory =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Memory" [ node; value; value ]
+      boolean_sort
+  in
+  let sizeof = Z3.FuncDecl.mk_func_decl_s z3ctx "SizeOf" [ value ] int_sort in
+  let formatstr =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "FormatStr" [ arg_list ]
+      int_sort (* TODO: sort *)
   in
   let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [] boolean_sort in
   let facts =
@@ -227,10 +267,13 @@ let mk_env () =
       (* "ShiftRt.facts" *)
       ("Skip.facts", skip, [ node ]);
       (* "Start.facts" *)
-      (* "StartOf.facts" *)
+      ("StartOf.facts", startof, [ expr; lval ])
       (* "TrueBranch.facts" *)
       (* "TrueCond.facts" *)
-      (* "UnOpExp.facts" *)
+      (* "UnOpExp.facts" *);
+      ("EvalLv.facts", evallv, [ node; lval; value ]);
+      ("Eval.facts", eval, [ node; expr; value ]);
+      ("Memory.facts", memory, [ node; value; value ]);
     ]
   in
   let env =
@@ -253,11 +296,15 @@ let mk_env () =
       identifier;
       arg_list;
       str_literal;
+      value;
+      src;
+      snk;
       skip;
       set;
       alloc;
       salloc;
       lval_exp;
+      startof;
       var;
       call;
       libcall;
@@ -269,6 +316,11 @@ let mk_env () =
       dupath;
       dupath_r0;
       dupath_r1;
+      evallv;
+      eval;
+      memory;
+      sizeof;
+      formatstr;
       bug;
       facts;
     }
