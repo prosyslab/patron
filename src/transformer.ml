@@ -46,7 +46,7 @@ let eq_stmt_type skind1 skind2 =
 module StmtMap = Map.Make (struct
   type t = Cil.stmt
 
-  let compare = compare
+  let compare s1 s2 = compare s1.Cil.sid s2.Cil.sid
 end)
 
 let is_same_stmt stmt1 stmt2 =
