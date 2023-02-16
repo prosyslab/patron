@@ -8,7 +8,7 @@ for file in $(find $PROJECT_HOME/src -name "*.ml"); do
   echo "Checking $file"
   ocamlformat $file | diff $file - ||
   if [ $? -ne 0 ]; then
-    echo "Failed: Please check json format"
+    echo "Failed: Please check OCaml format"
     echo "See error message after running ocamlformat $file"
     exit 1
   fi
