@@ -1,9 +1,15 @@
+(library
+ (name patronlib)
+ (modules cmdline)
+ (wrapped false)
+ (libraries logger))
+
 (executable
  (name main)
- (modules main cmdline z3env patmat patgen)
- (libraries unix yojson core z3 logger))
+ (modules main z3env patmat patgen)
+ (libraries patronlib unix yojson core z3 logger))
 
 (executable
  (name transformer)
  (modules transformer)
- (libraries cil unix yojson core z3 logger))
+ (libraries patronlib cil unix yojson core z3 logger))

@@ -1,6 +1,12 @@
+module F = Format
+module L = Logger
+
 type action =
+  (* InsrtStmt(s1, s2) : insert statement s2 before statement s1 *)
   | InsertStmt of Cil.stmt * Cil.stmt
+  | InsertLastStmt of Cil.block * Cil.stmt list
   | DeleteStmt of Cil.stmt
+  | DeleteLastStmt of Cil.block * Cil.stmt list
   | UpdateStmt of Cil.stmt * Cil.stmt
   | InsertInstr of Cil.instr * Cil.instr
   | DeleteInstr of Cil.instr
@@ -10,16 +16,28 @@ type action =
 
 type edit_script = action list
 
-(* Print Functions *)
+let string_of_instr instr =
+  Cil.printInstr !Cil.printerForMaincil () instr |> Pretty.sprint ~width:80
+
+let string_of_stmt stmt =
+  Cil.printStmt !Cil.printerForMaincil () stmt |> Pretty.sprint ~width:80
+
+let pp_action fmt = function
+  | InsertStmt (s1, s2) ->
+      F.fprintf fmt "InsertStmt(%s, %s)" (string_of_stmt s1) (string_of_stmt s2)
+  | InsertLastStmt (_, sl) ->
+      List.iter
+        (fun s -> F.fprintf fmt "InsertLastStmt(%s)" (string_of_stmt s))
+        sl
+  | DeleteStmt s -> F.fprintf fmt "DeleteStmt(%s)" (string_of_stmt s)
+  (* TODO: Changgong *)
+  | _ -> ()
+
+let pp_edit_script fmt script =
+  List.iter (fun action -> F.fprintf fmt "%a\n" pp_action action) script
+
 let print_skind skind =
   let () = Printf.printf "%s" skind.Cil.cname in
-  print_endline "-----------------"
-
-let print_stmt stmt =
-  let () =
-    Cil.printStmt !Cil.printerForMaincil () stmt
-    |> Pretty.sprint ~width:80 |> print_endline
-  in
   print_endline "-----------------"
 
 let print_glob glob =
@@ -27,7 +45,7 @@ let print_glob glob =
   |> Pretty.sprint ~width:80 |> print_endline
 
 (* Checking Functions *)
-let eq_stmt_type skind1 skind2 =
+let eq_stmt_kind skind1 skind2 =
   match (skind1, skind2) with
   | Cil.Instr _, Cil.Instr _
   | Cil.Return _, Cil.Return _
@@ -43,71 +61,107 @@ let eq_stmt_type skind1 skind2 =
       true
   | _ -> false
 
-module StmtMap = Map.Make (struct
-  type t = Cil.stmt
+let eq_global_type glob1 glob2 =
+  match (glob1, glob2) with
+  | Cil.GType _, Cil.GType _
+  | Cil.GCompTag _, Cil.GCompTag _
+  | Cil.GCompTagDecl _, Cil.GCompTagDecl _
+  | Cil.GEnumTag _, Cil.GEnumTag _
+  | Cil.GEnumTagDecl _, Cil.GEnumTagDecl _
+  | Cil.GVar _, Cil.GVar _
+  | Cil.GVarDecl _, Cil.GVarDecl _
+  | Cil.GFun _, Cil.GFun _
+  | Cil.GAsm _, Cil.GAsm _
+  | Cil.GPragma _, Cil.GPragma _ ->
+      true
+  | _ -> false
 
-  let compare s1 s2 = compare s1.Cil.sid s2.Cil.sid
-end)
+let eq_typ typ_info1 typ_info2 =
+  match (typ_info1, typ_info2) with
+  | Cil.TVoid _, Cil.TVoid _
+  | Cil.TInt _, Cil.TInt _
+  | Cil.TFloat _, Cil.TFloat _
+  | Cil.TPtr _, Cil.TPtr _
+  | Cil.TArray _, Cil.TArray _
+  | Cil.TFun _, Cil.TFun _
+  | Cil.TNamed _, Cil.TNamed _
+  | Cil.TComp _, Cil.TComp _
+  | Cil.TEnum _, Cil.TEnum _ ->
+      true
+  | _ -> false
 
-let is_same_stmt stmt1 stmt2 =
-  eq_stmt_type stmt1.Cil.skind stmt2.Cil.skind && stmt1.Cil.sid = stmt2.Cil.sid
+let rec find_insertion s1 ss2 =
+  match ss2 with
+  | [] -> []
+  | s2 :: ss2' ->
+      if eq_stmt_kind s1.Cil.skind s2.Cil.skind then []
+      else s2 :: find_insertion s1 ss2'
 
-(* Bipartite twice *)
+let rec find_deletion s2 ss1 =
+  match ss1 with
+  | [] -> []
+  | s1 :: ss2' ->
+      if eq_stmt_kind s2.Cil.skind s2.Cil.skind then []
+      else s1 :: find_deletion s1 ss2'
 
-let search_stmt stmt2 stmts stmt_map =
-  List.fold_left
-    (fun stmap stmt ->
+let rec fold_stmts2 b1 stmts1 stmts2 =
+  match (stmts1, stmts2) with
+  | s1 :: ss1, s2 :: ss2 ->
+      if eq_stmt_kind s1.Cil.skind s2.Cil.skind then fold_stmts2 b1 ss1 ss2
+      else
+        let insertions = find_insertion s1 stmts2 in
+        if insertions <> [] then
+          let _ = L.debug "insertion detected\n" in
+          List.map (fun s -> InsertStmt (s1, s)) insertions
+        else
+          let deletions = find_deletion s2 stmts1 in
+          if deletions <> [] then
+            let _ = L.debug "deletion detected\n" in
+            List.map (fun s -> DeleteStmt s) deletions
+          else fold_stmts2 b1 ss1 ss2
+  | [], _ -> [ InsertLastStmt (b1, stmts2) ]
+  | _, [] -> [ DeleteLastStmt (b1, stmts1) ]
+
+let extract_block block1 block2 =
+  fold_stmts2 block1 block1.Cil.bstmts block2.Cil.bstmts
+
+let extract_global glob1 glob2 =
+  match (glob1, glob2) with
+  | Cil.GFun (func_info1, _), Cil.GFun (func_info2, _) ->
       if
-        eq_stmt_type stmt.Cil.skind stmt2.Cil.skind
-        && not (StmtMap.exists (fun _ y -> is_same_stmt stmt y) stmap)
-      then StmtMap.add stmt stmt2 stmap
-      else stmap)
-    stmt_map stmts
+        eq_typ func_info1.svar.vtype func_info2.svar.vtype
+        && func_info1.svar.vname = func_info2.svar.vname
+      then extract_block func_info1.sbody func_info2.sbody
+      else []
+  | _ -> []
 
-let search_func stmt2 file stmt_map =
-  Cil.foldGlobals file
-    (fun sm global ->
-      match global with
-      | Cil.GFun (dec, _) -> search_stmt stmt2 dec.sbody.bstmts sm
-      | _ -> sm)
-    stmt_map
-
-let map_stmt file mapped_stmts stmts =
-  List.fold_left
-    (fun mapped_stmts stmt ->
-      if not (StmtMap.exists (fun x _ -> is_same_stmt stmt x) mapped_stmts) then
-        search_func stmt file mapped_stmts
-      else mapped_stmts)
-    mapped_stmts stmts
-
-let mapping file1 file2 =
-  Cil.foldGlobals file1
-    (fun mapped_stmts global ->
-      match global with
-      | Cil.GFun (dec, _) -> map_stmt file2 mapped_stmts dec.sbody.bstmts
-      | _ -> mapped_stmts)
-    StmtMap.empty
+let rec fold_globals2 doner_gobals patch_globals =
+  match (doner_gobals, patch_globals) with
+  | hd1 :: tl1, hd2 :: tl2 ->
+      let es = extract_global hd1 hd2 in
+      es @ fold_globals2 tl1 tl2
+  | _ -> []
 
 let extract doner_file patch_file =
-  let fwd_map = mapping doner_file patch_file in
-  let bwd_map = mapping patch_file doner_file in
-  print_int (StmtMap.cardinal fwd_map);
-  print_endline "";
-  print_int (StmtMap.cardinal bwd_map);
-  print_endline ""
+  fold_globals2 doner_file.Cil.globals patch_file.Cil.globals
 
-(* let translate cil1 cil3 es = es in
-   let apply es cil3 = cil3 in *)
-
-let main () =
+let init () =
   Cil.initCIL ();
   Cil.insertImplicitCasts := true;
-  let doner, patch, donee =
+  (try Unix.mkdir !Cmdline.out_dir 0o775
+   with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
+  print_endline ("Logging to " ^ !Cmdline.out_dir);
+  Filename.concat !Cmdline.out_dir "transformer.log.txt" |> Logger.from_file;
+  Logger.set_level !Cmdline.log_level
+
+let main () =
+  init ();
+  let doner, patch, _donee =
     match Array.to_list Sys.argv |> List.tl with
     | [ a; b; c ] -> (Frontc.parse a (), Frontc.parse b (), Frontc.parse c ())
     | _ -> failwith "Argument mismatch: must be <Donor> <Patch> <Donee>"
   in
-
-  extract doner patch
+  let es = extract doner patch in
+  Logger.info "#edit script: %d\n%a\n" (List.length es) pp_edit_script es
 
 let _ = main ()
