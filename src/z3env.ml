@@ -18,6 +18,7 @@ type t = {
   arg_list : Z3.Sort.sort;
   str_literal : Z3.Sort.sort;
   value : Z3.Sort.sort;
+  const : Z3.Sort.sort;
   (* Functions for specifying source, sink *)
   src : Z3.FuncDecl.func_decl;
   snk : Z3.FuncDecl.func_decl;
@@ -36,16 +37,15 @@ type t = {
   constexp : Z3.FuncDecl.func_decl;
   ret : Z3.FuncDecl.func_decl;
   (* TODO: add extra relations for expr *)
-  duedge : Z3.FuncDecl.func_decl;
   dupath : Z3.FuncDecl.func_decl;
-  dupath_r0 : Z3.Expr.expr;
-  dupath_r1 : Z3.Expr.expr;
   (* Functions for Semantic Constraint *)
   evallv : Z3.FuncDecl.func_decl;
   eval : Z3.FuncDecl.func_decl;
   memory : Z3.FuncDecl.func_decl;
+  arrayval : Z3.FuncDecl.func_decl;
+  conststr : Z3.FuncDecl.func_decl;
   sizeof : Z3.FuncDecl.func_decl;
-  formatstr : Z3.FuncDecl.func_decl;
+  strlen : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
   facts : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
 }
@@ -90,13 +90,14 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.subexp;
   Z3.Fixedpoint.register_relation solver env.constexp;
   Z3.Fixedpoint.register_relation solver env.ret;
-  Z3.Fixedpoint.register_relation solver env.duedge;
   Z3.Fixedpoint.register_relation solver env.dupath;
   Z3.Fixedpoint.register_relation solver env.evallv;
   Z3.Fixedpoint.register_relation solver env.eval;
   Z3.Fixedpoint.register_relation solver env.memory;
+  Z3.Fixedpoint.register_relation solver env.arrayval;
+  Z3.Fixedpoint.register_relation solver env.conststr;
   Z3.Fixedpoint.register_relation solver env.sizeof;
-  Z3.Fixedpoint.register_relation solver env.formatstr;
+  Z3.Fixedpoint.register_relation solver env.strlen;
   Z3.Fixedpoint.register_relation solver env.bug
 
 let mk_env () =
@@ -122,6 +123,7 @@ let mk_env () =
   let arg_list = Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" 65536L in
   let str_literal = Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" 65536L in
   let value = Z3.FiniteDomain.mk_sort_s z3ctx "value" 65536L in
+  let const = Z3.FiniteDomain.mk_sort_s z3ctx "const" 65536L in
   let src = Z3.FuncDecl.mk_func_decl_s z3ctx "Src" [ node ] boolean_sort in
   let snk = Z3.FuncDecl.mk_func_decl_s z3ctx "Snk" [ node ] boolean_sort in
   let skip = Z3.FuncDecl.mk_func_decl_s z3ctx "Skip" [ node ] boolean_sort in
@@ -169,30 +171,8 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Return" [ node; expr ] boolean_sort
   in
   (* TODO: add extra relations for expr *)
-  let duedge =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "DUEdge" [ node; node ] boolean_sort
-  in
   let dupath =
     Z3.FuncDecl.mk_func_decl_s z3ctx "DUPath" [ node; node ] boolean_sort
-  in
-  let x = Z3.Expr.mk_const_s z3ctx "x" node in
-  let y = Z3.Expr.mk_const_s z3ctx "y" node in
-  let z = Z3.Expr.mk_const_s z3ctx "z" node in
-  let dupath_r0 =
-    mk_rule z3ctx [ x; y; z ]
-      (Z3.Boolean.mk_implies z3ctx
-         (Z3.FuncDecl.apply duedge [ x; y ])
-         (Z3.FuncDecl.apply dupath [ x; y ]))
-  in
-  let dupath_r1 =
-    mk_rule z3ctx [ x; y; z ]
-      (Z3.Boolean.mk_implies z3ctx
-         (Z3.Boolean.mk_and z3ctx
-            [
-              Z3.FuncDecl.apply duedge [ x; z ];
-              Z3.FuncDecl.apply duedge [ z; y ];
-            ])
-         (Z3.FuncDecl.apply dupath [ x; y ]))
   in
   let evallv =
     Z3.FuncDecl.mk_func_decl_s z3ctx "EvalLv" [ node; lval; value ] boolean_sort
@@ -204,9 +184,16 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Memory" [ node; value; value ]
       boolean_sort
   in
+  let arrayval =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "ArrayVal" [ value; value ] boolean_sort
+  in
+  let conststr =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "ConstStr" [ value; const ] boolean_sort
+  in
+
   let sizeof = Z3.FuncDecl.mk_func_decl_s z3ctx "SizeOf" [ value ] int_sort in
-  let formatstr =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "FormatStr" [ arg_list ]
+  let strlen =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "StrLen" [ value ]
       int_sort (* TODO: sort *)
   in
   let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [] boolean_sort in
@@ -226,7 +213,7 @@ let mk_env () =
       (* "Cmd.facts" *)
       (* "ConstExp.facts" *)
       (* "Div.facts" *)
-      ("DUEdge.facts", duedge, [ node; node ]);
+      ("DUPath.facts", dupath, [ node; node ]);
       (* "Entry.facts" *)
       (* "Eq.facts" *)
       (* "Exit.facts" *)
@@ -274,6 +261,8 @@ let mk_env () =
       ("EvalLv.facts", evallv, [ node; lval; value ]);
       ("Eval.facts", eval, [ node; expr; value ]);
       ("Memory.facts", memory, [ node; value; value ]);
+      ("ArrayVal.facts", arrayval, [ value; value ]);
+      ("ConstStr.facts", conststr, [ value; const ]);
     ]
   in
   let env =
@@ -297,6 +286,7 @@ let mk_env () =
       arg_list;
       str_literal;
       value;
+      const;
       src;
       snk;
       skip;
@@ -312,15 +302,14 @@ let mk_env () =
       subexp;
       constexp;
       ret;
-      duedge;
       dupath;
-      dupath_r0;
-      dupath_r1;
       evallv;
       eval;
       memory;
+      arrayval;
+      conststr;
       sizeof;
-      formatstr;
+      strlen;
       bug;
       facts;
     }
