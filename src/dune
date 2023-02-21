@@ -6,7 +6,7 @@
 
 (executable
  (name main)
- (modules main z3env patmat patgen)
+ (modules main z3env patmat)
  (libraries patronlib unix yojson core z3 logger))
 
 (executable
