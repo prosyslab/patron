@@ -1,7 +1,3 @@
-char* getenv(const char *__name);
-void snprintf(char *str, char *fmt, ...);
-void printf(const char *, ...);
-
 int main(void) {
   char *ptr_h;
   char h[64];
