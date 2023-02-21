@@ -241,8 +241,9 @@ let mk_facts ?(add_var_too = false) ~maps solver work_dir =
   let exp_map_ic = Filename.concat datalog_dir "Exp.map" |> In_channel.create in
   make_exp_map exp_map_ic maps.exp_map maps.exp_map_inv;
   In_channel.close exp_map_ic;
-  List.iter ~f:(apply_fact add_var_too maps datalog_dir solver) z3env.facts;
-  mk_sem_cons ~add_var_too maps solver work_dir
+  List.iter ~f:(apply_fact add_var_too maps datalog_dir solver) z3env.facts
+(* TODO: generalize *)
+(* mk_sem_cons ~add_var_too maps solver work_dir *)
 
 let match_rule facts pattern =
   let solver = mk_fixedpoint z3env.z3ctx in
@@ -271,39 +272,44 @@ let is_var = is_what "(Var"
 let is_skip = is_what "(Skip"
 let is_ret = is_what "(Return"
 let is_sizeof = is_what "(SizeOf"
-let is_formatstr = is_what "(FormatStr"
+let is_strlen = is_what "(StrLen"
 let ( ||| ) f1 f2 x = f1 x || f2 x
-let is_sem_cons = is_sizeof ||| is_formatstr
+let is_sem_cons = is_sizeof ||| is_strlen
 let neg f x = not (f x)
+
+let rec get_args_rec expr =
+  Z3.Expr.get_args expr
+  |> List.fold_left ~init:[] ~f:(fun args a ->
+         if Z3.Expr.is_const a then a :: args else get_args_rec a @ args)
+  |> List.rev
 
 let collect_vars =
   Fun.flip
     (ExprSet.fold (fun r vars ->
-         Z3.Expr.get_args r
-         |> List.fold_left ~init:vars ~f:(Fun.flip ExprSet.add)))
+         get_args_rec r |> List.fold_left ~init:vars ~f:(Fun.flip ExprSet.add)))
     ExprSet.empty
 
 let collect_children var rels =
   ExprSet.filter
-    (fun r -> Z3.Expr.get_args r |> List.hd_exn |> Z3.Expr.equal var)
+    (fun r -> get_args_rec r |> List.hd_exn |> Z3.Expr.equal var)
     rels
 
 let collect_correls var rels =
   ExprSet.filter
     (fun r ->
-      Z3.Expr.get_args r |> List.tl_exn
+      get_args_rec r |> List.tl_exn
       |> (Fun.flip List.mem ~equal:Z3.Expr.equal) var)
     rels
 
 let collect_rels var rels =
   ExprSet.filter
-    (fun r -> Z3.Expr.get_args r |> List.exists ~f:(Z3.Expr.equal var))
+    (fun r -> get_args_rec r |> List.exists ~f:(Z3.Expr.equal var))
     rels
 
 let collect_dupath rels = ExprSet.filter is_dupath rels
 
 let is_removable rel rels =
-  let vars = Z3.Expr.get_args rel in
+  let vars = get_args_rec rel in
   if is_dupath rel then
     List.exists
       ~f:(fun var ->
@@ -326,7 +332,7 @@ let subs_ign ~must_rel var rel rels =
     let rels' = ExprSet.remove rel rels in
     let func = Z3.Expr.get_func_decl rel in
     let rel' =
-      Z3.Expr.get_args rel
+      get_args_rec rel
       |> List.map ~f:(fun arg ->
              if Z3.Expr.equal arg var then (
                let ign =
@@ -353,8 +359,9 @@ let rec elim_rel ~remove_cands ~must_rel ~must_var pat_cand
           collect_correls var pat_cand_except_sem_cons |> ExprSet.cardinal > 1)
         vars
     in
-    ignore_var ~ignore_cands:cand_vars ~must_rel ~must_var pat_cand
-      pat_cand_except_sem_cons patch_facts
+    pat_cand_except_sem_cons
+    (* ignore_var ~ignore_cands:cand_vars ~must_rel ~must_var pat_cand *)
+    (*   pat_cand_except_sem_cons patch_facts *)
   else
     let selected = ExprSet.min_elt rc in
     let rc' = ExprSet.remove selected rc in
@@ -374,7 +381,7 @@ let rec elim_rel ~remove_cands ~must_rel ~must_var pat_cand
     else (
       Logger.info "Patch Not Matched: removed rel is %s"
         (Z3.Expr.to_string selected);
-      let new_remove_cand_vars = Z3.Expr.get_args selected in
+      let new_remove_cand_vars = get_args_rec selected in
       (* Logger.debug "nrcv:%s" *)
       (*   (new_remove_cand_vars *)
       (*   |> List.map ~f:Z3.Expr.to_string *)
@@ -489,6 +496,20 @@ let abstract_bug_pattern () =
       pat_cand_except_sem_cons
     |> ExprSet.of_list
   in
+  (* ExprSet.iter *)
+  (*   (fun exp -> *)
+  (*     get_args_rec exp *)
+  (*     |> (fun l -> *)
+  (*          List.iter *)
+  (*            ~f:(fun arg -> *)
+  (*              Z3.Expr.is_const arg |> string_of_bool *)
+  (*              |> Logger.debug "%s: %s" (Z3.Expr.to_string arg)) *)
+  (*            l; *)
+  (*          l) *)
+  (*     |> List.map ~f:Z3.Expr.to_string *)
+  (*     |> String.concat ~sep:" " *)
+  (*     |> Logger.debug "Args of Sem Cons: %s") *)
+  (*   sem_cons_set; *)
   let pattern =
     elim_rel ~remove_cands ~must_rel:sem_cons_set ~must_var:ExprSet.empty
       pat_cand_set pat_cand_except_sem_cons_set patch_facts
@@ -521,6 +542,7 @@ let pattern_match donor_dir patch_dir donee_dir =
   Bag.clear fixed_exps;
   Bag.clear var_bag;
   mk_facts ~add_var_too:true ~maps:donor_maps z3env.donor_solver donor_dir;
+  mk_sem_cons ~add_var_too:true donor_maps z3env.donor_solver donor_dir;
   mk_facts ~maps:patch_maps z3env.patch_solver patch_dir;
   mk_facts ~maps:donee_maps z3env.donee_solver donee_dir;
   dump "donor" donor_maps z3env.donor_solver out_dir;
