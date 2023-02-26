@@ -29,8 +29,7 @@ let string_of_instr instr =
 let string_of_stmt stmt =
   Cil.printStmt !Cil.printerForMaincil () stmt |> Pretty.sprint ~width:80
 
-let string_of_exp exp =
-  Cil.d_exp () exp |> Pretty.sprint ~width:80
+let string_of_exp exp = Cil.d_exp () exp |> Pretty.sprint ~width:80
 
 let pp_action fmt = function
   | InsertStmt (s1, s2) ->
@@ -79,14 +78,12 @@ let pp_action fmt = function
   (* TODO: Instr level not validated *)
   | _ -> ()
 
-let print_exp e1 =
-  Cil.d_exp () e1 |> Pretty.sprint ~width:80 |> print_endline
+let print_exp e1 = Cil.d_exp () e1 |> Pretty.sprint ~width:80 |> print_endline
+
 let pp_edit_script fmt script =
   List.iter (fun action -> F.fprintf fmt "%a\n" pp_action action) script
 
-let print_skind skind =
-  Printf.printf "%s" skind.Cil.cname
-
+let print_skind skind = Printf.printf "%s" skind.Cil.cname
 
 let print_glob glob =
   Cil.printGlobal !Cil.printerForMaincil () glob
@@ -174,31 +171,34 @@ let find_instr_change i1 is2 result_list =
   | i2 :: is2' ->
       if eq_instr i1 i2 then []
       else find_instr_change_rec i1 is2' i2 result_list
-      
 
-  let eq_lval l1 l2 =
-    match (l1, l2) with
-    | (lhost1, _), (lhost2, _) -> match (lhost1, lhost2) with
+let eq_lval l1 l2 =
+  match (l1, l2) with
+  | (lhost1, _), (lhost2, _) -> (
+      match (lhost1, lhost2) with
       | Cil.Var vi1, Cil.Var vi2 -> vi1.Cil.vname = vi2.Cil.vname
       | Cil.Mem _, Cil.Mem _ -> true
-    | _ -> false
+      | _ -> false)
 
-  let rec eq_exp e1 e2 =
-    match (e1, e2) with
-    | Cil.Lval l1, Cil.Lval l2 -> eq_lval l1 l2
-    | Cil.SizeOf _, Cil.SizeOf _ 
-    | Cil.SizeOfE _, Cil.SizeOfE _
-    | Cil.SizeOfStr _, Cil.SizeOfStr _
-    | Cil.AlignOf _, Cil.AlignOf _
-    | Cil.AlignOfE _, Cil.AlignOfE _
-    | Cil.UnOp _, Cil.UnOp _
-    | Cil.BinOp _, Cil.BinOp _
-    | Cil.Question _, Cil.Question _ -> true
-    | Cil.CastE (typ1, e1), Cil.CastE (typ2, e2) -> eq_typ typ1 typ2 && eq_exp e1 e2
-    | Cil.Const _, Cil.Const _
-    | Cil.AddrOf _, Cil.AddrOf _
-    | Cil.StartOf _, Cil.StartOf _ -> true
-    | _ -> false
+let rec eq_exp e1 e2 =
+  match (e1, e2) with
+  | Cil.Lval l1, Cil.Lval l2 -> eq_lval l1 l2
+  | Cil.SizeOf _, Cil.SizeOf _
+  | Cil.SizeOfE _, Cil.SizeOfE _
+  | Cil.SizeOfStr _, Cil.SizeOfStr _
+  | Cil.AlignOf _, Cil.AlignOf _
+  | Cil.AlignOfE _, Cil.AlignOfE _
+  | Cil.UnOp _, Cil.UnOp _
+  | Cil.BinOp _, Cil.BinOp _
+  | Cil.Question _, Cil.Question _ ->
+      true
+  | Cil.CastE (typ1, e1), Cil.CastE (typ2, e2) ->
+      eq_typ typ1 typ2 && eq_exp e1 e2
+  | Cil.Const _, Cil.Const _
+  | Cil.AddrOf _, Cil.AddrOf _
+  | Cil.StartOf _, Cil.StartOf _ ->
+      true
+  | _ -> false
 
 let rec find_param_change_rec e1 es2 pred result_list =
   match es2 with
@@ -211,7 +211,8 @@ let find_param_change e1 es2 result_list =
   match es2 with
   | [] -> result_list
   | e2 :: es2' ->
-      if eq_exp e1 e2 then [ e1 ] else find_param_change_rec e1 es2' e2 result_list
+      if eq_exp e1 e2 then [ e1 ]
+      else find_param_change_rec e1 es2' e2 result_list
 
 let rec fold_params2 i1 params1 params2 =
   match (params1, params2) with
@@ -219,16 +220,17 @@ let rec fold_params2 i1 params1 params2 =
       if eq_exp p1 p2 then fold_params2 i1 ps1 ps2
       else
         let insertions = find_param_change p1 params2 [] in
-        if insertions <> [] then (
+        if insertions <> [] then
           let _ = L.debug "param insert detected\n" in
-          List.map (fun p -> InsertExp (p1, p)) insertions)
+          List.map (fun p -> InsertExp (p1, p)) insertions
         else
           let deletions = find_param_change p2 params1 [] in
-          if deletions <> [] then (
+          if deletions <> [] then
             let _ = L.debug "param delete detected" in
-            List.map (fun p -> DeleteExp (p2, p)) deletions)
-          else let _ = L.debug "param update detected" in
-          [ UpdateExp (p1, p2) ] @ fold_params2 i1 ps1 (List.tl ps2)
+            List.map (fun p -> DeleteExp (p2, p)) deletions
+          else
+            let _ = L.debug "param update detected" in
+            [ UpdateExp (p1, p2) ] @ fold_params2 i1 ps1 (List.tl ps2)
   | [], [] -> []
   | _ -> []
 
@@ -254,14 +256,14 @@ let rec fold_instrs2 s1 instrs1 instrs2 =
         if work_result <> [] then work_result else fold_instrs2 s1 is1 is2
       else
         let insertions = find_instr_change i1 instrs2 [] in
-        if insertions <> [] then (
+        if insertions <> [] then
           let _ = L.debug "instr insertion detected\n" in
-          List.map (fun i -> InsertInstr (i1, i)) insertions)
+          List.map (fun i -> InsertInstr (i1, i)) insertions
         else
           let deletions = find_instr_change i2 instrs1 [] in
-          if deletions <> [] then (
+          if deletions <> [] then
             let _ = L.debug "instr deletion detected\n" in
-            List.map (fun i -> DeleteInstr (i2, i)) deletions)
+            List.map (fun i -> DeleteInstr (i2, i)) deletions
           else fold_instrs2 s1 is1 is2
   | [], [] -> [] (* Last cases needed*)
   | [], _ -> [ InsertLastInstr (s1, instrs2) ]
@@ -275,14 +277,14 @@ let rec fold_stmts2 b1 stmts1 stmts2 =
         if work_result <> [] then work_result else fold_stmts2 b1 ss1 ss2
       else
         let insertions = find_stmt_change s1 stmts2 [] in
-        if insertions <> [] then (
+        if insertions <> [] then
           let _ = L.debug "stmt insertion detected\n" in
-          List.map (fun s -> InsertStmt (s1, s)) insertions)
+          List.map (fun s -> InsertStmt (s1, s)) insertions
         else
           let deletions = find_stmt_change s2 stmts1 [] in
-          if deletions <> [] then (
+          if deletions <> [] then
             let _ = L.debug "stmt deletion detected\n" in
-            List.map (fun s -> DeleteStmt (s2, s)) deletions)
+            List.map (fun s -> DeleteStmt (s2, s)) deletions
           else fold_stmts2 b1 ss1 ss2
   | [], [] -> []
   | [], _ -> [ InsertLastStmt (b1, stmts2) ]
@@ -296,8 +298,7 @@ and work_skind s1 s2 =
   | Cil.Instr instrs1, Cil.Instr instrs2 ->
       let instr_result = fold_instrs2 s1 instrs1 instrs2 in
       if instr_result <> [] then instr_result else []
-  | Cil.If (_, t_block1, e_block1, _), Cil.If (_, t_block2, e_block2, _)
-    ->
+  | Cil.If (_, t_block1, e_block1, _), Cil.If (_, t_block2, e_block2, _) ->
       let t_result = extract_block t_block1 t_block2 in
       let e_result = extract_block e_block1 e_block2 in
       t_result @ e_result
