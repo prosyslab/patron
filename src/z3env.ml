@@ -46,6 +46,7 @@ type t = {
   conststr : Z3.FuncDecl.func_decl;
   sizeof : Z3.FuncDecl.func_decl;
   strlen : Z3.FuncDecl.func_decl;
+  alarm : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
   facts : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
 }
@@ -98,6 +99,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.conststr;
   Z3.Fixedpoint.register_relation solver env.sizeof;
   Z3.Fixedpoint.register_relation solver env.strlen;
+  Z3.Fixedpoint.register_relation solver env.alarm;
   Z3.Fixedpoint.register_relation solver env.bug
 
 let mk_env () =
@@ -196,6 +198,7 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "StrLen" [ value ]
       int_sort (* TODO: sort *)
   in
+  let alarm = Z3.FuncDecl.mk_func_decl_s z3ctx "Alarm" [ node ] boolean_sort in
   let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [] boolean_sort in
   let facts =
     [
@@ -263,6 +266,7 @@ let mk_env () =
       ("Memory.facts", memory, [ node; value; value ]);
       ("ArrayVal.facts", arrayval, [ value; value ]);
       ("ConstStr.facts", conststr, [ value; const ]);
+      ("AlarmNode.facts", alarm, [ node ]);
     ]
   in
   let env =
@@ -310,6 +314,7 @@ let mk_env () =
       conststr;
       sizeof;
       strlen;
+      alarm;
       bug;
       facts;
     }
