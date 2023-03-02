@@ -223,7 +223,7 @@ let rec find_stmt_change_rec s1 ss2 pred result_list =
   match ss2 with
   | [] -> result_list
   | s2 :: ss2' ->
-      if eq_stmt_kind s1.Cil.skind s2.Cil.skind then [ pred ] @ result_list
+      if eq_stmt_kind s1.Cil.skind s2.Cil.skind then pred :: result_list
       else find_stmt_change_rec s1 ss2' s2 result_list
 
 let find_stmt_change s1 ss2 result_list =
@@ -242,7 +242,7 @@ let rec find_instr_change_rec i1 is2 pred result_list =
   match is2 with
   | [] -> result_list
   | i2 :: is2' ->
-      if eq_instr i1 i2 then [ pred ] @ result_list
+      if eq_instr i1 i2 then pred :: result_list
       else find_instr_change_rec i1 is2' i2 result_list
 
 let find_instr_change i1 is2 result_list =
@@ -284,7 +284,7 @@ let rec find_param_change_rec e1 es2 pred result_list =
   match es2 with
   | [] -> result_list
   | e2 :: es2' ->
-      if eq_exp e1 e2 then [ pred ] @ result_list
+      if eq_exp e1 e2 then pred :: result_list
       else find_param_change_rec e1 es2' e2 result_list
 
 let find_param_change e1 es2 result_list =
@@ -329,8 +329,8 @@ let rec fold_params2 params1 params2 context =
           else
             let _ = L.debug "param update detected" in
             print_endline "param update detected";
-            [ UpdateExp (ExpContext (p1, context), p1, p2) ]
-            @ fold_params2 ps1 (List.tl ps2) context
+            UpdateExp (ExpContext (p1, context), p1, p2)
+            :: fold_params2 ps1 (List.tl ps2) context
   | [], [] -> []
   | _ -> []
 
@@ -415,7 +415,7 @@ let rec fold_stmts2 b1 stmts1 stmts2 context =
               (find_continue_point_stmt (List.hd deletions) ss1)
               ss2 context
             @ List.map (fun s -> DeleteStmt (context, s2, s)) deletions)
-          else [ UpdateStmt (context, s1, s2) ] @ fold_stmts2 b1 ss1 ss2 context
+          else UpdateStmt (context, s1, s2) :: fold_stmts2 b1 ss1 ss2 context
   | [], [] -> []
   | [], _ -> [ InsertLastStmt (context, b1, stmts2) ]
   | _, [] -> [ DeleteLastStmt (context, b1, stmts1) ]
@@ -466,7 +466,7 @@ let rec find_global_change_rec glob1 globals pred result_list =
   match globals with
   | [] -> result_list
   | hd :: tl ->
-      if eq_global glob1 hd then [ pred ] @ result_list
+      if eq_global glob1 hd then pred :: result_list
       else find_global_change_rec glob1 tl hd (pred :: result_list)
 
 let find_global_change glob1 globals =
@@ -677,7 +677,7 @@ let rec find_stmt_change_rec s1 ss2 pred result_list =
   match ss2 with
   | [] -> result_list
   | s2 :: ss2' ->
-      if eq_stmt_kind s1.Cil.skind s2.Cil.skind then [ pred ] @ result_list
+      if eq_stmt_kind s1.Cil.skind s2.Cil.skind then pred :: result_list
       else find_stmt_change_rec s1 ss2' s2 result_list
 
 let find_stmt_change s1 ss2 result_list =
@@ -696,7 +696,7 @@ let rec find_instr_change_rec i1 is2 pred result_list =
   match is2 with
   | [] -> result_list
   | i2 :: is2' ->
-      if eq_instr i1 i2 then [ pred ] @ result_list
+      if eq_instr i1 i2 then pred :: result_list
       else find_instr_change_rec i1 is2' i2 result_list
 
 let find_instr_change i1 is2 result_list =
@@ -738,7 +738,7 @@ let rec find_param_change_rec e1 es2 pred result_list =
   match es2 with
   | [] -> result_list
   | e2 :: es2' ->
-      if eq_exp e1 e2 then [ pred ] @ result_list
+      if eq_exp e1 e2 then pred :: result_list
       else find_param_change_rec e1 es2' e2 result_list
 
 let find_param_change e1 es2 result_list =
@@ -764,7 +764,7 @@ let rec fold_params2 i1 params1 params2 =
             List.map (fun p -> DeleteExp (p2, p)) deletions
           else
             let _ = L.debug "param update detected" in
-            [ UpdateExp (p1, p2) ] @ fold_params2 i1 ps1 (List.tl ps2)
+            UpdateExp (p1, p2) :: fold_params2 i1 ps1 (List.tl ps2)
   | [], [] -> []
   | _ -> []
 
