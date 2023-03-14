@@ -1,3 +1,7 @@
+extern char *getenv(const char* env);
+extern int *sprintf(char *buffer, const char *format_string, const char *arg);
+extern int *printf(const char *format_string, const char *arg);
+
 int main(void) {
   char *ptr_h;
   char h[64];

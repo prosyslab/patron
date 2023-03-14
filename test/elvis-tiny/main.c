@@ -3,14 +3,19 @@ extern int *sprintf(char *buffer, const char *format_string, const char *arg);
 extern int *snprintf(char *buffer, unsigned int n, const char *format_string, const char *arg);
 extern int *printf(const char *format_string, const char *arg);
 
-int main(void) {
-  char *ptr_h;
-  char h[64];
+typedef union {
+  char c[1024];
+  unsigned short n[1024 / sizeof(unsigned short)];
+} BLK;
 
-  ptr_h = getenv("HOME"); // src
-  if (ptr_h != (void *) 0) {
-    snprintf(h, sizeof(h), "Your home directory is: %s !", ptr_h); // BO // snk
-    printf("%s\n", h);
+BLK tmpblk;
+
+int main(int argc, char *argv[]) {
+  char *str;
+  str = getenv("HOME"); // src
+
+  if (str) {
+   sprintf(tmpblk.c, "%s%c%s", str, '/', "elvis.rc"); // BO // snk
   }
 
   return 0;
