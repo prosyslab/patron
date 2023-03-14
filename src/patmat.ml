@@ -41,9 +41,10 @@ let var_bag = Bag.create ()
 type maps = {
   sym_map : (string, Z3.Expr.expr) Hashtbl.t;
   node_map : (string, Z3.Expr.expr) Hashtbl.t;
-  numeral_map : (Z3.Expr.expr, string) Hashtbl.t;
+  numeral_map : (int, string) Hashtbl.t;
   exp_map : (string, string) Hashtbl.t;
-  exp_map_inv : (string, string) Hashtbl.t;
+  binop_map : (string, string) Hashtbl.t;
+  unop_map : (string, string) Hashtbl.t;
 }
 
 let create_maps () =
@@ -52,7 +53,8 @@ let create_maps () =
     node_map = Hashtbl.create 1000;
     numeral_map = Hashtbl.create 1000;
     exp_map = Hashtbl.create 1000;
-    exp_map_inv = Hashtbl.create 1000;
+    binop_map = Hashtbl.create 100;
+    unop_map = Hashtbl.create 100;
   }
 
 let reset_maps maps =
@@ -60,7 +62,8 @@ let reset_maps maps =
   Hashtbl.reset maps.node_map;
   Hashtbl.reset maps.numeral_map;
   Hashtbl.reset maps.exp_map;
-  Hashtbl.reset maps.exp_map_inv
+  Hashtbl.reset maps.binop_map;
+  Hashtbl.reset maps.unop_map
 
 let dump_smt ver_name solver out_dir =
   let solver_file = ver_name ^ ".smt2" |> Filename.concat out_dir in
@@ -95,37 +98,57 @@ let dump_const_map const_map out_dir =
     const_map;
   Out_channel.close sym_map_oc
 
-let dump_exp_map ver_name exp_map out_dir =
-  let sym_map_file = ver_name ^ "_exp.map" |> Filename.concat out_dir in
+let dump_str_map map_name ver_name map out_dir =
+  let sym_map_file =
+    ver_name ^ "_" ^ map_name ^ ".map" |> Filename.concat out_dir
+  in
   let sym_map_oc = Out_channel.create sym_map_file in
-  Hashtbl.iter
-    (fun sym exp -> Printf.fprintf sym_map_oc "%s\t%s\n" sym exp)
-    exp_map;
+  Hashtbl.iter (fun sym n -> Printf.fprintf sym_map_oc "%s\t%s\n" sym n) map;
   Out_channel.close sym_map_oc
+
+let dump_exp_map = dump_str_map "exp"
+let dump_binop_map = dump_str_map "binop"
+let dump_unop_map = dump_str_map "unop"
 
 let dump mode maps solver out_dir =
   dump_smt mode solver out_dir;
   dump_sym_map mode maps.sym_map out_dir;
   dump_node_map mode maps.node_map out_dir;
   dump_exp_map mode maps.exp_map out_dir;
+  (* dump_binop_map mode maps.binop_map out_dir; *)
+  (* dump_unop_map mode maps.unop_map out_dir; *)
   dump_const_map const_map out_dir
 
 let mk_numer fix_exp maps sym sort =
-  if Z3.Sort.equal sort z3env.expr && fix_exp then (
-    let const = Hashtbl.find maps.exp_map sym in
-    if Hashtbl.mem const_map const then Hashtbl.find const_map const
+  if
+    (Z3.Sort.equal sort z3env.expr && fix_exp)
+    || List.mem ~equal:Z3.Sort.equal [ z3env.binop_sort; z3env.unop_sort ] sort
+  then (
+    let map =
+      if Z3.Sort.equal sort z3env.expr then maps.exp_map
+      else if Z3.Sort.equal sort z3env.binop_sort then maps.binop_map
+      else maps.unop_map
+    in
+    let const = Hashtbl.find map sym in
+    if Hashtbl.mem const_map const then (
+      let z3numer = Hashtbl.find const_map const in
+      let nn = z3numer |> Z3.Expr.to_string |> int_of_string in
+      Hashtbl.add maps.numeral_map nn sym;
+      z3numer)
     else
-      let z3numer = Z3.Expr.mk_numeral_int z3env.z3ctx (new_numer ()) sort in
+      let nn = new_numer () in
+      let z3numer = Z3.Expr.mk_numeral_int z3env.z3ctx nn sort in
       Hashtbl.add const_map const z3numer;
       Hashtbl.add maps.sym_map sym z3numer;
-      Hashtbl.add maps.numeral_map z3numer sym;
+      Hashtbl.add maps.numeral_map nn sym;
       Bag.add_unit fixed_exps sym;
       z3numer)
   else if Hashtbl.mem maps.sym_map sym then Hashtbl.find maps.sym_map sym
   else
-    let z3numer = Z3.Expr.mk_numeral_int z3env.z3ctx (new_numer ()) sort in
+    let nn = new_numer () in
+    let z3numer = Z3.Expr.mk_numeral_int z3env.z3ctx nn sort in
     Hashtbl.add maps.sym_map sym z3numer;
-    Hashtbl.add maps.numeral_map z3numer sym;
+    Hashtbl.add maps.numeral_map nn sym;
     if Z3.Sort.equal sort z3env.node then Hashtbl.add maps.node_map sym z3numer;
     z3numer
 
@@ -182,16 +205,16 @@ let mk_sem_cons ?(add_var_too = false) maps solver work_dir =
       Z3.Fixedpoint.add_rule z3env.pattern_solver sc_var None
   with _ -> Logger.debug "Empty Semantic Constraint"
 
-let make_exp_map ic exp_map exp_map_inv =
+let make_map ic map =
   let rec loop () =
     let line = In_channel.input_line ic in
     if Option.is_some line then (
       let pair = Option.value_exn line |> String.split ~on:'\t' in
-      Hashtbl.add exp_map (List.nth_exn pair 0) (List.nth_exn pair 1);
-      Hashtbl.add exp_map_inv (List.nth_exn pair 1) (List.nth_exn pair 0);
+      Hashtbl.add map (List.nth_exn pair 0) (List.nth_exn pair 1);
       loop ())
   in
-  loop ()
+  loop ();
+  In_channel.close ic
 
 let mk_args add_var_too maps ~fix_exp (numeral_args, var_args) sym sort =
   if Z3.Sort.equal sort z3env.int_sort then (
@@ -243,9 +266,15 @@ let apply_fact add_var_too maps datalog_dir solver (fact_file, func, arg_sorts)
 
 let mk_facts ?(add_var_too = false) ~maps solver work_dir =
   let datalog_dir = Filename.concat work_dir "sparrow-out/interval/datalog" in
-  let exp_map_ic = Filename.concat datalog_dir "Exp.map" |> In_channel.create in
-  make_exp_map exp_map_ic maps.exp_map maps.exp_map_inv;
-  In_channel.close exp_map_ic;
+  let open_in_datalog fn =
+    fn |> Filename.concat datalog_dir |> In_channel.create
+  in
+  let exp_map_ic = open_in_datalog "Exp.map" in
+  make_map exp_map_ic maps.exp_map;
+  (* let binop_map_ic = open_in_datalog "BinOp.map" in *)
+  (* make_map binop_map_ic maps.binop_map; *)
+  (* let unop_map_ic = open_in_datalog "UnOp.map" in *)
+  (* make_map unop_map_ic maps.unop_map; *)
   List.iter ~f:(apply_fact add_var_too maps datalog_dir solver) z3env.facts
 (* TODO: generalize *)
 (* mk_sem_cons ~add_var_too maps solver work_dir *)
@@ -282,6 +311,7 @@ let is_memory = is_what "(Memory"
 let is_sizeof = is_what "(SizeOf"
 let is_strlen = is_what "(StrLen"
 let is_alarm = is_what "(Alarm"
+let is_let = is_what "(let"
 let ( ||| ) f1 f2 x = f1 x || f2 x
 let is_sem_cons = is_sizeof ||| is_strlen
 let is_sem_rels = is_eval ||| is_evallv ||| is_memory
@@ -574,7 +604,7 @@ let remove_no_deps_from_sem_cons except_sem_cons sem_cons =
   let sem_deps = collect_sem_deps sem_rels sem_cons in
   (syn_rels, sem_deps)
 
-let abstract_bug_pattern () =
+let abstract_bug_pattern out_dir =
   let patch_facts = Z3.Fixedpoint.get_rules z3env.patch_solver in
   let pat_cand =
     Z3.Fixedpoint.get_rules z3env.pattern_solver
@@ -599,20 +629,75 @@ let abstract_bug_pattern () =
       except_sem_cons' sem_cons patch_facts
   in
   let except_sem_cons'' = ExprSet.union syn_rels'' sem_rels' in
-  let pattern = ExprSet.union except_sem_cons'' sem_cons in
-  pattern |> set2list
+  let pattern_smt_file = Filename.concat out_dir "pattern.smt" in
+  let oc = Out_channel.create pattern_smt_file in
+  ExprSet.union except_sem_cons'' sem_cons
+  |> set2list
   |> List.map ~f:Z3.Expr.to_string
   |> String.concat ~sep:"\n"
-  |> Logger.info "Bug Pattern Rule:\n%s";
+  |> (fun s ->
+       Logger.info "Bug Pattern Rule:\n%s" s;
+       s)
+  |> Out_channel.output_string oc;
+  Out_channel.close oc;
   except_sem_cons''
 
-let match_bug_with_donee pattern =
-  let donee_facts = Z3.Fixedpoint.get_rules z3env.donee_solver in
-  let sol = match_rule donee_facts pattern in
-  if Option.is_some sol then
+let match_bug ver_name solver pattern out_dir =
+  let facts =
+    Z3.Fixedpoint.get_rules solver |> List.filter ~f:(neg is_sem_cons)
+    (* Temporarily remove semantic constraint when match bug pattern *)
+  in
+  let sol = match_rule facts pattern in
+  if Option.is_some sol then (
+    let sol_smt_file = Filename.concat out_dir (ver_name ^ "_sol.smt") in
+    let oc = Out_channel.create sol_smt_file in
     Option.value_exn sol |> Z3.Expr.to_string
-    |> Logger.info "Donee Matched - Sol:\n%s"
-  else Logger.info "Donee not Matched"
+    |> (fun s ->
+         Logger.info "%s Matched - Sol:\n%s" ver_name s;
+         s)
+    |> Out_channel.output_string oc;
+    Out_channel.close oc)
+  else Logger.info "%s not Matched" ver_name
+
+let atom2int = function
+  | Sexp.Atom s -> int_of_string s
+  | _ -> failwith "Invalid argument in atom2str"
+
+let rec parse_sol = function
+  | Sexp.List [ Sexp.Atom "asserted"; Sexp.List (Sexp.Atom rel :: args) ]
+    when List.mem z3env.rels rel ~equal:String.equal ->
+      [ (rel, List.map ~f:atom2int args) ]
+  | Sexp.List ls ->
+      List.fold_left ~f:(fun facts sexp -> facts @ parse_sol sexp) ~init:[] ls
+  | _ -> []
+
+let match_donor_donee donor_maps donee_maps out_dir =
+  let donee_sol_file = Filename.concat out_dir "donee_sol.smt" in
+  if Sys.file_exists donee_sol_file then (
+    let oc = Filename.concat out_dir "sol.map" |> Out_channel.create in
+    let fmt = F.formatter_of_out_channel oc in
+    let donee_sol = Sexp.load_sexp donee_sol_file |> parse_sol in
+    let donor_sol_file = Filename.concat out_dir "donor_sol.smt" in
+    let donor_sol = Sexp.load_sexp donor_sol_file |> parse_sol in
+    List.fold2_exn ~init:[]
+      ~f:(fun mapped (donor_fun, donor_args) (donee_fun, donee_args) ->
+        assert (String.equal donor_fun donee_fun);
+        if String.equal donee_fun "Arg" then
+          (List.nth_exn donor_args 0, List.nth_exn donee_args 0)
+          :: (List.nth_exn donor_args 2, List.nth_exn donee_args 2)
+          :: mapped
+        else mapped @ List.zip_exn donor_args donee_args)
+      donor_sol donee_sol
+    |> List.map ~f:(fun (donor_num, donee_num) ->
+           let donor_var = Hashtbl.find donor_maps.numeral_map donor_num in
+           let donee_var = Hashtbl.find donee_maps.numeral_map donee_num in
+           (donor_var, donee_var))
+    |> List.dedup_and_sort ~compare:(fun (s1, _) (s1', _) ->
+           String.compare s1 s1')
+    |> List.iter ~f:(fun (donor_var, donee_var) ->
+           F.fprintf fmt "%s\t%s\n" donor_var donee_var);
+    F.pp_print_flush fmt ();
+    Out_channel.close oc)
 
 let pattern_match donor_dir patch_dir donee_dir =
   let out_dir = Filename.concat donee_dir !Cmdline.out_dir in
@@ -634,6 +719,8 @@ let pattern_match donor_dir patch_dir donee_dir =
   dump "patch" patch_maps z3env.patch_solver out_dir;
   dump "donee" donee_maps z3env.donee_solver out_dir;
   Logger.info "Make facts done";
-  let pattern = abstract_bug_pattern () in
-  match_bug_with_donee pattern;
+  let pattern = abstract_bug_pattern out_dir in
+  match_bug "donor" z3env.donor_solver pattern out_dir;
+  match_bug "donee" z3env.donee_solver pattern out_dir;
+  match_donor_donee donor_maps donee_maps out_dir;
   Logger.info "Make pattern done"

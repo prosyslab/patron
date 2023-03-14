@@ -14,6 +14,8 @@ type t = {
   node : Z3.Sort.sort;
   lval : Z3.Sort.sort;
   expr : Z3.Sort.sort;
+  binop_sort : Z3.Sort.sort;
+  unop_sort : Z3.Sort.sort;
   identifier : Z3.Sort.sort;
   arg_list : Z3.Sort.sort;
   str_literal : Z3.Sort.sort;
@@ -37,6 +39,8 @@ type t = {
   constexp : Z3.FuncDecl.func_decl;
   ret : Z3.FuncDecl.func_decl;
   (* TODO: add extra relations for expr *)
+  binop : Z3.FuncDecl.func_decl;
+  unop : Z3.FuncDecl.func_decl;
   dupath : Z3.FuncDecl.func_decl;
   (* Functions for Semantic Constraint *)
   evallv : Z3.FuncDecl.func_decl;
@@ -49,6 +53,7 @@ type t = {
   alarm : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
   facts : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
+  rels : string list;
 }
 
 let add_fact solver func args =
@@ -91,14 +96,14 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.subexp;
   Z3.Fixedpoint.register_relation solver env.constexp;
   Z3.Fixedpoint.register_relation solver env.ret;
+  Z3.Fixedpoint.register_relation solver env.binop;
+  Z3.Fixedpoint.register_relation solver env.unop;
   Z3.Fixedpoint.register_relation solver env.dupath;
   Z3.Fixedpoint.register_relation solver env.evallv;
   Z3.Fixedpoint.register_relation solver env.eval;
   Z3.Fixedpoint.register_relation solver env.memory;
   Z3.Fixedpoint.register_relation solver env.arrayval;
   Z3.Fixedpoint.register_relation solver env.conststr;
-  Z3.Fixedpoint.register_relation solver env.sizeof;
-  Z3.Fixedpoint.register_relation solver env.strlen;
   Z3.Fixedpoint.register_relation solver env.alarm;
   Z3.Fixedpoint.register_relation solver env.bug
 
@@ -121,6 +126,8 @@ let mk_env () =
   let node = Z3.FiniteDomain.mk_sort_s z3ctx "node" 65536L in
   let lval = Z3.FiniteDomain.mk_sort_s z3ctx "lval" 65536L in
   let expr = Z3.FiniteDomain.mk_sort_s z3ctx "expr" 65536L in
+  let binop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "binop" 65536L in
+  let unop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "unop" 65536L in
   let identifier = Z3.FiniteDomain.mk_sort_s z3ctx "identifier" 65536L in
   let arg_list = Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" 65536L in
   let str_literal = Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" 65536L in
@@ -142,7 +149,7 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "LvalExp" [ expr; lval ] boolean_sort
   in
   let startof =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "StarOf" [ expr; lval ] boolean_sort
+    Z3.FuncDecl.mk_func_decl_s z3ctx "StartOf" [ expr; lval ] boolean_sort
   in
   let var =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Var" [ lval; identifier ] boolean_sort
@@ -171,6 +178,15 @@ let mk_env () =
   in
   let ret =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Return" [ node; expr ] boolean_sort
+  in
+  let binop =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "BinOp"
+      [ expr; binop_sort; expr; expr ]
+      boolean_sort
+  in
+  let unop =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "UnOp" [ expr; unop_sort; expr ]
+      boolean_sort
   in
   (* TODO: add extra relations for expr *)
   let dupath =
@@ -206,11 +222,7 @@ let mk_env () =
       ("Arg.facts", arg, [ arg_list; int_sort; expr ]);
       ("Assign.facts", set, [ node; lval; expr ]);
       (* "Assume.facts" *)
-      (* "BAnd.facts", *)
-      (* "BinOpExp.facts" *)
-      (* "BNot.facts" *)
-      (* "BOr.facts" *)
-      (* "BXor.facts" *)
+      (* ("BinOpExp.facts", binop, [ expr; binop_sort; expr; expr ]); *)
       ("Call.facts", call, [ node; lval; expr; arg_list ]);
       (* "Cxp.facts" *)
       (* "Cmd.facts" *)
@@ -220,24 +232,15 @@ let mk_env () =
       (* "Entry.facts" *)
       (* "Eq.facts" *)
       (* "Exit.facts" *)
-      (* "Exp.map" *)
       (* "FalseBranch.facts" *)
       (* "FalseCond.facts" *)
       (* "Field.facts" *)
       (* "Func.facts" *)
-      (* "Ge.facts" *)
       ("GlobalVar.facts", var, [ lval; identifier ]);
-      (* "Gt.facts" *)
-      (* "IndexPI.facts" *)
       (* "Join.facts" *)
-      (* "LAnd.facts" *)
-      (* "Le.facts" *)
       ("LibCall.facts", libcall, [ node; lval; expr; arg_list ]);
-      (* "LNot.facts" *)
       ("LocalVar.facts", var, [ lval; identifier ]);
       (* "LoopHead.facts" *)
-      (* "LOr.facts" *)
-      (* "Lt.facts" *)
       ("LvalExp.facts", lval_exp, [ expr; lval ]);
       (* "Lval.facts" *)
       (* "Mem.facts" *)
@@ -249,24 +252,44 @@ let mk_env () =
       (* "Ne.facts" *)
       (* "Neg.facts" *)
       (* "OtherExp.facts" *)
-      (* "PlusA.facts" *)
-      (* "PlusPI.facts" *)
       ("Return.facts", ret, [ node; expr ]);
       ("SAlloc.facts", salloc, [ node; lval ]);
-      (* "ShiftLt.facts" *)
-      (* "ShiftRt.facts" *)
       ("Skip.facts", skip, [ node ]);
-      (* "Start.facts" *)
-      ("StartOf.facts", startof, [ expr; lval ])
+      ("StartOf.facts", startof, [ expr; lval ]);
       (* "TrueBranch.facts" *)
       (* "TrueCond.facts" *)
-      (* "UnOpExp.facts" *);
+      (* ("UnOpExp.facts", unop, [ expr; unop_sort; expr ]); *)
       ("EvalLv.facts", evallv, [ node; lval; value ]);
       ("Eval.facts", eval, [ node; expr; value ]);
       ("Memory.facts", memory, [ node; value; value ]);
       ("ArrayVal.facts", arrayval, [ value; value ]);
       ("ConstStr.facts", conststr, [ value; const ]);
       ("AlarmNode.facts", alarm, [ node ]);
+    ]
+  in
+  let rels =
+    [
+      "Alloc";
+      "Arg";
+      "Set";
+      "Call";
+      "DUPath";
+      "Var";
+      "LibCall";
+      "LvalExp";
+      "Return";
+      (* "SubExp"; *)
+      (* "BinOp"; *)
+      (* "UnOp"; *)
+      "SAlloc";
+      "Skip";
+      "StartOf";
+      "EvalLv";
+      "Eval";
+      "Memory";
+      "ArrayVal";
+      "ConstStr";
+      "Alarm";
     ]
   in
   let env =
@@ -286,6 +309,8 @@ let mk_env () =
       node;
       lval;
       expr;
+      binop_sort;
+      unop_sort;
       identifier;
       arg_list;
       str_literal;
@@ -306,6 +331,8 @@ let mk_env () =
       subexp;
       constexp;
       ret;
+      binop;
+      unop;
       dupath;
       evallv;
       eval;
@@ -317,6 +344,7 @@ let mk_env () =
       alarm;
       bug;
       facts;
+      rels;
     }
   in
   reg_rel_to_solver env env.donor_solver;
