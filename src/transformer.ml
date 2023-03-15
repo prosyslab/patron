@@ -802,7 +802,7 @@ and iter_stmts node stmts combined_map temp_var_table =
         (work_stmt node hd combined_map temp_var_table)
         (iter_stmts node tl combined_map temp_var_table)
 
-let rec work_global node global combined_map temp_var_table =
+let work_global node global combined_map temp_var_table =
   match global with
   | Cil.GType _ | Cil.GCompTag _ | Cil.GCompTagDecl _ | Cil.GEnumTag _
   | Cil.GEnumTagDecl _ | Cil.GVarDecl _ | Cil.GVar _ ->
@@ -883,7 +883,7 @@ let rec parse_rec elm output tmp_str bracket_num quote_num =
           parse_rec tl output (tmp_str ^ String.make 1 hd) bracket_num quote_num
       )
 
-let rec parse elm = rev (parse_rec elm [] "" 0 0)
+let parse elm = rev (parse_rec elm [] "" 0 0)
 
 let rec parse_sparrow lines =
   match lines with
