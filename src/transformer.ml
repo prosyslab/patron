@@ -11,10 +11,6 @@ type map_type =
   | ExpMap of Cil.exp Cil_map.t
   | LvalMap of Cil.lval Cil_map.t
 
-type combined_map = CombinedMap of map_type * map_type * map_type
-
-(* let map = Cil_map.empty in
-   let map2 = Cil_map.add "a" instr *)
 type node_string = Node of string * string list
 
 type context =
@@ -202,7 +198,7 @@ let print_glob glob =
 let print_combined_map combined_map =
   print_endline "==========Sparrow - Cil Mapping Result=============";
   match combined_map with
-  | CombinedMap (a, b, c) ->
+  | a, b, c ->
       let stmt_map =
         match a with StmtMap sm -> sm | _ -> failwith "Not a StmtMap"
       in
@@ -281,25 +277,21 @@ let merge_cil_map map1 map2 =
 
 let merge_combined_map map1 map2 =
   match (map1, map2) with
-  | CombinedMap (sm1, im1, em1), CombinedMap (sm2, im2, em2) ->
-      CombinedMap
-        (merge_cil_map sm1 sm2, merge_cil_map im1 im2, merge_cil_map em1 em2)
+  | (sm1, im1, em1), (sm2, im2, em2) ->
+      (merge_cil_map sm1 sm2, merge_cil_map im1 im2, merge_cil_map em1 em2)
 
 let add_to_combined_map map combined_map =
   match map with
   | NullMap -> combined_map
   | StmtMap _ -> (
       match combined_map with
-      | CombinedMap (csm, cim, cem) ->
-          CombinedMap (merge_cil_map map csm, cim, cem))
+      | csm, cim, cem -> (merge_cil_map map csm, cim, cem))
   | InstrMap _ -> (
       match combined_map with
-      | CombinedMap (csm, cim, cem) ->
-          CombinedMap (csm, merge_cil_map map cim, cem))
+      | csm, cim, cem -> (csm, merge_cil_map map cim, cem))
   | ExpMap _ -> (
       match combined_map with
-      | CombinedMap (csm, cim, cem) ->
-          CombinedMap (csm, cim, merge_cil_map map cem))
+      | csm, cim, cem -> (csm, cim, merge_cil_map map cem))
   | _ -> failwith "add_to_combined_map: not supported"
 
 (* Checking Functions *)
@@ -856,8 +848,7 @@ let rec create_temp_map node_lst output_map =
 let map_str_to_cil node_lst file =
   let temp_var_table = create_temp_map node_lst Cil_map.empty in
   iter_elms file.Cil.globals node_lst
-    (CombinedMap
-       (StmtMap Cil_map.empty, InstrMap Cil_map.empty, ExpMap Cil_map.empty))
+    (StmtMap Cil_map.empty, InstrMap Cil_map.empty, ExpMap Cil_map.empty)
     temp_var_table
 
 (* Functions for Parsing Sparrow Node Text *)
