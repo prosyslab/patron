@@ -115,8 +115,8 @@ let dump mode maps solver out_dir =
   dump_sym_map mode maps.sym_map out_dir;
   dump_node_map mode maps.node_map out_dir;
   dump_exp_map mode maps.exp_map out_dir;
-  (* dump_binop_map mode maps.binop_map out_dir; *)
-  (* dump_unop_map mode maps.unop_map out_dir; *)
+  dump_binop_map mode maps.binop_map out_dir;
+  dump_unop_map mode maps.unop_map out_dir;
   dump_const_map const_map out_dir
 
 let mk_numer fix_exp maps sym sort =
@@ -154,56 +154,84 @@ let mk_numer fix_exp maps sym sort =
 
 type sem_cons =
   | Lt of sem_cons * sem_cons
+  | Gt of sem_cons * sem_cons
   | FuncApply of string * sem_cons list
   | Add of sem_cons list
+  | Mul of sem_cons list
   | Var of string
+  | Const of Z.t
 
 let rec parse_sem_cons = function
   | Sexp.List [ Sexp.Atom "<"; e1; e2 ] ->
       Lt (parse_sem_cons e1, parse_sem_cons e2)
+  | Sexp.List [ Sexp.Atom ">"; e1; e2 ] ->
+      Gt (parse_sem_cons e1, parse_sem_cons e2)
   | Sexp.List (Sexp.Atom "+" :: es) -> Add (List.map ~f:parse_sem_cons es)
+  | Sexp.List (Sexp.Atom "*" :: es) -> Mul (List.map ~f:parse_sem_cons es)
   | Sexp.List (Sexp.Atom f :: es) -> FuncApply (f, List.map ~f:parse_sem_cons es)
-  | Sexp.Atom s -> Var s
+  | Sexp.Atom s -> ( try Const (Z.of_string s) with _ -> Var s)
   | _ -> failwith "Unsupported Sexp"
 
-let rec sc2z3_var maps = function
+type mode = Var | Numer
+
+let rec sc2z3 mode maps = function
   | Lt (sc1, sc2) ->
-      Z3.Arithmetic.mk_lt z3env.z3ctx (sc2z3_var maps sc1) (sc2z3_var maps sc2)
+      Z3.Arithmetic.mk_lt z3env.z3ctx (sc2z3 mode maps sc1)
+        (sc2z3 mode maps sc2)
+  | Gt (sc1, sc2) ->
+      Z3.Arithmetic.mk_gt z3env.z3ctx (sc2z3 mode maps sc1)
+        (sc2z3 mode maps sc2)
   | FuncApply ("SizeOf", args) ->
-      Z3.FuncDecl.apply z3env.sizeof (List.map ~f:(sc2z3_var maps) args)
+      Z3.FuncDecl.apply z3env.sizeof (List.map ~f:(sc2z3 mode maps) args)
   | FuncApply ("StrLen", args) ->
-      Z3.FuncDecl.apply z3env.strlen (List.map ~f:(sc2z3_var maps) args)
+      Z3.FuncDecl.apply z3env.strlen (List.map ~f:(sc2z3 mode maps) args)
+  | FuncApply ("IntVal", args) ->
+      Z3.FuncDecl.apply z3env.intval (List.map ~f:(sc2z3 mode maps) args)
   | Add scs ->
-      Z3.Arithmetic.mk_add z3env.z3ctx (List.map ~f:(sc2z3_var maps) scs)
-  | Var s -> Z3.Expr.mk_const_s z3env.z3ctx s z3env.value
+      Z3.Arithmetic.mk_add z3env.z3ctx (List.map ~f:(sc2z3 mode maps) scs)
+  | Mul scs ->
+      Z3.Arithmetic.mk_mul z3env.z3ctx (List.map ~f:(sc2z3 mode maps) scs)
+  | Var s -> (
+      match mode with
+      | Var -> Z3.Expr.mk_const_s z3env.z3ctx s z3env.value
+      | Numer -> mk_numer false maps s z3env.value)
+  | Const i -> Z3.Arithmetic.Integer.mk_numeral_s z3env.z3ctx (Z.to_string i)
   | _ -> failwith "Unsupported Semantic Constraint"
 
-let rec sc2z3_numer maps = function
-  | Lt (sc1, sc2) ->
-      Z3.Arithmetic.mk_lt z3env.z3ctx (sc2z3_numer maps sc1)
-        (sc2z3_numer maps sc2)
-  | FuncApply ("SizeOf", args) ->
-      Z3.FuncDecl.apply z3env.sizeof (List.map ~f:(sc2z3_numer maps) args)
-  | FuncApply ("StrLen", args) ->
-      Z3.FuncDecl.apply z3env.strlen (List.map ~f:(sc2z3_numer maps) args)
-  | Add scs ->
-      Z3.Arithmetic.mk_add z3env.z3ctx (List.map ~f:(sc2z3_numer maps) scs)
-  | Var s -> mk_numer false maps s z3env.value
-  | _ -> failwith "Unsupported Semantic Constraint"
+module AlarmMap = Map.Make (String) (* node id -> error constraint *)
 
-let mk_sem_cons ?(add_var_too = false) maps solver work_dir =
-  let sprintf_err_cons_file =
-    Filename.concat work_dir
-      "sparrow-out/interval/datalog/SprintfErrorConstraint.facts"
+let mk_alarm_map work_dir =
+  let io_err_cons_file =
+    Filename.concat work_dir "sparrow-out/taint/datalog/IOErrorConstraint.facts"
   in
   try
-    let sem_cons = Sexp.load_sexp sprintf_err_cons_file |> parse_sem_cons in
-    let sc_numer = sc2z3_numer maps sem_cons in
-    Z3.Fixedpoint.add_rule solver sc_numer None;
-    if add_var_too then
-      let sc_var = sc2z3_var maps sem_cons in
-      Z3.Fixedpoint.add_rule z3env.pattern_solver sc_var None
-  with _ -> Logger.debug "Empty Semantic Constraint"
+    let alarms =
+      In_channel.read_lines io_err_cons_file
+      |> List.map ~f:(fun alarm ->
+             match String.split ~on:'\t' alarm with
+             | [ node; err_cons ] -> (node, err_cons)
+             | _ -> Logger.error ~to_console:true "mk_sem_cons: invalid format")
+    in
+    List.fold_left ~init:AlarmMap.empty
+      ~f:(fun am (node, err_cons) ->
+        AlarmMap.add node (Sexp.of_string err_cons |> parse_sem_cons) am)
+      alarms
+  with _ ->
+    Logger.debug "Empty Semantic Constraint";
+    AlarmMap.empty
+
+let mk_sem_cons ?(add_var_too = false) maps solver work_dir =
+  let alarm_map = mk_alarm_map work_dir in
+  let node, sem_cons = AlarmMap.choose alarm_map in
+  let sc_numer = sc2z3 Numer maps sem_cons in
+  Z3.Fixedpoint.add_rule solver sc_numer None;
+  let node_numer = Hashtbl.find maps.node_map node in
+  add_fact solver z3env.alarm [ node_numer ];
+  if add_var_too then (
+    let sc_var = sc2z3 Var maps sem_cons in
+    Z3.Fixedpoint.add_rule z3env.pattern_solver sc_var None;
+    let node_var = Z3.Expr.mk_const_s z3env.z3ctx node z3env.node in
+    add_fact z3env.pattern_solver z3env.alarm [ node_var ])
 
 let make_map ic map =
   let rec loop () =
@@ -265,16 +293,16 @@ let apply_fact add_var_too maps datalog_dir solver (fact_file, func, arg_sorts)
   In_channel.close ic
 
 let mk_facts ?(add_var_too = false) ~maps solver work_dir =
-  let datalog_dir = Filename.concat work_dir "sparrow-out/interval/datalog" in
+  let datalog_dir = Filename.concat work_dir "sparrow-out/taint/datalog" in
   let open_in_datalog fn =
     fn |> Filename.concat datalog_dir |> In_channel.create
   in
   let exp_map_ic = open_in_datalog "Exp.map" in
   make_map exp_map_ic maps.exp_map;
-  (* let binop_map_ic = open_in_datalog "BinOp.map" in *)
-  (* make_map binop_map_ic maps.binop_map; *)
-  (* let unop_map_ic = open_in_datalog "UnOp.map" in *)
-  (* make_map unop_map_ic maps.unop_map; *)
+  let binop_map_ic = open_in_datalog "Bop.map" in
+  make_map binop_map_ic maps.binop_map;
+  let unop_map_ic = open_in_datalog "Uop.map" in
+  make_map unop_map_ic maps.unop_map;
   List.iter ~f:(apply_fact add_var_too maps datalog_dir solver) z3env.facts
 (* TODO: generalize *)
 (* mk_sem_cons ~add_var_too maps solver work_dir *)
@@ -310,10 +338,14 @@ let is_evallv = is_what "(EvalLv"
 let is_memory = is_what "(Memory"
 let is_sizeof = is_what "(SizeOf"
 let is_strlen = is_what "(StrLen"
+let is_intval = is_what "(IntVal"
 let is_alarm = is_what "(Alarm"
 let is_let = is_what "(let"
+let is_subexp = is_what "(SubExp"
+let is_binop = is_what "(BinOp"
+let is_unop = is_what "(UnOp"
 let ( ||| ) f1 f2 x = f1 x || f2 x
-let is_sem_cons = is_sizeof ||| is_strlen
+let is_sem_cons = is_sizeof ||| is_strlen ||| is_intval
 let is_sem_rels = is_eval ||| is_evallv ||| is_memory
 let neg f x = not (f x)
 
@@ -339,9 +371,10 @@ let collect_sem_vars =
 let collect_children var rels =
   ExprSet.filter
     (fun r ->
-      get_args_rec r
-      |> (if is_sem_rels r then (Fun.flip List.nth_exn) 1 else List.hd_exn)
-      |> Z3.Expr.equal var)
+      (not (is_subexp r))
+      && get_args_rec r
+         |> (if is_sem_rels r then (Fun.flip List.nth_exn) 1 else List.hd_exn)
+         |> Z3.Expr.equal var)
     rels
 
 let collect_correls var rels =
@@ -360,13 +393,20 @@ let collect_dupath rels = ExprSet.filter is_dupath rels
 
 let is_removable rel rels =
   let vars = get_args_rec rel in
-  if is_dupath rel then
+  if (is_dupath ||| is_subexp) rel then
     List.exists
       ~f:(fun var ->
         let rels = collect_children var rels in
         let dupaths = collect_dupath rels in
         ExprSet.diff rels dupaths |> ExprSet.cardinal = 0)
       vars
+  else if is_binop rel then
+    let v1 = List.nth_exn vars 1 in
+    let v2 = List.nth_exn vars 2 in
+    collect_children v1 rels |> ExprSet.cardinal = 0
+    || collect_children v2 rels |> ExprSet.cardinal = 0
+  else if is_unop rel then
+    collect_children (List.nth_exn vars 1) rels |> ExprSet.cardinal = 0
   else
     List.tl_exn vars
     |> List.for_all ~f:(fun var ->

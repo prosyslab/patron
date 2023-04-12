@@ -50,6 +50,7 @@ type t = {
   conststr : Z3.FuncDecl.func_decl;
   sizeof : Z3.FuncDecl.func_decl;
   strlen : Z3.FuncDecl.func_decl;
+  intval : Z3.FuncDecl.func_decl;
   alarm : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
   facts : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
@@ -210,10 +211,8 @@ let mk_env () =
   in
 
   let sizeof = Z3.FuncDecl.mk_func_decl_s z3ctx "SizeOf" [ value ] int_sort in
-  let strlen =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "StrLen" [ value ]
-      int_sort (* TODO: sort *)
-  in
+  let strlen = Z3.FuncDecl.mk_func_decl_s z3ctx "StrLen" [ value ] int_sort in
+  let intval = Z3.FuncDecl.mk_func_decl_s z3ctx "IntVal" [ value ] int_sort in
   let alarm = Z3.FuncDecl.mk_func_decl_s z3ctx "Alarm" [ node ] boolean_sort in
   let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [] boolean_sort in
   let facts =
@@ -222,7 +221,7 @@ let mk_env () =
       ("Arg.facts", arg, [ arg_list; int_sort; expr ]);
       ("Assign.facts", set, [ node; lval; expr ]);
       (* "Assume.facts" *)
-      (* ("BinOpExp.facts", binop, [ expr; binop_sort; expr; expr ]); *)
+      ("BinOpExp.facts", binop, [ expr; binop_sort; expr; expr ]);
       ("Call.facts", call, [ node; lval; expr; arg_list ]);
       (* "Cxp.facts" *)
       (* "Cmd.facts" *)
@@ -258,13 +257,13 @@ let mk_env () =
       ("StartOf.facts", startof, [ expr; lval ]);
       (* "TrueBranch.facts" *)
       (* "TrueCond.facts" *)
-      (* ("UnOpExp.facts", unop, [ expr; unop_sort; expr ]); *)
+      ("UnOpExp.facts", unop, [ expr; unop_sort; expr ]);
       ("EvalLv.facts", evallv, [ node; lval; value ]);
       ("Eval.facts", eval, [ node; expr; value ]);
       ("Memory.facts", memory, [ node; value; value ]);
       ("ArrayVal.facts", arrayval, [ value; value ]);
       ("ConstStr.facts", conststr, [ value; const ]);
-      ("AlarmNode.facts", alarm, [ node ]);
+      ("SubExp.facts", subexp, [ expr; expr ]);
     ]
   in
   let rels =
@@ -278,9 +277,9 @@ let mk_env () =
       "LibCall";
       "LvalExp";
       "Return";
-      (* "SubExp"; *)
-      (* "BinOp"; *)
-      (* "UnOp"; *)
+      "SubExp";
+      "BinOp";
+      "UnOp";
       "SAlloc";
       "Skip";
       "StartOf";
@@ -341,6 +340,7 @@ let mk_env () =
       conststr;
       sizeof;
       strlen;
+      intval;
       alarm;
       bug;
       facts;
