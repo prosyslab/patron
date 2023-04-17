@@ -34,14 +34,14 @@ type t = {
   call : Z3.FuncDecl.func_decl;
   libcall : Z3.FuncDecl.func_decl;
   arg : Z3.FuncDecl.func_decl;
-  (* SubExp e1 e2: e2 is subexp of e1 *)
-  subexp : Z3.FuncDecl.func_decl;
   constexp : Z3.FuncDecl.func_decl;
   ret : Z3.FuncDecl.func_decl;
   (* TODO: add extra relations for expr *)
+  cast : Z3.FuncDecl.func_decl;
   binop : Z3.FuncDecl.func_decl;
   unop : Z3.FuncDecl.func_decl;
-  dupath : Z3.FuncDecl.func_decl;
+  cfpath : Z3.FuncDecl.func_decl;
+  (* dupath : Z3.FuncDecl.func_decl; *)
   (* Functions for Semantic Constraint *)
   evallv : Z3.FuncDecl.func_decl;
   eval : Z3.FuncDecl.func_decl;
@@ -94,12 +94,13 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.call;
   Z3.Fixedpoint.register_relation solver env.libcall;
   Z3.Fixedpoint.register_relation solver env.arg;
-  Z3.Fixedpoint.register_relation solver env.subexp;
   Z3.Fixedpoint.register_relation solver env.constexp;
   Z3.Fixedpoint.register_relation solver env.ret;
+  Z3.Fixedpoint.register_relation solver env.cast;
   Z3.Fixedpoint.register_relation solver env.binop;
   Z3.Fixedpoint.register_relation solver env.unop;
-  Z3.Fixedpoint.register_relation solver env.dupath;
+  Z3.Fixedpoint.register_relation solver env.cfpath;
+  (* Z3.Fixedpoint.register_relation solver env.dupath; *)
   Z3.Fixedpoint.register_relation solver env.evallv;
   Z3.Fixedpoint.register_relation solver env.eval;
   Z3.Fixedpoint.register_relation solver env.memory;
@@ -170,15 +171,14 @@ let mk_env () =
       [ arg_list; int_sort; expr ]
       boolean_sort
   in
-  (* SubExp e1 e2: e2 is subexp of e1 *)
-  let subexp =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "SubExp" [ expr; expr ] boolean_sort
-  in
   let constexp =
     Z3.FuncDecl.mk_func_decl_s z3ctx "ConstExp" [ expr ] boolean_sort
   in
   let ret =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Return" [ node; expr ] boolean_sort
+  in
+  let cast =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Cast" [ expr; expr ] boolean_sort
   in
   let binop =
     Z3.FuncDecl.mk_func_decl_s z3ctx "BinOp"
@@ -190,9 +190,12 @@ let mk_env () =
       boolean_sort
   in
   (* TODO: add extra relations for expr *)
-  let dupath =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "DUPath" [ node; node ] boolean_sort
+  let cfpath =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "CFPath" [ node; node ] boolean_sort
   in
+  (* let dupath =
+       Z3.FuncDecl.mk_func_decl_s z3ctx "DUPath" [ node; node ] boolean_sort
+     in *)
   let evallv =
     Z3.FuncDecl.mk_func_decl_s z3ctx "EvalLv" [ node; lval; value ] boolean_sort
   in
@@ -213,7 +216,9 @@ let mk_env () =
   let sizeof = Z3.FuncDecl.mk_func_decl_s z3ctx "SizeOf" [ value ] int_sort in
   let strlen = Z3.FuncDecl.mk_func_decl_s z3ctx "StrLen" [ value ] int_sort in
   let intval = Z3.FuncDecl.mk_func_decl_s z3ctx "IntVal" [ value ] int_sort in
-  let alarm = Z3.FuncDecl.mk_func_decl_s z3ctx "Alarm" [ node ] boolean_sort in
+  let alarm =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Alarm" [ node; node ] boolean_sort
+  in
   let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [] boolean_sort in
   let facts =
     [
@@ -221,15 +226,16 @@ let mk_env () =
       ("Arg.facts", arg, [ arg_list; int_sort; expr ]);
       ("Assign.facts", set, [ node; lval; expr ]);
       (* "Assume.facts" *)
+      ("CastExp.facts", cast, [ expr; expr ]);
       ("BinOpExp.facts", binop, [ expr; binop_sort; expr; expr ]);
       ("Call.facts", call, [ node; lval; expr; arg_list ]);
       (* "Cxp.facts" *)
       (* "Cmd.facts" *)
       (* "ConstExp.facts" *)
       (* "Div.facts" *)
-      ("DUPath.facts", dupath, [ node; node ]);
+      ("CFPath.facts", cfpath, [ node; node ]);
+      (* ("DUPath.facts", dupath, [ node; node ]); *)
       (* "Entry.facts" *)
-      (* "Eq.facts" *)
       (* "Exit.facts" *)
       (* "FalseBranch.facts" *)
       (* "FalseCond.facts" *)
@@ -243,13 +249,6 @@ let mk_env () =
       ("LvalExp.facts", lval_exp, [ expr; lval ]);
       (* "Lval.facts" *)
       (* "Mem.facts" *)
-      (* "MinusA.facts" *)
-      (* "MinusPI.facts" *)
-      (* "MinusPP.facts" *)
-      (* "Mod.facts" *)
-      (* "Mult.facts" *)
-      (* "Ne.facts" *)
-      (* "Neg.facts" *)
       (* "OtherExp.facts" *)
       ("Return.facts", ret, [ node; expr ]);
       ("SAlloc.facts", salloc, [ node; lval ]);
@@ -263,7 +262,6 @@ let mk_env () =
       ("Memory.facts", memory, [ node; value; value ]);
       ("ArrayVal.facts", arrayval, [ value; value ]);
       ("ConstStr.facts", conststr, [ value; const ]);
-      ("SubExp.facts", subexp, [ expr; expr ]);
     ]
   in
   let rels =
@@ -272,12 +270,13 @@ let mk_env () =
       "Arg";
       "Set";
       "Call";
-      "DUPath";
+      "CFPath";
+      (* "DUPath"; *)
       "Var";
       "LibCall";
       "LvalExp";
       "Return";
-      "SubExp";
+      "Cast";
       "BinOp";
       "UnOp";
       "SAlloc";
@@ -327,12 +326,13 @@ let mk_env () =
       call;
       libcall;
       arg;
-      subexp;
       constexp;
       ret;
+      cast;
       binop;
       unop;
-      dupath;
+      cfpath;
+      (* dupath; *)
       evallv;
       eval;
       memory;

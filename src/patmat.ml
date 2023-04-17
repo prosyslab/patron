@@ -198,7 +198,14 @@ let rec sc2z3 mode maps = function
   | Const i -> Z3.Arithmetic.Integer.mk_numeral_s z3env.z3ctx (Z.to_string i)
   | _ -> failwith "Unsupported Semantic Constraint"
 
-module AlarmMap = Map.Make (String) (* node id -> error constraint *)
+module AlarmMap = Map.Make (struct
+  type t = String.t * String.t
+
+  let compare (s1, t1) (s2, t2) =
+    let cmp = String.compare s1 s2 in
+    if cmp = 0 then String.compare t1 t2 else cmp
+end)
+(* (src node id, snk node id) -> error constraint *)
 
 let mk_alarm_map work_dir =
   let io_err_cons_file =
@@ -209,12 +216,12 @@ let mk_alarm_map work_dir =
       In_channel.read_lines io_err_cons_file
       |> List.map ~f:(fun alarm ->
              match String.split ~on:'\t' alarm with
-             | [ node; err_cons ] -> (node, err_cons)
+             | [ src; snk; err_cons ] -> (src, snk, err_cons)
              | _ -> Logger.error ~to_console:true "mk_sem_cons: invalid format")
     in
     List.fold_left ~init:AlarmMap.empty
-      ~f:(fun am (node, err_cons) ->
-        AlarmMap.add node (Sexp.of_string err_cons |> parse_sem_cons) am)
+      ~f:(fun am (src, snk, err_cons) ->
+        AlarmMap.add (src, snk) (Sexp.of_string err_cons |> parse_sem_cons) am)
       alarms
   with _ ->
     Logger.debug "Empty Semantic Constraint";
@@ -222,16 +229,18 @@ let mk_alarm_map work_dir =
 
 let mk_sem_cons ?(add_var_too = false) maps solver work_dir =
   let alarm_map = mk_alarm_map work_dir in
-  let node, sem_cons = AlarmMap.choose alarm_map in
+  let (src, snk), sem_cons = AlarmMap.choose alarm_map in
   let sc_numer = sc2z3 Numer maps sem_cons in
   Z3.Fixedpoint.add_rule solver sc_numer None;
-  let node_numer = Hashtbl.find maps.node_map node in
-  add_fact solver z3env.alarm [ node_numer ];
+  let src_numer = Hashtbl.find maps.node_map src in
+  let snk_numer = Hashtbl.find maps.node_map snk in
+  add_fact solver z3env.alarm [ src_numer; snk_numer ];
   if add_var_too then (
     let sc_var = sc2z3 Var maps sem_cons in
     Z3.Fixedpoint.add_rule z3env.pattern_solver sc_var None;
-    let node_var = Z3.Expr.mk_const_s z3env.z3ctx node z3env.node in
-    add_fact z3env.pattern_solver z3env.alarm [ node_var ])
+    let src_var = Z3.Expr.mk_const_s z3env.z3ctx src z3env.node in
+    let snk_var = Z3.Expr.mk_const_s z3env.z3ctx snk z3env.node in
+    add_fact z3env.pattern_solver z3env.alarm [ src_var; snk_var ])
 
 let make_map ic map =
   let rec loop () =
@@ -329,7 +338,7 @@ let is_what subs rel =
   if Z3.Expr.to_string rel |> String.is_substring ~substring:subs then true
   else false
 
-let is_dupath = is_what "(DUPath"
+let is_cfpath = is_what "(CFPath"
 let is_var = is_what "(Var"
 let is_skip = is_what "(Skip"
 let is_ret = is_what "(Return"
@@ -371,10 +380,9 @@ let collect_sem_vars =
 let collect_children var rels =
   ExprSet.filter
     (fun r ->
-      (not (is_subexp r))
-      && get_args_rec r
-         |> (if is_sem_rels r then (Fun.flip List.nth_exn) 1 else List.hd_exn)
-         |> Z3.Expr.equal var)
+      get_args_rec r
+      |> (if is_sem_rels r then (Fun.flip List.nth_exn) 1 else List.hd_exn)
+      |> Z3.Expr.equal var)
     rels
 
 let collect_correls var rels =
@@ -389,16 +397,15 @@ let collect_rels var rels =
     (fun r -> get_args_rec r |> List.exists ~f:(Z3.Expr.equal var))
     rels
 
-let collect_dupath rels = ExprSet.filter is_dupath rels
+let collect_cfpath rels = ExprSet.filter is_cfpath rels
 
-let is_removable rel rels =
+let is_removable rels rel =
   let vars = get_args_rec rel in
-  if (is_dupath ||| is_subexp) rel then
+  if is_cfpath rel then
     List.exists
       ~f:(fun var ->
         let rels = collect_children var rels in
-        let dupaths = collect_dupath rels in
-        ExprSet.diff rels dupaths |> ExprSet.cardinal = 0)
+        ExprSet.filter (neg is_cfpath) rels |> ExprSet.cardinal = 0)
       vars
   else if is_binop rel then
     let v1 = List.nth_exn vars 1 in
@@ -408,13 +415,24 @@ let is_removable rel rels =
   else if is_unop rel then
     collect_children (List.nth_exn vars 1) rels |> ExprSet.cardinal = 0
   else
-    List.tl_exn vars
-    |> List.for_all ~f:(fun var ->
-           if
-             Z3.Expr.get_sort var |> Z3.Sort.equal z3env.int_sort
-             && Z3.Expr.is_numeral var
-           then true
-           else collect_children var rels |> ExprSet.cardinal = 0)
+    match vars with
+    | node_var :: tl_vars ->
+        let alarm_rel = ExprSet.filter is_alarm rels |> ExprSet.choose in
+        let src_snk = get_args_rec alarm_rel in
+        let src_node, snk_node =
+          (List.hd_exn src_snk, List.nth_exn src_snk 1)
+        in
+        let have_no_child =
+          List.for_all ~f:(fun var ->
+              if
+                Z3.Expr.get_sort var |> Z3.Sort.equal z3env.int_sort
+                && Z3.Expr.is_numeral var
+              then true
+              else collect_children var rels |> ExprSet.cardinal = 0)
+        in
+        (Z3.Expr.equal src_node ||| Z3.Expr.equal snk_node) node_var |> not
+        && have_no_child tl_vars
+    | _ -> Logger.error "is_removable: Invalid arguments"
 
 let subs_ign ~must_rel var rel rels =
   if ExprSet.mem rel must_rel then (rels, rel)
@@ -441,22 +459,11 @@ let rec elim_rel ~remove_cands ~must_rel ~must_var except_sem_cons sem_cons
   Logger.info "Try Matching... Elim Phase - # of rel: %d"
     (ExprSet.cardinal except_sem_cons);
   let rc = ExprSet.diff remove_cands must_rel in
-  if ExprSet.is_empty rc then
-    (* let vars = collect_vars pat_cand in *)
-    (* let cand_vars = *)
-    (*   ExprSet.filter *)
-    (*     (fun var -> *)
-    (*       collect_correls var except_sem_cons |> ExprSet.cardinal > 1) *)
-    (*     vars *)
-    (* in *)
-    except_sem_cons
-    (* ignore_var ~ignore_cands:cand_vars ~must_rel ~must_var pat_cand *)
-    (*   pat_cand_except_sem_cons patch_facts *)
+  if ExprSet.is_empty rc then except_sem_cons
   else
     let selected = ExprSet.min_elt rc in
+    Logger.debug "selected: %s" (Z3.Expr.to_string selected);
     let rc' = ExprSet.remove selected rc in
-    (* Logger.debug "rc':\n%s" *)
-    (*   (set2list rc' |> List.map ~f:Z3.Expr.to_string |> String.concat ~sep:"\n"); *)
     let except_sem_cons' = ExprSet.remove selected except_sem_cons in
     let patch_matched = match_rule patch_facts except_sem_cons' in
     if Option.is_some patch_matched then (
@@ -469,26 +476,14 @@ let rec elim_rel ~remove_cands ~must_rel ~must_var except_sem_cons sem_cons
       Logger.info "Patch Not Matched: removed rel is %s"
         (Z3.Expr.to_string selected);
       let new_remove_cand_vars = get_args_rec selected in
-      (* Logger.debug "nrcv:%s" *)
-      (*   (new_remove_cand_vars *)
-      (*   |> List.map ~f:Z3.Expr.to_string *)
-      (*   |> String.concat ~sep:" "); *)
       let new_rcc =
         List.fold_left ~init:ExprSet.empty
           ~f:(fun rcc var ->
             collect_rels var except_sem_cons' |> ExprSet.union rcc)
           new_remove_cand_vars
       in
-      (* Logger.debug "new_rcc:\n%s" *)
-      (*   (new_rcc |> set2list *)
-      (*   |> List.map ~f:Z3.Expr.to_string *)
-      (*   |> String.concat ~sep:"\n"); *)
       let pat_cand' = ExprSet.union except_sem_cons' sem_cons in
-      let new_rc = ExprSet.filter ((Fun.flip is_removable) pat_cand') new_rcc in
-      (* Logger.debug "new_rc:\n%s" *)
-      (*   (set2list new_rc *)
-      (*   |> List.map ~f:Z3.Expr.to_string *)
-      (*   |> String.concat ~sep:"\n"); *)
+      let new_rc = ExprSet.filter (is_removable pat_cand') new_rcc in
       elim_rel ~remove_cands:(ExprSet.union rc' new_rc) ~must_rel ~must_var
         except_sem_cons' sem_cons patch_facts)
 
@@ -535,9 +530,7 @@ and ignore_var ~ignore_cands ~must_rel ~must_var pat_cand
           (Z3.Expr.to_string selected_var)
           (Z3.Expr.to_string selected_rel);
         let remove_cands =
-          ExprSet.filter
-            ((Fun.flip is_removable) pat_cand')
-            pat_cand_except_sem_cons'
+          ExprSet.filter (is_removable pat_cand') pat_cand_except_sem_cons'
         in
         let pcesc =
           elim_rel ~remove_cands ~must_rel ~must_var pat_cand_except_sem_cons'
@@ -566,58 +559,34 @@ and ignore_var ~ignore_cands ~must_rel ~must_var pat_cand
           in
           ignore_var ~ignore_cands:ic' ~must_rel ~must_var pc' pcesc patch_facts)
 
-let collect_nodes_after_alarm node dupaths =
+let collect_nodes_after_alarm node cfpaths =
   let afters =
     ExprSet.fold
       (fun du nodes ->
         let from_to = Z3.Expr.get_args du in
         let _from, _to = (List.hd_exn from_to, List.nth_exn from_to 1) in
         if Z3.Expr.equal node _from then ExprSet.add _to nodes else nodes)
-      dupaths ExprSet.empty
+      cfpaths ExprSet.empty
   in
-  let fliped_path n after = Z3.FuncDecl.apply z3env.dupath [ after; n ] in
+  let fliped_path n after = Z3.FuncDecl.apply z3env.cfpath [ after; n ] in
   ExprSet.filter
     (fun after ->
-      fliped_path node after |> (Fun.flip ExprSet.mem) dupaths |> not)
+      fliped_path node after |> (Fun.flip ExprSet.mem) cfpaths |> not)
     afters
 
 let collect_after_alarm node rels =
-  let dupaths = ExprSet.filter is_dupath rels in
-  let rels_except_dupaths = ExprSet.diff rels dupaths in
-  let afters = collect_nodes_after_alarm node dupaths in
-  let rec fixedpoint rels =
-    let vars = collect_vars rels in
-    let new_rels =
-      ExprSet.fold
-        (fun var rs ->
-          collect_children var rels_except_dupaths |> ExprSet.union rs)
-        vars rels
-    in
-    if ExprSet.equal new_rels rels then new_rels else fixedpoint new_rels
-  in
-  let rels =
-    ExprSet.fold
-      (fun after rs ->
-        collect_children after rels_except_dupaths |> ExprSet.union rs)
-      afters ExprSet.empty
-  in
-  fixedpoint rels
+  let cfpaths = ExprSet.filter is_cfpath rels in
+  let rels_except_cfpaths = ExprSet.diff rels cfpaths in
+  let afters = collect_nodes_after_alarm node cfpaths in
+  ExprSet.fold
+    (fun after rs ->
+      collect_children after rels_except_cfpaths |> ExprSet.union rs)
+    afters ExprSet.empty
 
-let remove_rels_after_alarms pat_cand syn_rels sem_rels =
+let remove_rels_after_alarms alarm syn_rels sem_rels =
   let except_sem_cons = ExprSet.union syn_rels sem_rels in
-  let alarm_nodes =
-    ExprSet.filter is_alarm pat_cand
-    |> (Fun.flip
-          (ExprSet.fold (fun alarm nodes ->
-               get_args_rec alarm |> ExprSet.of_list |> ExprSet.union nodes)))
-         ExprSet.empty
-  in
-  let after_rels =
-    ExprSet.fold
-      (fun node afters ->
-        collect_after_alarm node except_sem_cons |> ExprSet.union afters)
-      alarm_nodes ExprSet.empty
-  in
+  let alarm_node = get_args_rec alarm |> List.tl_exn |> List.hd_exn in
+  let after_rels = collect_after_alarm alarm_node except_sem_cons in
   ExprSet.diff except_sem_cons after_rels
 
 let collect_sem_deps sem_rels sem_cons =
@@ -651,19 +620,23 @@ let abstract_bug_pattern out_dir =
     |> List.filter ~f:(neg (is_skip ||| is_ret))
     |> ExprSet.of_list
   in
+  let alarm =
+    ExprSet.filter is_alarm pat_cand |> ExprSet.choose (* TODO: iteration *)
+  in
   let sem_cons = ExprSet.filter is_sem_cons pat_cand in
   let sem_rels = ExprSet.filter is_sem_rels pat_cand in
-  let syn_rels = ExprSet.filter (neg (is_sem_rels ||| is_sem_cons)) pat_cand in
-  Logger.info "Pattern Candidate:\n%a\n" ExprSet.pp pat_cand;
-  let except_sem_cons = remove_rels_after_alarms pat_cand syn_rels sem_rels in
+  let syn_rels =
+    ExprSet.filter (neg (is_alarm ||| is_sem_rels ||| is_sem_cons)) pat_cand
+    |> ExprSet.add alarm
+  in
+  let except_sem_cons = remove_rels_after_alarms alarm syn_rels sem_rels in
   let syn_rels', sem_rels' =
     remove_no_deps_from_sem_cons except_sem_cons sem_cons
   in
   let except_sem_cons' = ExprSet.union syn_rels' sem_rels' in
-  Logger.debug "except_sem_cons':\n%a\n" ExprSet.pp except_sem_cons';
-  let remove_cands =
-    ExprSet.filter ((Fun.flip is_removable) pat_cand) except_sem_cons'
-  in
+  let pat_cand = ExprSet.union except_sem_cons' sem_cons in
+  Logger.info "Pattern Candidate:\n%a\n" ExprSet.pp pat_cand;
+  let remove_cands = ExprSet.filter (is_removable pat_cand) except_sem_cons' in
   let syn_rels'' =
     elim_rel ~remove_cands ~must_rel:sem_rels' ~must_var:ExprSet.empty
       except_sem_cons' sem_cons patch_facts
