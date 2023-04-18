@@ -365,7 +365,7 @@ let is_sem_rels = is_eval ||| is_evallv ||| is_memory
 
 let is_node_rels =
   is_sem_rels ||| is_alloc ||| is_alloc ||| is_salloc ||| is_set ||| is_call
-  ||| is_libcall ||| is_return
+  ||| is_libcall ||| is_ret
 
 let neg f x = not (f x)
 
@@ -444,7 +444,7 @@ let is_removable rels rel =
         (Z3.Expr.equal src_node ||| Z3.Expr.equal snk_node) node_var |> not
         && have_no_child tl_vars
     | _ -> Logger.error "is_removable: Invalid arguments"
-  else have_no_child vars
+  else List.tl_exn vars |> have_no_child
 
 let subs_ign ~must_rel var rel rels =
   if ExprSet.mem rel must_rel then (rels, rel)
