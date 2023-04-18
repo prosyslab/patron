@@ -339,6 +339,11 @@ let is_what subs rel =
   else false
 
 let is_cfpath = is_what "(CFPath"
+let is_alloc = is_what "(Alloc"
+let is_salloc = is_what "(SAlloc"
+let is_set = is_what "(Set"
+let is_call = is_what "(Call"
+let is_libcall = is_what "(LibCall"
 let is_var = is_what "(Var"
 let is_skip = is_what "(Skip"
 let is_ret = is_what "(Return"
@@ -350,12 +355,18 @@ let is_strlen = is_what "(StrLen"
 let is_intval = is_what "(IntVal"
 let is_alarm = is_what "(Alarm"
 let is_let = is_what "(let"
-let is_subexp = is_what "(SubExp"
 let is_binop = is_what "(BinOp"
 let is_unop = is_what "(UnOp"
+let is_cast = is_what "(Cast"
+let is_arg = is_what "(Arg"
 let ( ||| ) f1 f2 x = f1 x || f2 x
 let is_sem_cons = is_sizeof ||| is_strlen ||| is_intval
 let is_sem_rels = is_eval ||| is_evallv ||| is_memory
+
+let is_node_rels =
+  is_sem_rels ||| is_alloc ||| is_alloc ||| is_salloc ||| is_set ||| is_call
+  ||| is_libcall ||| is_return
+
 let neg f x = not (f x)
 
 let rec get_args_rec expr =
@@ -400,6 +411,14 @@ let collect_rels var rels =
 let collect_cfpath rels = ExprSet.filter is_cfpath rels
 
 let is_removable rels rel =
+  let have_no_child =
+    List.for_all ~f:(fun var ->
+        if
+          Z3.Expr.get_sort var |> Z3.Sort.equal z3env.int_sort
+          && Z3.Expr.is_numeral var
+        then true
+        else collect_children var rels |> ExprSet.cardinal = 0)
+  in
   let vars = get_args_rec rel in
   if is_cfpath rel then
     List.exists
@@ -414,7 +433,7 @@ let is_removable rels rel =
     || collect_children v2 rels |> ExprSet.cardinal = 0
   else if is_unop rel then
     collect_children (List.nth_exn vars 1) rels |> ExprSet.cardinal = 0
-  else
+  else if is_node_rels rel then
     match vars with
     | node_var :: tl_vars ->
         let alarm_rel = ExprSet.filter is_alarm rels |> ExprSet.choose in
@@ -422,17 +441,10 @@ let is_removable rels rel =
         let src_node, snk_node =
           (List.hd_exn src_snk, List.nth_exn src_snk 1)
         in
-        let have_no_child =
-          List.for_all ~f:(fun var ->
-              if
-                Z3.Expr.get_sort var |> Z3.Sort.equal z3env.int_sort
-                && Z3.Expr.is_numeral var
-              then true
-              else collect_children var rels |> ExprSet.cardinal = 0)
-        in
         (Z3.Expr.equal src_node ||| Z3.Expr.equal snk_node) node_var |> not
         && have_no_child tl_vars
     | _ -> Logger.error "is_removable: Invalid arguments"
+  else have_no_child vars
 
 let subs_ign ~must_rel var rel rels =
   if ExprSet.mem rel must_rel then (rels, rel)
