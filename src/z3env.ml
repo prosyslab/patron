@@ -41,7 +41,7 @@ type t = {
   binop : Z3.FuncDecl.func_decl;
   unop : Z3.FuncDecl.func_decl;
   cfpath : Z3.FuncDecl.func_decl;
-  (* dupath : Z3.FuncDecl.func_decl; *)
+  dupath : Z3.FuncDecl.func_decl;
   (* Functions for Semantic Constraint *)
   evallv : Z3.FuncDecl.func_decl;
   eval : Z3.FuncDecl.func_decl;
@@ -100,7 +100,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.binop;
   Z3.Fixedpoint.register_relation solver env.unop;
   Z3.Fixedpoint.register_relation solver env.cfpath;
-  (* Z3.Fixedpoint.register_relation solver env.dupath; *)
+  Z3.Fixedpoint.register_relation solver env.dupath;
   Z3.Fixedpoint.register_relation solver env.evallv;
   Z3.Fixedpoint.register_relation solver env.eval;
   Z3.Fixedpoint.register_relation solver env.memory;
@@ -193,9 +193,9 @@ let mk_env () =
   let cfpath =
     Z3.FuncDecl.mk_func_decl_s z3ctx "CFPath" [ node; node ] boolean_sort
   in
-  (* let dupath =
-       Z3.FuncDecl.mk_func_decl_s z3ctx "DUPath" [ node; node ] boolean_sort
-     in *)
+  let dupath =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "DUPath" [ node; node ] boolean_sort
+  in
   let evallv =
     Z3.FuncDecl.mk_func_decl_s z3ctx "EvalLv" [ node; lval; value ] boolean_sort
   in
@@ -234,7 +234,7 @@ let mk_env () =
       (* "ConstExp.facts" *)
       (* "Div.facts" *)
       ("CFPath.facts", cfpath, [ node; node ]);
-      (* ("DUPath.facts", dupath, [ node; node ]); *)
+      ("DUPath.facts", dupath, [ node; node ]);
       (* "Entry.facts" *)
       (* "Exit.facts" *)
       (* "FalseBranch.facts" *)
@@ -271,7 +271,7 @@ let mk_env () =
       "Set";
       "Call";
       "CFPath";
-      (* "DUPath"; *)
+      "DUPath";
       "Var";
       "LibCall";
       "LvalExp";
@@ -332,7 +332,7 @@ let mk_env () =
       binop;
       unop;
       cfpath;
-      (* dupath; *)
+      dupath;
       evallv;
       eval;
       memory;

@@ -217,7 +217,7 @@ let mk_alarm_map work_dir =
       |> List.map ~f:(fun alarm ->
              match String.split ~on:'\t' alarm with
              | [ src; snk; err_cons ] -> (src, snk, err_cons)
-             | _ -> Logger.error ~to_console:true "mk_sem_cons: invalid format")
+             | _ -> Logger.error ~to_console:true "mk_alarm_map: invalid format")
     in
     List.fold_left ~init:AlarmMap.empty
       ~f:(fun am (src, snk, err_cons) ->
@@ -339,6 +339,7 @@ let is_what subs rel =
   else false
 
 let is_cfpath = is_what "(CFPath"
+let is_dupath = is_what "(DUPath"
 let is_alloc = is_what "(Alloc"
 let is_salloc = is_what "(SAlloc"
 let is_set = is_what "(Set"
@@ -409,6 +410,7 @@ let collect_rels var rels =
     rels
 
 let collect_cfpath rels = ExprSet.filter is_cfpath rels
+let collect_dupath rels = ExprSet.filter is_dupath rels
 
 let is_removable rels rel =
   let have_no_child =
@@ -420,11 +422,12 @@ let is_removable rels rel =
         else collect_children var rels |> ExprSet.cardinal = 0)
   in
   let vars = get_args_rec rel in
-  if is_cfpath rel then
+  if (is_cfpath ||| is_dupath) rel then
     List.exists
       ~f:(fun var ->
         let rels = collect_children var rels in
-        ExprSet.filter (neg is_cfpath) rels |> ExprSet.cardinal = 0)
+        ExprSet.filter (is_cfpath ||| is_dupath |> neg) rels
+        |> ExprSet.cardinal = 0)
       vars
   else if is_binop rel then
     let v1 = List.nth_exn vars 1 in
@@ -740,6 +743,7 @@ let pattern_match donor_dir patch_dir donee_dir =
   mk_sem_cons ~add_var_too:true donor_maps z3env.donor_solver donor_dir;
   mk_facts ~maps:patch_maps z3env.patch_solver patch_dir;
   mk_facts ~maps:donee_maps z3env.donee_solver donee_dir;
+  mk_sem_cons donee_maps z3env.donee_solver donee_dir;
   dump "donor" donor_maps z3env.donor_solver out_dir;
   dump "patch" patch_maps z3env.patch_solver out_dir;
   dump "donee" donee_maps z3env.donee_solver out_dir;
