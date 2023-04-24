@@ -1,3 +1,8 @@
+open Core
+module Hashtbl = Stdlib.Hashtbl
+module Set = Stdlib.Set
+module F = Format
+
 type t = {
   z3ctx : Z3.context;
   donor_solver : Z3.Fixedpoint.fixedpoint;
@@ -142,10 +147,10 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Set" [ node; lval; expr ] boolean_sort
   in
   let alloc =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "Alloc" [ node; lval; expr ] boolean_sort
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Alloc" [ expr; expr ] boolean_sort
   in
   let salloc =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "SAlloc" [ node; lval ] boolean_sort
+    Z3.FuncDecl.mk_func_decl_s z3ctx "SAlloc" [ expr; str_literal ] boolean_sort
   in
   let lval_exp =
     Z3.FuncDecl.mk_func_decl_s z3ctx "LvalExp" [ expr; lval ] boolean_sort
@@ -157,13 +162,11 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Var" [ lval; identifier ] boolean_sort
   in
   let call =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "Call"
-      [ node; lval; expr; arg_list ]
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Call" [ expr; expr; arg_list ]
       boolean_sort
   in
   let libcall =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "LibCall"
-      [ node; lval; expr; arg_list ]
+    Z3.FuncDecl.mk_func_decl_s z3ctx "LibCall" [ expr; expr; arg_list ]
       boolean_sort
   in
   let arg =
@@ -222,13 +225,13 @@ let mk_env () =
   let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [] boolean_sort in
   let facts =
     [
-      ("Alloc.facts", alloc, [ node; lval; expr ]);
+      ("AllocExp.facts", alloc, [ expr; expr ]);
       ("Arg.facts", arg, [ arg_list; int_sort; expr ]);
-      ("Assign.facts", set, [ node; lval; expr ]);
+      ("Set.facts", set, [ node; lval; expr ]);
       (* "Assume.facts" *)
       ("CastExp.facts", cast, [ expr; expr ]);
       ("BinOpExp.facts", binop, [ expr; binop_sort; expr; expr ]);
-      ("Call.facts", call, [ node; lval; expr; arg_list ]);
+      ("CallExp.facts", call, [ expr; expr; arg_list ]);
       (* "Cxp.facts" *)
       (* "Cmd.facts" *)
       (* "ConstExp.facts" *)
@@ -243,7 +246,7 @@ let mk_env () =
       (* "Func.facts" *)
       ("GlobalVar.facts", var, [ lval; identifier ]);
       (* "Join.facts" *)
-      ("LibCall.facts", libcall, [ node; lval; expr; arg_list ]);
+      ("LibCallExp.facts", libcall, [ expr; expr; arg_list ]);
       ("LocalVar.facts", var, [ lval; identifier ]);
       (* "LoopHead.facts" *)
       ("LvalExp.facts", lval_exp, [ expr; lval ]);
@@ -251,7 +254,7 @@ let mk_env () =
       (* "Mem.facts" *)
       (* "OtherExp.facts" *)
       ("Return.facts", ret, [ node; expr ]);
-      ("SAlloc.facts", salloc, [ node; lval ]);
+      ("SAllocExp.facts", salloc, [ expr; str_literal ]);
       ("Skip.facts", skip, [ node ]);
       ("StartOf.facts", startof, [ expr; lval ]);
       (* "TrueBranch.facts" *)
@@ -356,3 +359,5 @@ let mk_env () =
 let reset () =
   Z3.Memory.reset ();
   mk_env ()
+
+let z3env = mk_env ()

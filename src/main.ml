@@ -1,26 +1,31 @@
-let init donee_dir =
-  let out_dir = Filename.concat donee_dir !Cmdline.out_dir in
-  (try Unix.mkdir out_dir 0o775 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
-  print_endline ("Logging to " ^ !Cmdline.out_dir);
-  Filename.concat out_dir "log.txt" |> Logger.from_file;
-  Logger.set_level !Cmdline.log_level
-
-let main () =
-  let usage = "Usage: patron <Donor dir> <Patch dir> <Donee dir> [options]" in
-  Arg.parse Cmdline.options Cmdline.parse_arg usage;
+let extract_bug_pattern donor_dir patch_dir db_dir =
   if
-    not
-      (Sys.file_exists !Cmdline.donor_dir
-      && Sys.file_exists !Cmdline.patch_dir
-      && Sys.file_exists !Cmdline.donee_dir)
+    (Sys.file_exists donor_dir && Sys.file_exists patch_dir
+   && Sys.file_exists db_dir)
+    |> not
   then (
     prerr_endline "Error: No target directory specified";
     exit 1)
-  else
-    let donor_dir, patch_dir, donee_dir =
-      (!Cmdline.donor_dir, !Cmdline.patch_dir, !Cmdline.donee_dir)
-    in
-    init donee_dir;
-    Patmat.pattern_match donor_dir patch_dir donee_dir
+  else BugPatDB.run donor_dir patch_dir db_dir
+
+let patch_transplant db_dir donee_dir out_dir =
+  if
+    (Sys.file_exists db_dir && Sys.file_exists donee_dir
+   && Sys.file_exists out_dir)
+    |> not
+  then (
+    prerr_endline "Error: No target directory specified";
+    exit 1)
+  else PatTrans.run db_dir donee_dir out_dir
+
+let main () =
+  let options = Options.parse () in
+  match options.Options.command with
+  | Options.DB ->
+      extract_bug_pattern options.Options.donor_dir options.Options.patch_dir
+        options.Options.db_dir
+  | Options.Patch ->
+      patch_transplant options.Options.db_dir options.Options.donee_dir
+        options.Options.patron_out_dir
 
 let _ = main ()

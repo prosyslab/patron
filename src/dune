@@ -1,12 +1,12 @@
 (library
  (name patronlib)
- (modules cmdline)
+ (modules options)
  (wrapped false)
- (libraries logger))
+ (libraries cmdliner logger))
 
 (executable
  (name main)
- (modules main z3env patmat)
+ (modules main maps z3env z3utils facts patmat semCons bugPatDB patTrans)
  (libraries patronlib unix yojson core z3 logger))
 
 (executable
