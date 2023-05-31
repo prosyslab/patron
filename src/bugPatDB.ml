@@ -221,9 +221,10 @@ let run donor_dir patch_dir db_dir =
   Maps.reset_maps patch_maps;
   Maps.reset_globals ();
   Facts.make ~add_var_too:true ~maps:donor_maps z3env.donor_solver donor_dir;
-  SemCons.make ~add_var_too:true donor_maps z3env.donor_solver donor_dir;
+  SemRules.make donor_maps z3env.donor_solver donor_dir;
   Facts.make ~maps:patch_maps z3env.patch_solver patch_dir;
+  SemRules.make patch_maps z3env.patch_solver patch_dir;
   Maps.dump "donor" donor_maps z3env.donor_solver out_dir;
   Maps.dump "patch" patch_maps z3env.patch_solver out_dir;
-  Logger.info "Make facts done";
-  abstract_bug_pattern out_dir
+  Logger.info "Make facts done"
+(* abstract_bug_pattern out_dir *)

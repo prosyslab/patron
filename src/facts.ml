@@ -71,28 +71,30 @@ let mk_args add_var_too maps ~fix_exp (numeral_args, var_args) sym sort =
 
 let apply_fact add_var_too maps datalog_dir solver (fact_file, func, arg_sorts)
     =
-  let fact_file_path = Filename.concat datalog_dir fact_file in
-  let ic = In_channel.create fact_file_path in
-  let rec loop () =
-    let line = In_channel.input_line ic in
-    if Option.is_some line then (
-      let line = Option.value_exn line in
-      let numeral_args, var_args =
-        List.fold2_exn ~init:([], [])
-          ~f:
-            (mk_args add_var_too maps
-               ~fix_exp:(String.equal fact_file "LibCall.facts"))
-          (String.split ~on:'\t' line)
-          arg_sorts
-      in
-      let numeral_args = List.rev numeral_args in
-      let var_args = List.rev var_args in
-      add_fact solver func numeral_args;
-      if add_var_too then add_fact z3env.pattern_solver func var_args;
-      loop ())
-  in
-  loop ();
-  In_channel.close ic
+  if String.is_empty fact_file then ()
+  else
+    let fact_file_path = Filename.concat datalog_dir fact_file in
+    let ic = In_channel.create fact_file_path in
+    let rec loop () =
+      let line = In_channel.input_line ic in
+      if Option.is_some line then (
+        let line = Option.value_exn line in
+        let numeral_args, var_args =
+          List.fold2_exn ~init:([], [])
+            ~f:
+              (mk_args add_var_too maps
+                 ~fix_exp:(String.equal fact_file "LibCall.facts"))
+            (String.split ~on:'\t' line)
+            arg_sorts
+        in
+        let numeral_args = List.rev numeral_args in
+        let var_args = List.rev var_args in
+        add_fact solver func numeral_args;
+        if add_var_too then add_fact z3env.pattern_solver func var_args;
+        loop ())
+    in
+    loop ();
+    In_channel.close ic
 
 let make ?(add_var_too = false) ~maps solver work_dir =
   let datalog_dir = Filename.concat work_dir "sparrow-out/taint/datalog" in
@@ -105,4 +107,4 @@ let make ?(add_var_too = false) ~maps solver work_dir =
   Maps.make_map binop_map_ic maps.Maps.binop_map;
   let unop_map_ic = open_in_datalog "Uop.map" in
   Maps.make_map unop_map_ic maps.Maps.unop_map;
-  List.iter ~f:(apply_fact add_var_too maps datalog_dir solver) z3env.facts
+  List.iter ~f:(apply_fact add_var_too maps datalog_dir solver) z3env.funs

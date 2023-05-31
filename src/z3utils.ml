@@ -50,6 +50,53 @@ let is_node_rels =
 
 let neg f x = not (f x)
 
+let match_func = function
+  | "Src" -> z3env.src
+  | "Snk" -> z3env.snk
+  | "Skip" -> z3env.skip
+  | "Set" -> z3env.set
+  | "Alloc" -> z3env.alloc
+  | "SAlloc" -> z3env.salloc
+  | "LvalExp" -> z3env.lval_exp
+  | "Var" -> z3env.var
+  | "Call" -> z3env.call
+  | "LibCall" -> z3env.libcall
+  | "Arg" -> z3env.arg
+  | "ConstExp" -> z3env.constexp
+  | "Return" -> z3env.ret
+  | "BinOp" -> z3env.binop
+  | "UnOp" -> z3env.unop
+  | "CFPath" -> z3env.cfpath
+  | "DUPath" -> z3env.dupath
+  | "EvalLv" -> z3env.evallv
+  | "Eval" -> z3env.eval
+  | "Memory" -> z3env.memory
+  | "ArrVal" -> z3env.arrval
+  | "ConstStr" -> z3env.conststr
+  | "SizeOf" -> z3env.sizeof
+  | "StrLen" -> z3env.strlen
+  | "Val" -> z3env.val_rel
+  | "Alarm" -> z3env.alarm
+  | "Reach" -> z3env.reach
+  | "IOError" -> z3env.ioerror
+  | "ErrNode" -> z3env.errnode
+  | "Bug" -> z3env.bug
+  | _ -> failwith "Invalid function"
+
+let match_sort s =
+  let sort_id = String.split ~on:'-' s in
+  if List.length sort_id = 1 then z3env.bv_sort
+  else
+    let sort = List.hd_exn sort_id in
+    match sort with
+    | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" -> z3env.expr
+    | "ArgList" -> z3env.arg_list
+    | "Lval" -> z3env.lval
+    | "Loc" | "Val" -> z3env.value
+    | "BinOp" -> z3env.binop_sort
+    | "UnOp" -> z3env.unop_sort
+    | _ -> z3env.node
+
 let match_rule facts pattern =
   let solver = mk_fixedpoint z3env.z3ctx in
   reg_rel_to_solver z3env solver;

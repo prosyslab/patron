@@ -11,6 +11,7 @@ type t = {
   pattern_solver : Z3.Fixedpoint.fixedpoint;
   boolean_sort : Z3.Sort.sort;
   int_sort : Z3.Sort.sort;
+  bv_sort : Z3.Sort.sort;
   str_sort : Z3.Sort.sort;
   zero : Z3.Expr.expr;
   one : Z3.Expr.expr;
@@ -34,7 +35,6 @@ type t = {
   alloc : Z3.FuncDecl.func_decl;
   salloc : Z3.FuncDecl.func_decl;
   lval_exp : Z3.FuncDecl.func_decl;
-  startof : Z3.FuncDecl.func_decl;
   var : Z3.FuncDecl.func_decl;
   call : Z3.FuncDecl.func_decl;
   libcall : Z3.FuncDecl.func_decl;
@@ -51,14 +51,17 @@ type t = {
   evallv : Z3.FuncDecl.func_decl;
   eval : Z3.FuncDecl.func_decl;
   memory : Z3.FuncDecl.func_decl;
-  arrayval : Z3.FuncDecl.func_decl;
+  arrval : Z3.FuncDecl.func_decl;
   conststr : Z3.FuncDecl.func_decl;
   sizeof : Z3.FuncDecl.func_decl;
   strlen : Z3.FuncDecl.func_decl;
-  intval : Z3.FuncDecl.func_decl;
+  val_rel : Z3.FuncDecl.func_decl;
   alarm : Z3.FuncDecl.func_decl;
+  reach : Z3.FuncDecl.func_decl;
+  ioerror : Z3.FuncDecl.func_decl;
+  errnode : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
-  facts : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
+  funs : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
   rels : string list;
 }
 
@@ -94,7 +97,6 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.alloc;
   Z3.Fixedpoint.register_relation solver env.salloc;
   Z3.Fixedpoint.register_relation solver env.lval_exp;
-  Z3.Fixedpoint.register_relation solver env.startof;
   Z3.Fixedpoint.register_relation solver env.var;
   Z3.Fixedpoint.register_relation solver env.call;
   Z3.Fixedpoint.register_relation solver env.libcall;
@@ -109,9 +111,15 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.evallv;
   Z3.Fixedpoint.register_relation solver env.eval;
   Z3.Fixedpoint.register_relation solver env.memory;
-  Z3.Fixedpoint.register_relation solver env.arrayval;
+  Z3.Fixedpoint.register_relation solver env.arrval;
   Z3.Fixedpoint.register_relation solver env.conststr;
+  Z3.Fixedpoint.register_relation solver env.strlen;
+  Z3.Fixedpoint.register_relation solver env.sizeof;
+  Z3.Fixedpoint.register_relation solver env.val_rel;
   Z3.Fixedpoint.register_relation solver env.alarm;
+  Z3.Fixedpoint.register_relation solver env.reach;
+  Z3.Fixedpoint.register_relation solver env.ioerror;
+  Z3.Fixedpoint.register_relation solver env.errnode;
   Z3.Fixedpoint.register_relation solver env.bug
 
 let mk_env () =
@@ -125,6 +133,7 @@ let mk_env () =
   let pattern_solver = mk_fixedpoint z3ctx in
   let boolean_sort = Z3.Boolean.mk_sort z3ctx in
   let int_sort = Z3.Arithmetic.Integer.mk_sort z3ctx in
+  let bv_sort = Z3.BitVector.mk_sort z3ctx 64 (* NOTE: hard coded *) in
   let str_sort = Z3.Seq.mk_string_sort z3ctx in
   let zero = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 0 in
   let one = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 1 in
@@ -154,9 +163,6 @@ let mk_env () =
   in
   let lval_exp =
     Z3.FuncDecl.mk_func_decl_s z3ctx "LvalExp" [ expr; lval ] boolean_sort
-  in
-  let startof =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "StartOf" [ expr; lval ] boolean_sort
   in
   let var =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Var" [ lval; identifier ] boolean_sort
@@ -209,21 +215,36 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Memory" [ node; value; value ]
       boolean_sort
   in
-  let arrayval =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "ArrayVal" [ value; value ] boolean_sort
+  let arrval =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "ArrVal" [ value; bv_sort ] boolean_sort
   in
   let conststr =
     Z3.FuncDecl.mk_func_decl_s z3ctx "ConstStr" [ value; const ] boolean_sort
   in
 
-  let sizeof = Z3.FuncDecl.mk_func_decl_s z3ctx "SizeOf" [ value ] int_sort in
-  let strlen = Z3.FuncDecl.mk_func_decl_s z3ctx "StrLen" [ value ] int_sort in
-  let intval = Z3.FuncDecl.mk_func_decl_s z3ctx "IntVal" [ value ] int_sort in
+  let sizeof =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "SizeOf" [ value; bv_sort ] boolean_sort
+  in
+  let strlen =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "StrLen" [ value; bv_sort ] boolean_sort
+  in
+  let val_rel =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Val" [ value; bv_sort ] boolean_sort
+  in
   let alarm =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Alarm" [ node; node ] boolean_sort
   in
-  let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [] boolean_sort in
-  let facts =
+  let reach = Z3.FuncDecl.mk_func_decl_s z3ctx "Reach" [ node ] boolean_sort in
+  let ioerror =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "IOError" [ node; bv_sort ] boolean_sort
+  in
+  let errnode =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "ErrNode" [ node ] boolean_sort
+  in
+  let bug =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [ node; bv_sort ] boolean_sort
+  in
+  let funs =
     [
       ("AllocExp.facts", alloc, [ expr; expr ]);
       ("Arg.facts", arg, [ arg_list; int_sort; expr ]);
@@ -256,15 +277,20 @@ let mk_env () =
       ("Return.facts", ret, [ node; expr ]);
       ("SAllocExp.facts", salloc, [ expr; str_literal ]);
       ("Skip.facts", skip, [ node ]);
-      ("StartOf.facts", startof, [ expr; lval ]);
       (* "TrueBranch.facts" *)
       (* "TrueCond.facts" *)
       ("UnOpExp.facts", unop, [ expr; unop_sort; expr ]);
-      ("EvalLv.facts", evallv, [ node; lval; value ]);
-      ("Eval.facts", eval, [ node; expr; value ]);
-      ("Memory.facts", memory, [ node; value; value ]);
-      ("ArrayVal.facts", arrayval, [ value; value ]);
-      ("ConstStr.facts", conststr, [ value; const ]);
+      ("", evallv, [ node; lval; value ]);
+      ("", eval, [ node; expr; value ]);
+      ("", memory, [ node; value; value ]);
+      ("", arrval, [ value; bv_sort ]);
+      ("", conststr, [ value; const ]);
+      ("", val_rel, [ value; bv_sort ]);
+      ("", sizeof, [ value; bv_sort ]);
+      ("", strlen, [ value; bv_sort ]);
+      ("", reach, [ node ]);
+      ("", errnode, [ node ]);
+      ("", ioerror, [ node; bv_sort ]);
     ]
   in
   let rels =
@@ -284,7 +310,6 @@ let mk_env () =
       "UnOp";
       "SAlloc";
       "Skip";
-      "StartOf";
       "EvalLv";
       "Eval";
       "Memory";
@@ -302,6 +327,7 @@ let mk_env () =
       pattern_solver;
       boolean_sort;
       int_sort;
+      bv_sort;
       str_sort;
       zero;
       one;
@@ -324,7 +350,6 @@ let mk_env () =
       alloc;
       salloc;
       lval_exp;
-      startof;
       var;
       call;
       libcall;
@@ -339,14 +364,17 @@ let mk_env () =
       evallv;
       eval;
       memory;
-      arrayval;
+      arrval;
       conststr;
       sizeof;
       strlen;
-      intval;
+      val_rel;
       alarm;
+      reach;
+      ioerror;
+      errnode;
       bug;
-      facts;
+      funs;
       rels;
     }
   in
