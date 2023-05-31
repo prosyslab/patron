@@ -15,7 +15,7 @@ int main(int argc, char *argv[]) {
   str = getenv("HOME"); // src
 
   if (str) {
-   sprintf(tmpblk.c, "%s%c%s", str, '/', "elvis.rc"); // BO // snk
+   sprintf(tmpblk.c, "%s", str); // BO // snk
   }
 
   return 0;
