@@ -11,5 +11,5 @@
 
 (executable
  (name transformer)
- (modules transformer transformerHelper)
+ (modules transformer diff symDiff translator transplanter transformerHelper)
  (libraries patronlib cil unix yojson core z3 logger))
