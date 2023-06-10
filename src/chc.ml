@@ -40,6 +40,8 @@ include Set.Make (struct
   let compare = Stdlib.compare
 end)
 
+let to_list s = fold (fun c l -> c :: l) s []
+
 let rec collect_vars = function
   | Lt (t1, t2)
   | Gt (t1, t2)
@@ -110,9 +112,27 @@ let rec pp_chc fmt = function
 
 let pp fmt chcs = iter (fun chc -> F.fprintf fmt "%a\n" pp_chc chc) chcs
 
+let dump file chc =
+  let oc_file = Out_channel.create file in
+  let fmt = F.formatter_of_out_channel oc_file in
+  F.fprintf fmt "%a" pp chc;
+  F.pp_print_flush fmt ();
+  Out_channel.close oc_file
+
+let is_rel = function FuncApply _ -> true | _ -> false
+let is_rule = function Implies _ -> true | _ -> false
+
 let get_cons = function
   | Implies (cons, _) -> cons
   | _ -> L.error "get_cons: wrong chc"
+
+let get_head = function
+  | Implies (_, head) -> head
+  | _ -> L.error "get_head: wrong chc"
+
+let get_func_name = function
+  | FuncApply (fn, _) -> fn
+  | _ -> L.error "get_func_name: wrong chc"
 
 let rec filter_func_app = function
   | FuncApply _ as c -> singleton c
@@ -161,92 +181,6 @@ let prop_deps terms = function
         (true, add (List.hd_exn args) terms)
       else (false, terms)
 
-type mode = Var | Numer
-
-let rec to_z3 mode maps = function
-  | Lt (e1, e2) ->
-      Z3.Arithmetic.mk_lt z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Gt (e1, e2) ->
-      Z3.Arithmetic.mk_gt z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Le (e1, e2) ->
-      Z3.Arithmetic.mk_le z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Ge (e1, e2) ->
-      Z3.Arithmetic.mk_ge z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Eq (e1, e2) ->
-      Z3.Boolean.mk_eq z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Ne (e1, e2) ->
-      Z3.Boolean.mk_not z3env.z3ctx
-        (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2))
-  | Not e -> Z3.Boolean.mk_not z3env.z3ctx (to_z3 mode maps e)
-  | CLt (e1, e2) ->
-      Z3.Boolean.mk_ite z3env.z3ctx
-        (Z3.Arithmetic.mk_lt z3env.z3ctx (to_z3 mode maps e1)
-           (to_z3 mode maps e2))
-        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
-        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
-  | CGt (e1, e2) ->
-      Z3.Boolean.mk_ite z3env.z3ctx
-        (Z3.BitVector.mk_sgt z3env.z3ctx (to_z3 mode maps e1)
-           (to_z3 mode maps e2))
-        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
-        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
-  | CLe (e1, e2) ->
-      Z3.Boolean.mk_ite z3env.z3ctx
-        (Z3.BitVector.mk_sle z3env.z3ctx (to_z3 mode maps e1)
-           (to_z3 mode maps e2))
-        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
-        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
-  | CGe (e1, e2) ->
-      Z3.Boolean.mk_ite z3env.z3ctx
-        (Z3.BitVector.mk_sge z3env.z3ctx (to_z3 mode maps e1)
-           (to_z3 mode maps e2))
-        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
-        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
-  | CEq (e1, e2) ->
-      Z3.Boolean.mk_ite z3env.z3ctx
-        (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2))
-        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
-        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
-  | CNe (e1, e2) ->
-      Z3.Boolean.mk_ite z3env.z3ctx
-        (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2))
-        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
-        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
-  | CBNot e -> Z3.BitVector.mk_not z3env.z3ctx (to_z3 mode maps e)
-  | CLNot e ->
-      let zero = Z3.BitVector.mk_numeral z3env.z3ctx "0" 64 in
-      let one = Z3.BitVector.mk_numeral z3env.z3ctx "1" 64 in
-      let is_zero = Z3.Boolean.mk_eq z3env.z3ctx (to_z3 mode maps e) zero in
-      Z3.Boolean.mk_ite z3env.z3ctx is_zero one zero
-  | CNeg e -> Z3.BitVector.mk_neg z3env.z3ctx (to_z3 mode maps e)
-  | FuncApply (f, args) ->
-      L.debug "Func: %s" f;
-      Z3.FuncDecl.apply (Z3utils.match_func f)
-        (List.map ~f:(to_z3 mode maps) args)
-  | Add (e1, e2) ->
-      Z3.BitVector.mk_add z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Sub (e1, e2) ->
-      Z3.BitVector.mk_sub z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Mul (e1, e2) ->
-      Z3.BitVector.mk_mul z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Div (e1, e2) ->
-      Z3.BitVector.mk_sdiv z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Mod (e1, e2) ->
-      Z3.BitVector.mk_smod z3env.z3ctx (to_z3 mode maps e1) (to_z3 mode maps e2)
-  | Var x ->
-      let sort = Z3utils.match_sort x in
-      Z3.Expr.mk_const_s z3env.z3ctx x sort
-  | FDNumeral s ->
-      let sort = Z3utils.match_sort s in
-      Z3utils.mk_numer maps s sort
-  | Const i ->
-      Z3.BitVector.mk_numeral z3env.z3ctx (Z.to_int i |> string_of_int) 64
-  | Implies (tl, hd) ->
-      let cons =
-        Z3.Boolean.mk_and z3env.z3ctx (List.map ~f:(to_z3 mode maps) tl)
-      in
-      Z3.Boolean.mk_implies z3env.z3ctx cons (to_z3 mode maps hd)
-
 let rec numer2var = function
   | Lt (t1, t2) -> Lt (numer2var t1, numer2var t2)
   | Gt (t1, t2) -> Gt (numer2var t1, numer2var t2)
@@ -272,7 +206,103 @@ let rec numer2var = function
   | FuncApply (fn, args) ->
       FuncApply (fn, List.map ~f:(fun arg -> numer2var arg) args)
   | Var _ as v -> v
-  | FDNumeral s -> Var s
+  | FDNumeral s ->
+      if Z3utils.is_binop s || Z3utils.is_unop s then FDNumeral s else Var s
   | Const _ as c -> c
   | Implies (cons, hd) ->
       Implies (List.map ~f:(fun c -> numer2var c) cons, numer2var hd)
+
+let rec to_z3 maps = function
+  | Lt (e1, e2) ->
+      Z3.BitVector.mk_slt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Gt (e1, e2) ->
+      Z3.BitVector.mk_sgt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Le (e1, e2) ->
+      Z3.BitVector.mk_sle z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Ge (e1, e2) ->
+      Z3.BitVector.mk_sge z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Eq (e1, e2) -> Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Ne (e1, e2) ->
+      Z3.Boolean.mk_not z3env.z3ctx
+        (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+  | Not e -> Z3.Boolean.mk_not z3env.z3ctx (to_z3 maps e)
+  | CLt (e1, e2) ->
+      Z3.Boolean.mk_ite z3env.z3ctx
+        (Z3.Arithmetic.mk_lt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
+        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
+  | CGt (e1, e2) ->
+      Z3.Boolean.mk_ite z3env.z3ctx
+        (Z3.BitVector.mk_sgt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
+        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
+  | CLe (e1, e2) ->
+      Z3.Boolean.mk_ite z3env.z3ctx
+        (Z3.BitVector.mk_sle z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
+        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
+  | CGe (e1, e2) ->
+      Z3.Boolean.mk_ite z3env.z3ctx
+        (Z3.BitVector.mk_sge z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
+        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
+  | CEq (e1, e2) ->
+      Z3.Boolean.mk_ite z3env.z3ctx
+        (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
+        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
+  | CNe (e1, e2) ->
+      Z3.Boolean.mk_ite z3env.z3ctx
+        (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+        (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
+        (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
+  | CBNot e -> Z3.BitVector.mk_not z3env.z3ctx (to_z3 maps e)
+  | CLNot e ->
+      let zero = Z3.BitVector.mk_numeral z3env.z3ctx "0" 64 in
+      let one = Z3.BitVector.mk_numeral z3env.z3ctx "1" 64 in
+      let is_zero = Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e) zero in
+      Z3.Boolean.mk_ite z3env.z3ctx is_zero one zero
+  | CNeg e -> Z3.BitVector.mk_neg z3env.z3ctx (to_z3 maps e)
+  | FuncApply (f, args) ->
+      Z3.FuncDecl.apply (Z3utils.match_func f) (List.map ~f:(to_z3 maps) args)
+  | Add (e1, e2) ->
+      Z3.BitVector.mk_add z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Sub (e1, e2) ->
+      Z3.BitVector.mk_sub z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Mul (e1, e2) ->
+      Z3.BitVector.mk_mul z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Div (e1, e2) ->
+      Z3.BitVector.mk_sdiv z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Mod (e1, e2) ->
+      Z3.BitVector.mk_smod z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | Var x ->
+      let sort = Z3utils.match_sort x in
+      Z3.Expr.mk_const_s z3env.z3ctx x sort
+  | FDNumeral s ->
+      let sort = Z3utils.match_sort s in
+      Z3utils.mk_numer maps s sort
+  | Const i ->
+      Z3.BitVector.mk_numeral z3env.z3ctx (Z.to_int i |> string_of_int) 64
+  | Implies (tl, hd) ->
+      let cons = Z3.Boolean.mk_and z3env.z3ctx (List.map ~f:(to_z3 maps) tl) in
+      Z3.Boolean.mk_implies z3env.z3ctx cons (to_z3 maps hd)
+
+let add_fact maps solver f =
+  let fact = to_z3 maps f in
+  Z3.Fixedpoint.add_rule solver fact None
+
+let add_rule maps solver r =
+  let vars = collect_vars r |> to_list |> List.map ~f:(to_z3 maps) in
+  let impl = to_z3 maps r in
+  L.debug "rule: %a" pp_chc r;
+  if List.is_empty vars then add_fact maps solver r
+  else
+    let rule =
+      Z3.Quantifier.mk_forall_const z3env.z3ctx vars impl None [] [] None None
+      |> Z3.Quantifier.expr_of_quantifier
+    in
+    Z3.Fixedpoint.add_rule solver rule None
+
+let add_all maps solver =
+  iter (fun chc ->
+      if is_rel chc then add_fact maps solver chc else add_rule maps solver chc)

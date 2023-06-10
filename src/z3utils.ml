@@ -35,20 +35,6 @@ let match_func = function
   | "Bug" -> z3env.bug
   | _ -> L.error "match_func: invalid function"
 
-let match_sort s =
-  let sort_id = String.split ~on:'-' s in
-  if List.length sort_id = 1 then z3env.bv_sort
-  else
-    let sort = List.hd_exn sort_id in
-    match sort with
-    | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" -> z3env.expr
-    | "ArgList" -> z3env.arg_list
-    | "Lval" -> z3env.lval
-    | "Loc" | "Val" -> z3env.value
-    | "BinOp" -> z3env.binop_sort
-    | "UnOp" -> z3env.unop_sort
-    | _ -> z3env.node
-
 let is_binop = function
   | "+" | "PlusPI" | "IndexPI" | "-" | "MinusPI" | "MinusPP" | "*" | "/" | "%"
   | "bvshl" | "bvshr" | "Lt" | "Gt" | "Le" | "Ge" | "Eq" | "Ne" | "bvand"
@@ -89,6 +75,21 @@ let match_unop = function
   | "Neg" -> 24
   | _ -> L.error "match_unop: invalid symbol"
 
+let match_sort s =
+  let sort_id = String.split ~on:'-' s in
+  let name = List.hd_exn sort_id in
+  if List.length sort_id = 1 then
+    if is_binop name then z3env.binop_sort
+    else if is_unop name then z3env.unop_sort
+    else z3env.bv_sort
+  else
+    match name with
+    | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" -> z3env.expr
+    | "ArgList" -> z3env.arg_list
+    | "Lval" -> z3env.lval
+    | "Loc" | "Val" -> z3env.value
+    | _ -> z3env.node
+
 let numer_cnt = ref 24 (* for binop, unop *)
 
 let new_numer () =
@@ -102,29 +103,7 @@ let mk_numer maps sym sort =
     Z3.Expr.mk_numeral_int z3env.z3ctx (match_unop sym) sort
   else if Hashtbl.mem maps.Maps.sym_map sym then
     Hashtbl.find maps.Maps.sym_map sym
-  else Z3.Expr.mk_numeral_int z3env.z3ctx (new_numer ()) sort
-
-let add_fact solver func args =
-  Z3.Fixedpoint.add_rule solver (Z3.FuncDecl.apply func args) None
-
-let mk_rule z3ctx vars cons =
-  Z3.Quantifier.mk_forall_const z3ctx vars cons None [] [] None None
-  |> Z3.Quantifier.expr_of_quantifier
-
-(* let match_rule facts pattern =
-   let solver = mk_fixedpoint z3env.z3ctx in
-   reg_rel_to_solver z3env solver;
-   let bug = Z3.FuncDecl.apply z3env.bug [] in
-   let cond = Z3.Boolean.mk_and z3env.z3ctx (set2list pattern) in
-   let vars_for_all = Bag.to_list Maps.var_bag in
-   let bug_pattern_rule =
-     mk_rule z3env.z3ctx vars_for_all
-       (Z3.Boolean.mk_implies z3env.z3ctx cond bug)
-   in
-   List.iter ~f:(fun fact -> Z3.Fixedpoint.add_rule solver fact None) facts;
-   Z3.Fixedpoint.add_rule solver bug_pattern_rule None;
-   let status = Z3.Fixedpoint.query solver (Z3.FuncDecl.apply z3env.bug []) in
-   match status with
-   | Z3.Solver.UNSATISFIABLE -> None
-   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
-   | Z3.Solver.UNKNOWN -> None *)
+  else
+    let n = Z3.Expr.mk_numeral_int z3env.z3ctx (new_numer ()) sort in
+    Hashtbl.add maps.Maps.sym_map sym n;
+    n

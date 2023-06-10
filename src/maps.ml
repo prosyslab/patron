@@ -7,6 +7,7 @@ type t = {
   node_map : (string, Z3.Expr.expr) Hashtbl.t;
   numeral_map : (int, string) Hashtbl.t;
   exp_map : (string, string) Hashtbl.t;
+  libcall_map : (string, string) Hashtbl.t;
   binop_map : (string, string) Hashtbl.t;
   unop_map : (string, string) Hashtbl.t;
 }
@@ -21,6 +22,7 @@ let create_maps () =
     node_map = Hashtbl.create 1000;
     numeral_map = Hashtbl.create 1000;
     exp_map = Hashtbl.create 1000;
+    libcall_map = Hashtbl.create 1000;
     binop_map = Hashtbl.create 100;
     unop_map = Hashtbl.create 100;
   }
@@ -41,6 +43,7 @@ let reset_maps maps =
   Hashtbl.reset maps.node_map;
   Hashtbl.reset maps.numeral_map;
   Hashtbl.reset maps.exp_map;
+  Hashtbl.reset maps.libcall_map;
   Hashtbl.reset maps.binop_map;
   Hashtbl.reset maps.unop_map
 
@@ -73,6 +76,7 @@ let dump_node_map = dump_z3_map "node"
 let dump_const_map = dump_z3_map "const"
 let dump_str_map = dump_map Fun.id
 let dump_exp_map = dump_str_map "exp"
+let dump_libcall_map = dump_str_map "libcall"
 let dump_binop_map = dump_str_map "binop"
 let dump_unop_map = dump_str_map "unop"
 
@@ -81,6 +85,7 @@ let dump mode maps solver out_dir =
   dump_sym_map mode maps.sym_map out_dir;
   dump_node_map mode maps.node_map out_dir;
   dump_exp_map mode maps.exp_map out_dir;
+  dump_libcall_map mode maps.libcall_map out_dir;
   dump_binop_map mode maps.binop_map out_dir;
   dump_unop_map mode maps.unop_map out_dir;
   dump_const_map "" const_map out_dir

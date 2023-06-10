@@ -235,22 +235,19 @@ let mk_env () =
   let errnode =
     Z3.FuncDecl.mk_func_decl_s z3ctx "ErrNode" [ node ] boolean_sort
   in
-  let bug =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [ node; bv_sort ] boolean_sort
-  in
+  let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "Bug" [] boolean_sort in
   let fact_files =
     [
       "AllocExp.facts";
       "Arg.facts";
       "Set.facts";
-      "CastExp.facts";
       "BinOpExp.facts";
       "CallExp.facts";
       "CFPath.facts";
       "DUPath.facts";
-      "GlobalVar.facts";
+      (* "GlobalVar.facts"; *)
       "LibCallExp.facts";
-      "LocalVar.facts";
+      (* "LocalVar.facts"; *)
       "LvalExp.facts";
       "Return.facts";
       "SAllocExp.facts";

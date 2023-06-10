@@ -12,8 +12,25 @@ let mk_term s =
       let splitted = String.split ~on:'-' s in
       if List.length splitted = 1 then Var s else FDNumeral s
 
+let file2func = function
+  | "AllocExp.facts" -> "Alloc"
+  | "Arg.facts" -> "Arg"
+  | "Set.facts" -> "Set"
+  | "BinOpExp.facts" -> "BinOp"
+  | "UnOpExp.facts" -> "UnOp"
+  | "CallExp.facts" -> "Call"
+  | "CFPath.facts" -> "CFPath"
+  | "DUPath.facts" -> "DUPath"
+  | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
+  | "LibCallExp.facts" -> "LibCall"
+  | "LvalExp.facts" -> "LvalExp"
+  | "Return.facts" -> "Return"
+  | "SAllocExp.facts" -> "SAlloc"
+  | "Skip.facts" -> "Skip"
+  | _ -> L.error "file2func: wrong filename"
+
 let parse_facts datalog_dir fact_file =
-  let func_name = Filename.chop_extension fact_file in
+  let func_name = file2func fact_file in
   let fact_file_path = Filename.concat datalog_dir fact_file in
   In_channel.read_lines fact_file_path
   |> List.map ~f:(fun line ->
@@ -23,19 +40,9 @@ let parse_facts datalog_dir fact_file =
 
 let make_facts work_dir =
   let datalog_dir = Filename.concat work_dir "sparrow-out/taint/datalog" in
-  (* let open_in_datalog fn =
-       fn |> Filename.concat datalog_dir |> In_channel.create
-     in
-     let exp_map_ic = open_in_datalog "Exp.map" in
-     Maps.make_map exp_map_ic maps.Maps.exp_map;
-     let binop_map_ic = open_in_datalog "Bop.map" in
-     Maps.make_map binop_map_ic maps.Maps.binop_map;
-     let unop_map_ic = open_in_datalog "Uop.map" in
-     Maps.make_map unop_map_ic maps.Maps.unop_map; *)
   List.fold_left ~init:Chc.empty
     ~f:(fun facts file -> parse_facts datalog_dir file |> Chc.union facts)
     z3env.fact_files
-(* List.iter ~f:(apply_fact add_var_too maps datalog_dir solver) z3env.funs *)
 
 let rec parse_sem_cons = function
   | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->
