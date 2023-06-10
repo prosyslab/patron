@@ -6,7 +6,7 @@
 
 (executable
  (name main)
- (modules main maps z3env z3utils facts patmat semRules bugPatDB patTrans)
+ (modules main maps z3env z3utils parser chc patmat bugPatDB patTrans)
  (libraries patronlib unix yojson core z3 logger))
 
 (executable

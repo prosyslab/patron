@@ -61,16 +61,10 @@ type t = {
   ioerror : Z3.FuncDecl.func_decl;
   errnode : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
+  fact_files : String.t list;
   funs : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
   rels : string list;
 }
-
-let add_fact solver func args =
-  Z3.Fixedpoint.add_rule solver (Z3.FuncDecl.apply func args) None
-
-let mk_rule z3ctx vars cons =
-  Z3.Quantifier.mk_forall_const z3ctx vars cons None [] [] None None
-  |> Z3.Quantifier.expr_of_quantifier
 
 let mk_fixedpoint z3ctx =
   let mk_string_symbol s = Z3.Symbol.mk_string z3ctx s in
@@ -244,13 +238,33 @@ let mk_env () =
   let bug =
     Z3.FuncDecl.mk_func_decl_s z3ctx "bug" [ node; bv_sort ] boolean_sort
   in
+  let fact_files =
+    [
+      "AllocExp.facts";
+      "Arg.facts";
+      "Set.facts";
+      "CastExp.facts";
+      "BinOpExp.facts";
+      "CallExp.facts";
+      "CFPath.facts";
+      "DUPath.facts";
+      "GlobalVar.facts";
+      "LibCallExp.facts";
+      "LocalVar.facts";
+      "LvalExp.facts";
+      "Return.facts";
+      "SAllocExp.facts";
+      "Skip.facts";
+      "UnOpExp.facts";
+    ]
+  in
   let funs =
     [
       ("AllocExp.facts", alloc, [ expr; expr ]);
       ("Arg.facts", arg, [ arg_list; int_sort; expr ]);
       ("Set.facts", set, [ node; lval; expr ]);
       (* "Assume.facts" *)
-      ("CastExp.facts", cast, [ expr; expr ]);
+      (* ("CastExp.facts", cast, [ expr; expr ]); *)
       ("BinOpExp.facts", binop, [ expr; binop_sort; expr; expr ]);
       ("CallExp.facts", call, [ expr; expr; arg_list ]);
       (* "Cxp.facts" *)
@@ -374,6 +388,7 @@ let mk_env () =
       ioerror;
       errnode;
       bug;
+      fact_files;
       funs;
       rels;
     }
