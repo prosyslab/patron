@@ -284,7 +284,10 @@ let rec to_z3 maps = function
   | Const i ->
       Z3.BitVector.mk_numeral z3env.z3ctx (Z.to_int i |> string_of_int) 64
   | Implies (tl, hd) ->
-      let cons = Z3.Boolean.mk_and z3env.z3ctx (List.map ~f:(to_z3 maps) tl) in
+      let cons =
+        if List.is_empty tl then Z3.Boolean.mk_true z3env.z3ctx
+        else Z3.Boolean.mk_and z3env.z3ctx (List.map ~f:(to_z3 maps) tl)
+      in
       Z3.Boolean.mk_implies z3env.z3ctx cons (to_z3 maps hd)
 
 let add_fact maps solver f =

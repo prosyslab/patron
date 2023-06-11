@@ -107,3 +107,15 @@ let mk_numer maps sym sort =
     let n = Z3.Expr.mk_numeral_int z3env.z3ctx (new_numer ()) sort in
     Hashtbl.add maps.Maps.sym_map sym n;
     n
+
+let dump_solver_to_smt ver_name solver out_dir =
+  let solver_file = ver_name ^ ".smt2" |> Filename.concat out_dir in
+  let solver_oc = Out_channel.create solver_file in
+  Z3.Fixedpoint.to_string solver |> Out_channel.output_string solver_oc;
+  Out_channel.close solver_oc
+
+let dump_expr_to_smt ver_name expr out_dir =
+  let expr_file = ver_name ^ ".smt2" |> Filename.concat out_dir in
+  let expr_oc = Out_channel.create expr_file in
+  Z3.Expr.to_string expr |> Out_channel.output_string expr_oc;
+  Out_channel.close expr_oc

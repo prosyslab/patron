@@ -52,12 +52,6 @@ let reset_globals () =
   Bag.clear fixed_exps;
   Bag.clear var_bag
 
-let dump_smt ver_name solver out_dir =
-  let solver_file = ver_name ^ ".smt2" |> Filename.concat out_dir in
-  let solver_oc = Out_channel.create solver_file in
-  Z3.Fixedpoint.to_string solver |> Out_channel.output_string solver_oc;
-  Out_channel.close solver_oc
-
 let dump_map to_string map_name mode map out_dir =
   let sym_map_file =
     F.sprintf "%s_%s.map" mode map_name |> Filename.concat out_dir
@@ -79,13 +73,10 @@ let dump_exp_map = dump_str_map "exp"
 let dump_libcall_map = dump_str_map "libcall"
 let dump_binop_map = dump_str_map "binop"
 let dump_unop_map = dump_str_map "unop"
-
-let dump mode maps solver out_dir =
-  dump_smt mode solver out_dir;
-  dump_sym_map mode maps.sym_map out_dir;
-  dump_node_map mode maps.node_map out_dir;
-  dump_exp_map mode maps.exp_map out_dir;
-  dump_libcall_map mode maps.libcall_map out_dir;
-  dump_binop_map mode maps.binop_map out_dir;
-  dump_unop_map mode maps.unop_map out_dir;
-  dump_const_map "" const_map out_dir
+let dump mode maps out_dir = dump_sym_map mode maps.sym_map out_dir
+(* dump_node_map mode maps.node_map out_dir;
+   dump_exp_map mode maps.exp_map out_dir;
+   dump_libcall_map mode maps.libcall_map out_dir;
+   dump_binop_map mode maps.binop_map out_dir;
+   dump_unop_map mode maps.unop_map out_dir;
+   dump_const_map "" const_map out_dir *)

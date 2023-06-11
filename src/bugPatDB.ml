@@ -40,12 +40,13 @@ let abstract_bug_pattern donor snk alarm =
   in
   Chc.of_list [ errnode_rule; error_cons; bug_rule ]
 
-let match_rule maps chc pattern =
+let match_rule out_dir maps chc pattern =
   let solver = mk_fixedpoint z3env.z3ctx in
   reg_rel_to_solver z3env solver;
   Chc.add_all maps solver (Chc.union chc pattern);
   L.debug "All:\n%a" Chc.pp (Chc.union chc pattern);
-  let status = Z3.Fixedpoint.query solver (Z3.FuncDecl.apply z3env.bug []) in
+  Z3utils.dump_solver_to_smt "donor_match" solver out_dir;
+  let status = Z3.Fixedpoint.query_r solver [ z3env.bug ] in
   match status with
   | Z3.Solver.UNSATISFIABLE -> None
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
@@ -67,9 +68,11 @@ let run donor_dir patch_dir db_dir =
   let (_, snk), one_alarm = Parser.AlarmMap.choose alarm_map in
   let pattern = abstract_bug_pattern donor snk one_alarm in
   Chc.dump (Filename.concat out_dir "pattern.chc") pattern;
-  let donor_status = match_rule donor_maps donor pattern in
+  let donor_status = match_rule out_dir donor_maps donor pattern in
   if Option.is_some donor_status then
     Option.iter
-      ~f:(fun ans -> L.info "Answer: %s" (Z3.Expr.to_string ans))
+      ~f:(fun ans ->
+        L.info "Answer: %s" (Z3.Expr.to_string ans);
+        Z3utils.dump_expr_to_smt "donor_ans" ans out_dir)
       donor_status
   else L.info "Donor not matched"
