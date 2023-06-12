@@ -5,10 +5,13 @@ module Map = Stdlib.Map
 module L = Logger
 
 let mk_term s =
-  try Chc.Const (Z.of_string s)
-  with _ ->
-    if Z3utils.is_binop s || Z3utils.is_unop s then FDNumeral s
-    else
+  if
+    String.equal s "+" || String.equal s "-" || Z3utils.is_binop s
+    || Z3utils.is_unop s
+  then Chc.FDNumeral s
+  else
+    try Const (Z.of_string s)
+    with _ ->
       let splitted = String.split ~on:'-' s in
       if List.length splitted = 1 then Var s else FDNumeral s
 

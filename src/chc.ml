@@ -110,12 +110,47 @@ let rec pp_chc fmt = function
       |> String.concat ~sep:", "
       |> F.fprintf fmt "(\\forall %s.\n  %a <- %s)" vars_str pp_chc hd
 
-let pp fmt chcs = iter (fun chc -> F.fprintf fmt "%a\n" pp_chc chc) chcs
+let rec chc2sexp = function
+  | Lt (t1, t2) -> Sexp.List [ Sexp.Atom "<"; chc2sexp t1; chc2sexp t2 ]
+  | Gt (t1, t2) -> Sexp.List [ Sexp.Atom ">"; chc2sexp t1; chc2sexp t2 ]
+  | Le (t1, t2) -> Sexp.List [ Sexp.Atom "<="; chc2sexp t1; chc2sexp t2 ]
+  | Ge (t1, t2) -> Sexp.List [ Sexp.Atom ">="; chc2sexp t1; chc2sexp t2 ]
+  | Eq (t1, t2) -> Sexp.List [ Sexp.Atom "="; chc2sexp t1; chc2sexp t2 ]
+  | Ne (t1, t2) -> Sexp.List [ Sexp.Atom "!="; chc2sexp t1; chc2sexp t2 ]
+  | Not t -> Sexp.List [ Sexp.Atom "not"; chc2sexp t ]
+  | CLt (t1, t2) -> Sexp.List [ Sexp.Atom "Lt"; chc2sexp t1; chc2sexp t2 ]
+  | CGt (t1, t2) -> Sexp.List [ Sexp.Atom "Gt"; chc2sexp t1; chc2sexp t2 ]
+  | CLe (t1, t2) -> Sexp.List [ Sexp.Atom "Le"; chc2sexp t1; chc2sexp t2 ]
+  | CGe (t1, t2) -> Sexp.List [ Sexp.Atom "Ge"; chc2sexp t1; chc2sexp t2 ]
+  | CEq (t1, t2) -> Sexp.List [ Sexp.Atom "Eq"; chc2sexp t1; chc2sexp t2 ]
+  | CNe (t1, t2) -> Sexp.List [ Sexp.Atom "Ne"; chc2sexp t1; chc2sexp t2 ]
+  | CBNot t -> Sexp.List [ Sexp.Atom "BNot"; chc2sexp t ]
+  | CLNot t -> Sexp.List [ Sexp.Atom "LNot"; chc2sexp t ]
+  | CNeg t -> Sexp.List [ Sexp.Atom "Neg"; chc2sexp t ]
+  | Add (t1, t2) -> Sexp.List [ Sexp.Atom "+"; chc2sexp t1; chc2sexp t2 ]
+  | Mul (t1, t2) -> Sexp.List [ Sexp.Atom "*"; chc2sexp t1; chc2sexp t2 ]
+  | Sub (t1, t2) -> Sexp.List [ Sexp.Atom "-"; chc2sexp t1; chc2sexp t2 ]
+  | Div (t1, t2) -> Sexp.List [ Sexp.Atom "/"; chc2sexp t1; chc2sexp t2 ]
+  | Mod (t1, t2) -> Sexp.List [ Sexp.Atom "%"; chc2sexp t1; chc2sexp t2 ]
+  | Var s | FDNumeral s -> Sexp.Atom s
+  | Const i -> Sexp.Atom (Z.to_string i)
+  | FuncApply (fn, args) -> Sexp.List (Sexp.Atom fn :: List.map ~f:chc2sexp args)
+  | Implies (cons, hd) -> Sexp.List (chc2sexp hd :: List.map ~f:chc2sexp cons)
 
-let dump file chc =
+let pp fmt = iter (fun chc -> F.fprintf fmt "%a\n" pp_chc chc)
+let pp_smt fmt = iter (fun chc -> chc2sexp chc |> Sexp.pp fmt)
+
+let pretty_dump file chcs =
+  let oc_file = Out_channel.create (file ^ ".chc") in
+  let fmt = F.formatter_of_out_channel oc_file in
+  F.fprintf fmt "%a" pp chcs;
+  F.pp_print_flush fmt ();
+  Out_channel.close oc_file
+
+let sexp_dump file chcs =
   let oc_file = Out_channel.create file in
   let fmt = F.formatter_of_out_channel oc_file in
-  F.fprintf fmt "%a" pp chc;
+  F.fprintf fmt "%a" pp_smt chcs;
   F.pp_print_flush fmt ();
   Out_channel.close oc_file
 
@@ -142,8 +177,8 @@ let rec filter_func_app = function
              filter_func_app c |> union fa)
   | _ -> empty
 
-let extract_func_apps chc =
-  fold (fun c fa -> filter_func_app c |> union fa) chc empty
+let extract_func_apps chcs =
+  fold (fun c fa -> filter_func_app c |> union fa) chcs empty
 
 let get_args = function
   | FuncApply ("Arg", args)
@@ -297,7 +332,6 @@ let add_fact maps solver f =
 let add_rule maps solver r =
   let vars = collect_vars r |> to_list |> List.map ~f:(to_z3 maps) in
   let impl = to_z3 maps r in
-  L.debug "rule: %a" pp_chc r;
   if List.is_empty vars then add_fact maps solver r
   else
     let rule =

@@ -83,12 +83,17 @@ let match_sort s =
     else if is_unop name then z3env.unop_sort
     else z3env.bv_sort
   else
-    match name with
-    | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" -> z3env.expr
-    | "ArgList" -> z3env.arg_list
-    | "Lval" -> z3env.lval
-    | "Loc" | "Val" -> z3env.value
-    | _ -> z3env.node
+    let id = List.nth_exn sort_id 1 in
+    if String.is_empty name then
+      if String.is_empty id then z3env.binop_sort else z3env.bv_sort
+    else
+      match name with
+      | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" ->
+          z3env.expr
+      | "ArgList" -> z3env.arg_list
+      | "Lval" -> z3env.lval
+      | "Loc" | "Val" -> z3env.value
+      | _ -> z3env.node
 
 let numer_cnt = ref 24 (* for binop, unop *)
 

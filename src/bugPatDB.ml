@@ -40,20 +40,27 @@ let abstract_bug_pattern donor snk alarm =
   in
   Chc.of_list [ errnode_rule; error_cons; bug_rule ]
 
-let match_rule out_dir maps chc pattern =
+let match_rule out_dir ver_name maps chc pattern =
   let solver = mk_fixedpoint z3env.z3ctx in
   reg_rel_to_solver z3env solver;
   Chc.add_all maps solver (Chc.union chc pattern);
-  L.debug "All:\n%a" Chc.pp (Chc.union chc pattern);
-  Z3utils.dump_solver_to_smt "donor_match" solver out_dir;
+  Z3utils.dump_solver_to_smt (ver_name ^ "_match") solver out_dir;
   let status = Z3.Fixedpoint.query_r solver [ z3env.bug ] in
   match status with
   | Z3.Solver.UNSATISFIABLE -> None
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
   | Z3.Solver.UNKNOWN -> None
 
+let pattern_match out_dir ver_name maps chc pattern =
+  let status = match_rule out_dir ver_name maps chc pattern in
+  Option.iter
+    ~f:(fun ans ->
+      L.info "Matched";
+      Z3utils.dump_expr_to_smt (ver_name ^ "_ans") ans out_dir)
+    status
+
 let run donor_dir patch_dir db_dir =
-  Logger.info "Extract Bug Pattern...";
+  L.info "Add Bug Pattern to DB...";
   let out_dir = Filename.basename donor_dir |> Filename.concat db_dir in
   let donor_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
   Maps.reset_maps donor_maps;
@@ -61,18 +68,15 @@ let run donor_dir patch_dir db_dir =
   Maps.reset_globals ();
   let donor = Parser.make donor_dir in
   let patch = Parser.make patch_dir in
-  Chc.dump (Filename.concat out_dir "donor.chc") donor;
-  Chc.dump (Filename.concat out_dir "patch.chc") patch;
-  Logger.info "Make facts done";
+  Chc.pretty_dump (Filename.concat out_dir "donor") donor;
+  Chc.pretty_dump (Filename.concat out_dir "patch") patch;
+  Logger.info "Make CHC done";
   let alarm_map = Parser.mk_alarm_map donor_dir in
   let (_, snk), one_alarm = Parser.AlarmMap.choose alarm_map in
   let pattern = abstract_bug_pattern donor snk one_alarm in
-  Chc.dump (Filename.concat out_dir "pattern.chc") pattern;
-  let donor_status = match_rule out_dir donor_maps donor pattern in
-  if Option.is_some donor_status then
-    Option.iter
-      ~f:(fun ans ->
-        L.info "Answer: %s" (Z3.Expr.to_string ans);
-        Z3utils.dump_expr_to_smt "donor_ans" ans out_dir)
-      donor_status
-  else L.info "Donor not matched"
+  Logger.info "Make Bug Pattern done";
+  Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
+  L.info "Try matching with Donor...";
+  pattern_match out_dir "donor" donor_maps donor pattern;
+  L.info "Try matching with Patch...";
+  pattern_match out_dir "patch" patch_maps patch pattern
