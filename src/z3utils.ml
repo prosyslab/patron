@@ -36,22 +36,22 @@ let match_func = function
   | _ -> L.error "match_func: invalid function"
 
 let is_binop = function
-  | "+" | "PlusPI" | "IndexPI" | "-" | "MinusPI" | "MinusPP" | "*" | "/" | "%"
-  | "bvshl" | "bvshr" | "Lt" | "Gt" | "Le" | "Ge" | "Eq" | "Ne" | "bvand"
-  | "bvxor" | "bvor" | "and" | "or" ->
+  | "PlusA" | "PlusPI" | "IndexPI" | "MinusA" | "MinusPI" | "MinusPP" | "Mult"
+  | "Div" | "Mod" | "bvshl" | "bvshr" | "Lt" | "Gt" | "Le" | "Ge" | "Eq" | "Ne"
+  | "bvand" | "bvxor" | "bvor" | "and" | "or" ->
       true
   | _ -> false
 
 let match_binop = function
-  | "+" -> 0
+  | "PlusA" -> 0
   | "PlusPI" -> 1
   | "IndexPI" -> 2
-  | "-" -> 3
+  | "MinusA" -> 3
   | "MinusPI" -> 4
   | "MinusPP" -> 5
-  | "*" -> 6
-  | "/" -> 7
-  | "%" -> 8
+  | "Mult" -> 6
+  | "Div" -> 7
+  | "Mod" -> 8
   | "bvshl" -> 9
   | "bvshr" -> 10
   | "Lt" -> 11
@@ -83,17 +83,12 @@ let match_sort s =
     else if is_unop name then z3env.unop_sort
     else z3env.bv_sort
   else
-    let id = List.nth_exn sort_id 1 in
-    if String.is_empty name then
-      if String.is_empty id then z3env.binop_sort else z3env.bv_sort
-    else
-      match name with
-      | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" ->
-          z3env.expr
-      | "ArgList" -> z3env.arg_list
-      | "Lval" -> z3env.lval
-      | "Loc" | "Val" -> z3env.value
-      | _ -> z3env.node
+    match name with
+    | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" -> z3env.expr
+    | "ArgList" -> z3env.arg_list
+    | "Lval" -> z3env.lval
+    | "Loc" | "Val" -> z3env.value
+    | _ -> z3env.node
 
 let numer_cnt = ref 24 (* for binop, unop *)
 

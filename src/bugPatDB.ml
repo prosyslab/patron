@@ -40,25 +40,6 @@ let abstract_bug_pattern donor snk alarm =
   in
   Chc.of_list [ errnode_rule; error_cons; bug_rule ]
 
-let match_rule out_dir ver_name maps chc pattern =
-  let solver = mk_fixedpoint z3env.z3ctx in
-  reg_rel_to_solver z3env solver;
-  Chc.add_all maps solver (Chc.union chc pattern);
-  Z3utils.dump_solver_to_smt (ver_name ^ "_match") solver out_dir;
-  let status = Z3.Fixedpoint.query_r solver [ z3env.bug ] in
-  match status with
-  | Z3.Solver.UNSATISFIABLE -> None
-  | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
-  | Z3.Solver.UNKNOWN -> None
-
-let pattern_match out_dir ver_name maps chc pattern =
-  let status = match_rule out_dir ver_name maps chc pattern in
-  Option.iter
-    ~f:(fun ans ->
-      L.info "Matched";
-      Z3utils.dump_expr_to_smt (ver_name ^ "_ans") ans out_dir)
-    status
-
 let run donor_dir patch_dir db_dir =
   L.info "Add Bug Pattern to DB...";
   let out_dir = Filename.basename donor_dir |> Filename.concat db_dir in
@@ -69,14 +50,17 @@ let run donor_dir patch_dir db_dir =
   let donor = Parser.make donor_dir in
   let patch = Parser.make patch_dir in
   Chc.pretty_dump (Filename.concat out_dir "donor") donor;
+  Chc.sexp_dump (Filename.concat out_dir "donor") donor;
   Chc.pretty_dump (Filename.concat out_dir "patch") patch;
-  Logger.info "Make CHC done";
+  Chc.sexp_dump (Filename.concat out_dir "patch") patch;
+  L.info "Make CHC done";
   let alarm_map = Parser.mk_alarm_map donor_dir in
   let (_, snk), one_alarm = Parser.AlarmMap.choose alarm_map in
   let pattern = abstract_bug_pattern donor snk one_alarm in
-  Logger.info "Make Bug Pattern done";
+  L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
+  Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   L.info "Try matching with Donor...";
-  pattern_match out_dir "donor" donor_maps donor pattern;
+  Chc.match_and_log out_dir "donor" donor_maps donor pattern [ z3env.bug ];
   L.info "Try matching with Patch...";
-  pattern_match out_dir "patch" patch_maps patch pattern
+  Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]

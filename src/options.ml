@@ -37,7 +37,6 @@ let empty =
 let init debug db_dir =
   if debug then L.set_level L.DEBUG else L.set_level L.INFO;
   (try Unix.mkdir db_dir 0o775 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
-  Filename.concat db_dir "log.txt" |> L.from_file;
   { empty with debug; db_dir }
 
 let common_opt =
@@ -59,6 +58,7 @@ let common_opt =
 let db_opt copt donor_dir patch_dir =
   let out_dir = Filename.basename donor_dir |> Filename.concat copt.db_dir in
   (try Unix.mkdir out_dir 0o775 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
+  Filename.concat out_dir "log.txt" |> L.from_file;
   { copt with command = DB; donor_dir; patch_dir }
 
 let db_cmd =

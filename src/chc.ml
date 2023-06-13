@@ -127,28 +127,32 @@ let rec chc2sexp = function
   | CBNot t -> Sexp.List [ Sexp.Atom "BNot"; chc2sexp t ]
   | CLNot t -> Sexp.List [ Sexp.Atom "LNot"; chc2sexp t ]
   | CNeg t -> Sexp.List [ Sexp.Atom "Neg"; chc2sexp t ]
-  | Add (t1, t2) -> Sexp.List [ Sexp.Atom "+"; chc2sexp t1; chc2sexp t2 ]
-  | Mul (t1, t2) -> Sexp.List [ Sexp.Atom "*"; chc2sexp t1; chc2sexp t2 ]
-  | Sub (t1, t2) -> Sexp.List [ Sexp.Atom "-"; chc2sexp t1; chc2sexp t2 ]
-  | Div (t1, t2) -> Sexp.List [ Sexp.Atom "/"; chc2sexp t1; chc2sexp t2 ]
-  | Mod (t1, t2) -> Sexp.List [ Sexp.Atom "%"; chc2sexp t1; chc2sexp t2 ]
+  | Add (t1, t2) -> Sexp.List [ Sexp.Atom "PlusA"; chc2sexp t1; chc2sexp t2 ]
+  | Mul (t1, t2) -> Sexp.List [ Sexp.Atom "Mult"; chc2sexp t1; chc2sexp t2 ]
+  | Sub (t1, t2) -> Sexp.List [ Sexp.Atom "MinusA"; chc2sexp t1; chc2sexp t2 ]
+  | Div (t1, t2) -> Sexp.List [ Sexp.Atom "Div"; chc2sexp t1; chc2sexp t2 ]
+  | Mod (t1, t2) -> Sexp.List [ Sexp.Atom "Mod"; chc2sexp t1; chc2sexp t2 ]
   | Var s | FDNumeral s -> Sexp.Atom s
   | Const i -> Sexp.Atom (Z.to_string i)
   | FuncApply (fn, args) -> Sexp.List (Sexp.Atom fn :: List.map ~f:chc2sexp args)
   | Implies (cons, hd) -> Sexp.List (chc2sexp hd :: List.map ~f:chc2sexp cons)
 
 let pp fmt = iter (fun chc -> F.fprintf fmt "%a\n" pp_chc chc)
-let pp_smt fmt = iter (fun chc -> chc2sexp chc |> Sexp.pp fmt)
+
+let pp_smt fmt =
+  iter (fun chc ->
+      chc2sexp chc |> Sexp.pp fmt;
+      F.fprintf fmt "\n")
 
 let pretty_dump file chcs =
-  let oc_file = Out_channel.create (file ^ ".chc") in
+  let oc_file = Out_channel.create (file ^ "_hum.chc") in
   let fmt = F.formatter_of_out_channel oc_file in
   F.fprintf fmt "%a" pp chcs;
   F.pp_print_flush fmt ();
   Out_channel.close oc_file
 
 let sexp_dump file chcs =
-  let oc_file = Out_channel.create file in
+  let oc_file = Out_channel.create (file ^ "_mach.chc") in
   let fmt = F.formatter_of_out_channel oc_file in
   F.fprintf fmt "%a" pp_smt chcs;
   F.pp_print_flush fmt ();
@@ -343,3 +347,21 @@ let add_rule maps solver r =
 let add_all maps solver =
   iter (fun chc ->
       if is_rel chc then add_fact maps solver chc else add_rule maps solver chc)
+
+let pattern_match maps chc pattern query =
+  let solver = mk_fixedpoint z3env.z3ctx in
+  reg_rel_to_solver z3env solver;
+  add_all maps solver (union chc pattern);
+  let status = Z3.Fixedpoint.query_r solver query in
+  match status with
+  | Z3.Solver.UNSATISFIABLE -> None
+  | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
+  | Z3.Solver.UNKNOWN -> None
+
+let match_and_log out_dir ver_name maps chc pattern query =
+  let status = pattern_match maps chc pattern query in
+  Option.iter
+    ~f:(fun ans ->
+      L.info "Matched";
+      Z3utils.dump_expr_to_smt (ver_name ^ "_ans") ans out_dir)
+    status
