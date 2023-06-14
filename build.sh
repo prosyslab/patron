@@ -26,6 +26,6 @@ eval $(SHELL=bash opam config env --switch=$PATRON_OPAM_SWITCH)
 
 opam pin add git@github.com:prosyslab/logger.git -n
 opam pin add cil git@github.com:prosyslab/cil.git -n
-opam install -j $NCPU dune cil z3 core yojson logger
+opam install -j $NCPU dune cil z3 core core_unix yojson logger
 opam install -j $NCPU ocamlformat.0.24.1 merlin ocp-index ocp-indent ocaml-lsp-server  # for development
 make
