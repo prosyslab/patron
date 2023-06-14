@@ -42,7 +42,7 @@ let is_binop = function
       true
   | _ -> false
 
-let match_binop = function
+let int_of_binop = function
   | "PlusA" -> 0
   | "PlusPI" -> 1
   | "IndexPI" -> 2
@@ -65,15 +65,46 @@ let match_binop = function
   | "bvor" -> 19
   | "and" -> 20
   | "or" -> 21
-  | _ -> L.error "match_binop: invalid symbol"
+  | _ -> L.error "int_of_binop: invalid symbol"
+
+let binop_of_int = function
+  | 0 -> "PlusA"
+  | 1 -> "PlusPI"
+  | 2 -> "IndexPI"
+  | 3 -> "MinusA"
+  | 4 -> "MinusPI"
+  | 5 -> "MinusPP"
+  | 6 -> "Mult"
+  | 7 -> "Div"
+  | 8 -> "Mod"
+  | 9 -> "bvshl"
+  | 10 -> "bvshr"
+  | 11 -> "Lt"
+  | 12 -> "Gt"
+  | 13 -> "Le"
+  | 14 -> "Ge"
+  | 15 -> "Eq"
+  | 16 -> "Ne"
+  | 17 -> "bvand"
+  | 18 -> "bvxor"
+  | 19 -> "bvor"
+  | 20 -> "and"
+  | 21 -> "or"
+  | _ -> L.error "binop_of_int: invalid int"
 
 let is_unop = function "BNot" | "LNot" | "Neg" -> true | _ -> false
 
-let match_unop = function
+let int_of_unop = function
   | "BNot" -> 22
   | "LNot" -> 23
   | "Neg" -> 24
-  | _ -> L.error "match_unop: invalid symbol"
+  | _ -> L.error "int_of_unop: invalid symbol"
+
+let unop_of_int = function
+  | 22 -> "BNot"
+  | 23 -> "LNot"
+  | 24 -> "Neg"
+  | _ -> L.error "unop_of_int: invalid symbol"
 
 let match_sort s =
   let sort_id = String.split ~on:'-' s in
@@ -98,15 +129,17 @@ let new_numer () =
 
 let mk_numer maps sym sort =
   if Z3.Sort.equal sort z3env.binop_sort then
-    Z3.Expr.mk_numeral_int z3env.z3ctx (match_binop sym) sort
+    Z3.Expr.mk_numeral_int z3env.z3ctx (int_of_binop sym) sort
   else if Z3.Sort.equal sort z3env.unop_sort then
-    Z3.Expr.mk_numeral_int z3env.z3ctx (match_unop sym) sort
+    Z3.Expr.mk_numeral_int z3env.z3ctx (int_of_unop sym) sort
   else if Hashtbl.mem maps.Maps.sym_map sym then
     Hashtbl.find maps.Maps.sym_map sym
   else
-    let n = Z3.Expr.mk_numeral_int z3env.z3ctx (new_numer ()) sort in
-    Hashtbl.add maps.Maps.sym_map sym n;
-    n
+    let i = new_numer () in
+    let numer_i = Z3.Expr.mk_numeral_int z3env.z3ctx i sort in
+    Hashtbl.add maps.Maps.sym_map sym numer_i;
+    Hashtbl.add maps.Maps.numeral_map i sym;
+    numer_i
 
 let dump_solver_to_smt ver_name solver out_dir =
   let solver_file = ver_name ^ ".smt2" |> Filename.concat out_dir in

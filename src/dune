@@ -6,8 +6,8 @@
 
 (executable
  (name main)
- (modules main maps z3env z3utils parser chc patmat bugPatDB patTrans)
- (libraries patronlib unix yojson core core_unix.sys_unix z3 logger))
+ (modules main maps z3env z3utils parser chc bugPatDB patTrans)
+ (libraries patronlib yojson core core_unix.sys_unix z3 logger))
 
 (executable
  (name transformer)

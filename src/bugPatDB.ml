@@ -46,7 +46,6 @@ let run donor_dir patch_dir db_dir =
   let donor_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
   Maps.reset_maps donor_maps;
   Maps.reset_maps patch_maps;
-  Maps.reset_globals ();
   let donor = Parser.make donor_dir in
   let patch = Parser.make patch_dir in
   Chc.pretty_dump (Filename.concat out_dir "donor") donor;
@@ -63,4 +62,7 @@ let run donor_dir patch_dir db_dir =
   L.info "Try matching with Donor...";
   Chc.match_and_log out_dir "donor" donor_maps donor pattern [ z3env.bug ];
   L.info "Try matching with Patch...";
-  Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]
+  Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ];
+  Maps.dump "donor" donor_maps out_dir;
+  Maps.dump "patch" patch_maps out_dir;
+  L.info "Done."
