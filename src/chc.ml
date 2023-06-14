@@ -29,6 +29,11 @@ type chc =
   | Sub of chc * chc
   | Div of chc * chc
   | Mod of chc * chc
+  | BvShl of chc * chc
+  | BvShr of chc * chc
+  | BvAnd of chc * chc
+  | BvOr of chc * chc
+  | BvXor of chc * chc
   | Var of string
   | FDNumeral of string
   | Const of Z.t
@@ -59,7 +64,12 @@ let rec collect_vars = function
   | Mul (t1, t2)
   | Sub (t1, t2)
   | Div (t1, t2)
-  | Mod (t1, t2) ->
+  | Mod (t1, t2)
+  | BvShl (t1, t2)
+  | BvShr (t1, t2)
+  | BvAnd (t1, t2)
+  | BvOr (t1, t2)
+  | BvXor (t1, t2) ->
       union (collect_vars t1) (collect_vars t2)
   | Not t | CBNot t | CLNot t | CNeg t -> collect_vars t
   | FuncApply (_, args) ->
@@ -99,6 +109,11 @@ let rec pp_chc fmt = function
   | Sub (t1, t2) -> F.fprintf fmt "(%a - %a)" pp_chc t1 pp_chc t2
   | Div (t1, t2) -> F.fprintf fmt "(%a / %a)" pp_chc t1 pp_chc t2
   | Mod (t1, t2) -> F.fprintf fmt "(%a mod %a)" pp_chc t1 pp_chc t2
+  | BvShl (t1, t2) -> F.fprintf fmt "(%a bvshl %a)" pp_chc t1 pp_chc t2
+  | BvShr (t1, t2) -> F.fprintf fmt "(%a bvshr %a)" pp_chc t1 pp_chc t2
+  | BvAnd (t1, t2) -> F.fprintf fmt "(%a bvand %a)" pp_chc t1 pp_chc t2
+  | BvOr (t1, t2) -> F.fprintf fmt "(%a bvor %a)" pp_chc t1 pp_chc t2
+  | BvXor (t1, t2) -> F.fprintf fmt "(%a bvxor %a)" pp_chc t1 pp_chc t2
   | Var s | FDNumeral s -> F.fprintf fmt "%s" s
   | Const i -> F.fprintf fmt "%Ld" (Z.to_int64 i)
   | Implies (cons, hd) as impl ->
@@ -132,6 +147,11 @@ let rec chc2sexp = function
   | Sub (t1, t2) -> Sexp.List [ Sexp.Atom "MinusA"; chc2sexp t1; chc2sexp t2 ]
   | Div (t1, t2) -> Sexp.List [ Sexp.Atom "Div"; chc2sexp t1; chc2sexp t2 ]
   | Mod (t1, t2) -> Sexp.List [ Sexp.Atom "Mod"; chc2sexp t1; chc2sexp t2 ]
+  | BvShl (t1, t2) -> Sexp.List [ Sexp.Atom "bvshl"; chc2sexp t1; chc2sexp t2 ]
+  | BvShr (t1, t2) -> Sexp.List [ Sexp.Atom "bvshr"; chc2sexp t1; chc2sexp t2 ]
+  | BvAnd (t1, t2) -> Sexp.List [ Sexp.Atom "bvand"; chc2sexp t1; chc2sexp t2 ]
+  | BvOr (t1, t2) -> Sexp.List [ Sexp.Atom "bvor"; chc2sexp t1; chc2sexp t2 ]
+  | BvXor (t1, t2) -> Sexp.List [ Sexp.Atom "bvxor"; chc2sexp t1; chc2sexp t2 ]
   | Var s | FDNumeral s -> Sexp.Atom s
   | Const i -> Sexp.Atom (Z.to_string i)
   | FuncApply (fn, args) -> Sexp.List (Sexp.Atom fn :: List.map ~f:chc2sexp args)
@@ -238,6 +258,11 @@ let rec numer2var = function
   | Sub (t1, t2) -> Sub (numer2var t1, numer2var t2)
   | Div (t1, t2) -> Div (numer2var t1, numer2var t2)
   | Mod (t1, t2) -> Mod (numer2var t1, numer2var t2)
+  | BvShl (t1, t2) -> BvShl (numer2var t1, numer2var t2)
+  | BvShr (t1, t2) -> BvShr (numer2var t1, numer2var t2)
+  | BvAnd (t1, t2) -> BvAnd (numer2var t1, numer2var t2)
+  | BvOr (t1, t2) -> BvOr (numer2var t1, numer2var t2)
+  | BvXor (t1, t2) -> BvXor (numer2var t1, numer2var t2)
   | Not t -> Not (numer2var t)
   | CBNot t -> CBNot (numer2var t)
   | CLNot t -> CLNot (numer2var t)
@@ -314,14 +339,23 @@ let rec to_z3 maps = function
       Z3.BitVector.mk_sdiv z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
   | Mod (e1, e2) ->
       Z3.BitVector.mk_smod z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+  | BvShl (t1, t2) ->
+      Z3.BitVector.mk_shl z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
+  | BvShr (t1, t2) ->
+      Z3.BitVector.mk_lshr z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
+  | BvAnd (t1, t2) ->
+      Z3.BitVector.mk_and z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
+  | BvOr (t1, t2) ->
+      Z3.BitVector.mk_or z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
+  | BvXor (t1, t2) ->
+      Z3.BitVector.mk_xor z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
   | Var x ->
       let sort = Z3utils.match_sort x in
       Z3.Expr.mk_const_s z3env.z3ctx x sort
   | FDNumeral s ->
       let sort = Z3utils.match_sort s in
       Z3utils.mk_numer maps s sort
-  | Const i ->
-      Z3.BitVector.mk_numeral z3env.z3ctx (Z.to_int i |> string_of_int) 64
+  | Const i -> Z3.BitVector.mk_numeral z3env.z3ctx (Z.to_string i) 64
   | Implies (tl, hd) ->
       let cons =
         if List.is_empty tl then Z3.Boolean.mk_true z3env.z3ctx

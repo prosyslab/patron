@@ -33,7 +33,7 @@ let match_func = function
   | "IOError" -> z3env.ioerror
   | "ErrNode" -> z3env.errnode
   | "Bug" -> z3env.bug
-  | _ -> L.error "match_func: invalid function"
+  | s -> L.error "match_func: invalid function - %s" s
 
 let is_binop = function
   | "PlusA" | "PlusPI" | "IndexPI" | "MinusA" | "MinusPI" | "MinusPP" | "Mult"
@@ -119,6 +119,7 @@ let match_sort s =
     | "ArgList" -> z3env.arg_list
     | "Lval" -> z3env.lval
     | "Loc" | "Val" -> z3env.value
+    | "Pos" -> z3env.int_sort
     | _ -> z3env.node
 
 let numer_cnt = ref 24 (* for binop, unop *)
