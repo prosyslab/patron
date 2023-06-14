@@ -3,6 +3,16 @@ open Z3utils
 module L = Logger
 module Hashtbl = Stdlib.Hashtbl
 
+module PairSet = Set.Make (struct
+  type t = int * int
+
+  let compare (x1, y1) (x2, y2) =
+    let c1 = Int.compare x1 x2 in
+    if c1 = 0 then Int.compare y1 y2 else c1
+
+  let equal a b = compare a b = 0
+end)
+
 let fold_db f db_dir =
   Sys_unix.fold_dir ~init:(false, "")
     ~f:(fun (matched, donor) cand ->
@@ -106,22 +116,21 @@ let collect_facts ans = function
   | _ -> L.error "collect_facts: input's head must be ErrNode"
 
 let match_facts =
-  List.fold2_exn ~init:[] ~f:(fun pairs f1 f2 ->
+  List.fold2_exn ~init:PairSet.empty ~f:(fun pairs f1 f2 ->
       match (f1, f2) with
       | Sexp.List (Sexp.Atom hd1 :: args1), Sexp.List (Sexp.Atom hd2 :: args2)
         when String.equal hd1 hd2 ->
-          List.map2_exn args1 args2 ~f:(fun a1 a2 ->
+          List.fold2_exn args1 args2 ~init:pairs ~f:(fun pairs' a1 a2 ->
               match (a1, a2) with
               | Sexp.Atom s1, Sexp.Atom s2 ->
-                  (int_of_string s1, int_of_string s2)
+                  PairSet.add (int_of_string s1, int_of_string s2) pairs'
               | _ -> L.error "match_facts: wrong format")
-          |> List.rev_append pairs
       | _ -> L.error "match_facts: wrong format")
 
 let dump_sol_map donor_maps donee_maps out_dir =
   let oc = Out_channel.create (Filename.concat out_dir "sol.map") in
   let fmt = F.formatter_of_out_channel oc in
-  List.iter ~f:(fun (donor_n, donee_n) ->
+  PairSet.iter (fun (donor_n, donee_n) ->
       if 0 <= donor_n && donor_n <= 21 then
         F.fprintf fmt "%s\t%s\n"
           (Z3utils.binop_of_int donor_n)
