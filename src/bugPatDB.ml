@@ -1,4 +1,5 @@
 open Core
+open Z3env
 module F = Format
 module L = Logger
 module Hashtbl = Stdlib.Hashtbl
@@ -61,8 +62,8 @@ let run donor_dir patch_dir db_dir =
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   L.info "Try matching with Donor...";
   Chc.match_and_log out_dir "donor" donor_maps donor pattern [ z3env.bug ];
-  L.info "Try matching with Patch...";
-  Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ];
+  (* L.info "Try matching with Patch...";
+     Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]; *)
   Maps.dump "donor" donor_maps out_dir;
   Maps.dump "patch" patch_maps out_dir;
   TF.extract_edit_function donor_dir patch_dir out_dir;
