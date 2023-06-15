@@ -185,7 +185,12 @@ let run db_dir donee_dir out_dir =
   Chc.pretty_dump (Filename.concat out_dir "donee") donee;
   Chc.sexp_dump (Filename.concat out_dir "donee") donee;
   L.info "Make CHC done";
-  let _, donor_dir = fold_db (match_bug out_dir donee donee_maps) db_dir in
+  let is_matched, donor_dir =
+    fold_db (match_bug out_dir donee donee_maps) db_dir
+  in
+  if not is_matched then (
+    L.info ~to_console:true "There is no donor to donate patch TT";
+    exit 1);
   let donor_dir = Filename.concat db_dir donor_dir in
   match_ans donee_maps out_dir donor_dir;
   TF.transplant db_dir donee_dir out_dir

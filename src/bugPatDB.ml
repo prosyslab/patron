@@ -1,5 +1,4 @@
 open Core
-open Z3utils
 module F = Format
 module L = Logger
 module Hashtbl = Stdlib.Hashtbl
