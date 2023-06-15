@@ -2,6 +2,7 @@ open Core
 open Z3utils
 module L = Logger
 module Hashtbl = Stdlib.Hashtbl
+module TF = Transformer
 
 module PairSet = Set.Make (struct
   type t = int * int
@@ -127,10 +128,11 @@ let match_facts =
               | _ -> L.error "match_facts: wrong format")
       | _ -> L.error "match_facts: wrong format")
 
-let dump_sol_map donor_maps donee_maps out_dir =
+let dump_sol_map donor_maps donee_maps out_dir pairs =
   let oc = Out_channel.create (Filename.concat out_dir "sol.map") in
   let fmt = F.formatter_of_out_channel oc in
-  PairSet.iter (fun (donor_n, donee_n) ->
+  PairSet.iter
+    (fun (donor_n, donee_n) ->
       if 0 <= donor_n && donor_n <= 21 then
         F.fprintf fmt "%s\t%s\n"
           (Z3utils.binop_of_int donor_n)
@@ -143,6 +145,9 @@ let dump_sol_map donor_maps donee_maps out_dir =
         F.fprintf fmt "%s\t%s\n"
           (Hashtbl.find donor_maps.Maps.numeral_map donor_n)
           (Hashtbl.find donee_maps.Maps.numeral_map donee_n))
+    pairs;
+  F.pp_print_flush fmt ();
+  Out_channel.close oc
 
 let match_ans donee_maps out_dir donor_dir =
   let donor_ans =
@@ -182,4 +187,5 @@ let run db_dir donee_dir out_dir =
   L.info "Make CHC done";
   let _, donor_dir = fold_db (match_bug out_dir donee donee_maps) db_dir in
   let donor_dir = Filename.concat db_dir donor_dir in
-  match_ans donee_maps out_dir donor_dir
+  match_ans donee_maps out_dir donor_dir;
+  TF.transplant db_dir donee_dir out_dir

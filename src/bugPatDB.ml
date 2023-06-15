@@ -5,6 +5,7 @@ module L = Logger
 module Hashtbl = Stdlib.Hashtbl
 module Set = Stdlib.Set
 module Map = Stdlib.Map
+module TF = Transformer
 
 let collect_deps terms chc =
   let func_apps = Chc.extract_func_apps chc in
@@ -65,4 +66,5 @@ let run donor_dir patch_dir db_dir =
   Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ];
   Maps.dump "donor" donor_maps out_dir;
   Maps.dump "patch" patch_maps out_dir;
+  TF.extract_edit_function donor_dir patch_dir out_dir;
   L.info "Done."

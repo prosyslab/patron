@@ -1,75 +1,38 @@
-open Yojson
-module J = Yojson.Basic
+module J = Yojson.Basic.Util
 module F = Format
-module L = Logger
 module StrMap = Map.Make (String)
 
-type node_string = Node of string * string * string list
-
-module Element = struct
-  type t = Empty | EStmt of Cil.stmt | EInstr of Cil.instr | EExp of Cil.exp
+module ExpMap = Map.Make (struct
+  type t = Cil.exp
 
   let compare = compare
-end
+end)
 
-type node = { id : string; elem : Element.t; subelem : Cil.exp StrMap.t }
+module LvalMap = Map.Make (struct
+  type t = Cil.lval
 
-type syntatic_context =
-  | Root
-  | GlobalContext of Cil.global
-  | StmtContext of Cil.stmt * syntatic_context
-  | InstrContext of Cil.instr * syntatic_context
-  | ExpContext of Cil.exp * syntatic_context
-  | LvalContext of Cil.lval * syntatic_context
-  | NodeLevelContext of node
+  let compare = compare
+end)
 
-type action =
-  (* InsrtGlobal(g1, g2) : insert statement s2 before statement s1 *)
-  | Equal
-  | InsertGlobal of Cil.global * Cil.global
-  | DeleteGlobal of Cil.global * Cil.global
-  | InsertLastGlobal of Cil.global list
-  | DeleteLastGlobal of Cil.global list
-  | InsertStmt of syntatic_context * Cil.stmt * Cil.stmt
-  | InsertLastStmt of syntatic_context * Cil.block * Cil.stmt list
-  | DeleteStmt of syntatic_context * Cil.stmt * Cil.stmt
-  | DeleteLastStmt of syntatic_context * Cil.block * Cil.stmt list
-  | UpdateStmt of syntatic_context * Cil.stmt * Cil.stmt
-  | InsertInstr of syntatic_context * Cil.instr * Cil.instr
-  | InsertLastInstr of syntatic_context * Cil.stmt * Cil.instr list
-  | DeleteInstr of syntatic_context * Cil.instr * Cil.instr
-  | DeleteLastInstr of syntatic_context * Cil.stmt * Cil.instr list
-  | UpdateInstr of syntatic_context * Cil.instr * Cil.instr
-  | InsertExp of syntatic_context * Cil.exp * Cil.exp
-  | InsertLastExp of syntatic_context * Cil.exp * Cil.exp list
-  | DeleteExp of syntatic_context * Cil.exp * Cil.exp
-  | DeleteLastExp of syntatic_context * Cil.exp * Cil.exp list
-  | UpdateExp of syntatic_context * Cil.exp * Cil.exp
-  | UpdateLval of syntatic_context * Cil.lval * Cil.lval
-
-type semantic_action = {
-  action : action;
-  cfg_edges : (string * string) list;
-  dug_edges : (string * string) list;
+type stmt_info = {
+  stmt : Cil.stmt;
+  lvals : string LvalMap.t;
+  exps : string ExpMap.t;
 }
 
-type sparrow_node =
-  | Node of string * sparrow_node * int (* id, node, loc *)
-  | Skip of string
-  | Return of string
-  | Call of string * string * string list (* lval, func name, args *)
-  | Assume of bool * string (* bool, exp *)
-  | Salloc of string * string (* to, from *)
-  | Set of string * string (* to, from *)
-  | Alloc of string * string (* to, from *)
-  | Falloc of string * string (* to, from *)
-
-type graph = {
-  nodes : node list;
-  cfg_edges : (string * string) list;
-  dug_edges : (string * string) list;
+type stmt_info_rev = {
+  stmt : Cil.stmt;
+  lvals : Cil.lval StrMap.t;
+  exps : Cil.exp StrMap.t;
 }
 
+module InfoMap = Map.Make (struct
+  type t = stmt_info
+
+  let compare = compare
+end)
+
+(* pp functions *)
 let string_of_file file = Cil.dumpFile !Cil.printerForMaincil stdout "" file
 
 let string_of_global global =
@@ -85,119 +48,27 @@ let string_of_exp exp = Cil.d_exp () exp |> Pretty.sprint ~width:80
 let string_of_typ typ = Cil.d_type () typ |> Pretty.sprint ~width:80
 let string_of_lval lval = Cil.d_lval () lval |> Pretty.sprint ~width:80
 
-let rec string_of_context context =
-  match context with
-  | Root -> "Root"
-  | GlobalContext global ->
-      "GlobalContext(" ^ string_of_global global ^ ")\n==== context ends ===="
-  | StmtContext (stmt, c) ->
-      "StmtContext(" ^ string_of_stmt stmt ^ ")\n\n" ^ string_of_context c
-  | InstrContext (instr, c) ->
-      "InstrContext(" ^ string_of_instr instr ^ ")\n\n" ^ string_of_context c
-  | ExpContext (exp, c) ->
-      "ExpContext(" ^ string_of_exp exp ^ ")\n\n" ^ string_of_context c
-  | LvalContext (lval, c) ->
-      "LvalContext("
-      ^ string_of_exp (Cil.Lval lval)
-      ^ ")\n\n" ^ string_of_context c
-
-let pp_action fmt = function
-  | InsertGlobal (g1, g2) ->
-      F.fprintf fmt "InsertGlobal(%s, %s)" (string_of_global g1)
-        (string_of_global g2)
-  | DeleteGlobal (g1, g2) ->
-      F.fprintf fmt "DeleteGlobal(%s, %s)" (string_of_global g1)
-        (string_of_global g2)
-  | InsertStmt (context, s1, s2) ->
-      F.fprintf fmt "InsertStmt(%s, %s)"
-        (* "\n====Context====\n%s\n"  *)
-        (string_of_stmt s1)
-        (string_of_stmt s2)
-      (* (string_of_context context) *)
-  | InsertLastStmt (context, _, sl) ->
-      List.iter
-        (fun s -> F.fprintf fmt "InsertLastStmt(%s)" (string_of_stmt s))
-        sl
-  (* F.fprintf fmt "\n====Context====\n%s\n" (string_of_context context) *)
-  | DeleteStmt (context, s1, s2) ->
-      F.fprintf fmt "DeleteStmt(%s, %s)"
-        (* "\n====Context====\n%s\n" *)
-        (string_of_stmt s1)
-        (string_of_stmt s2)
-      (* (string_of_context context) *)
-  | DeleteLastStmt (context, _, sl) ->
-      List.iter
-        (fun s -> F.fprintf fmt "DeleteLastStmt(%s)" (string_of_stmt s))
-        sl
-  (* F.fprintf fmt "\n====Context====\n%s\n" (string_of_context context) *)
-  | InsertInstr (context, i1, i2) ->
-      F.fprintf fmt "InsertInstr(%s, %s)"
-        (* "\n====Context====\n%s\n" *)
-        (string_of_instr i1)
-        (string_of_instr i2)
-      (* (string_of_context context) *)
-  | InsertLastInstr (context, _, il) ->
-      List.iter
-        (fun i -> F.fprintf fmt "InsertLastInstr(%s)" (string_of_instr i))
-        il
-  (* F.fprintf fmt "\n====Context====\n%s\n" (string_of_context context) *)
-  | DeleteInstr (context, i1, i2) ->
-      F.fprintf fmt "DeleteInstr(%s, %s)"
-        (* "\n====Context====\n%s\n" *)
-        (string_of_instr i1)
-        (string_of_instr i2)
-      (* (string_of_context context) *)
-  | DeleteLastInstr (context, _, il) ->
-      List.iter
-        (fun i -> F.fprintf fmt "DeleteLastInstr(%s)" (string_of_instr i))
-        il
-  (* F.fprintf fmt "\n====Context====\n%s\n" (string_of_context context) *)
-  | UpdateStmt (context, s1, s2) ->
-      F.fprintf fmt "UpdateStmt(%s, %s)"
-        (* "\n====Context====\n%s\n" *)
-        (string_of_stmt s1)
-        (string_of_stmt s2)
-      (* (string_of_context context) *)
-  | UpdateInstr (context, i1, i2) ->
-      F.fprintf fmt "UpdateInstr(%s, %s)"
-        (* "\n====Context====\n%s\n" *)
-        (string_of_instr i1)
-        (string_of_instr i2)
-      (* (string_of_context context) *)
-  | UpdateExp (context, e1, e2) ->
-      F.fprintf fmt "UpdateExp(%s, %s)"
-        (* "\n====Context====\n%s\n" *)
-        (string_of_exp e1)
-        (string_of_exp e2)
-      (* (string_of_context context) *)
-  | InsertExp (context, e1, e2) ->
-      F.fprintf fmt "InsertExp(%s, %s)"
-        (* "\n====Context====\n%s\n" *)
-        (string_of_exp e1)
-        (string_of_exp e2)
-      (* (string_of_context context) *)
-  | DeleteExp (context, e1, e2) ->
-      F.fprintf fmt "DeleteExp(%s, %s)"
-        (* "\n====Context====\n%s\n" *)
-        (string_of_exp e1)
-        (string_of_exp e2)
-  (* (string_of_context context) *)
-  (* TODO: Instr level not validated *)
-  | _ -> ()
-
-let pp_edit_script fmt script =
-  List.iter (fun action -> F.fprintf fmt "%a\n" pp_action action) script
+let print_bool b =
+  if b = true then print_endline "true" else print_endline "false"
 
 let eq_instr instr1 instr2 =
   match (instr1, instr2) with
-  | Cil.Set _, Cil.Set _ | Cil.Call _, Cil.Call _ | Cil.Asm _, Cil.Asm _ -> true
+  | Cil.Set (lv1, _, _), Cil.Set (lv2, _, _) ->
+      string_of_lval lv1 = string_of_lval lv2
+  | Cil.Call (lv1, _, _, _), Cil.Call (lv2, _, _, _) -> (
+      match (lv1, lv2) with
+      | None, None -> true
+      | Some lv1, Some lv2 -> string_of_lval lv1 = string_of_lval lv2
+      | _ -> false)
+  | Cil.Asm _, Cil.Asm _ -> true
   | _ -> false
 
-let eq_stmt_kind skind1 skind2 =
+let eq_stmt skind1 skind2 =
   match (skind1, skind2) with
-  | Cil.Instr instrs1, Cil.Instr instrs2 ->
-      List.length instrs1 = List.length instrs2
-  | Cil.Return _, Cil.Return _
+  | Cil.Instr i1, Cil.Instr i2 -> eq_instr (List.hd i1) (List.hd i2)
+  | Cil.Return (Some e1, _), Cil.Return (Some e2, _) ->
+      string_of_exp e1 = string_of_exp e2
+  | Cil.Return (None, _), Cil.Return (None, _) -> true
   | Cil.Goto _, Cil.Goto _
   | Cil.ComputedGoto _, Cil.ComputedGoto _
   | Cil.Break _, Cil.Break _
@@ -209,229 +80,6 @@ let eq_stmt_kind skind1 skind2 =
   | Cil.TryFinally _, Cil.TryFinally _ ->
       true
   | _ -> false
-
-let rec eq_exp (a : Cil.exp) (b : Cil.exp) =
-  match (a, b) with
-  | Lval (Var a, NoOffset), Lval (Var b, NoOffset) -> a.vname = b.vname
-  | Lval (Mem a, NoOffset), Lval (Mem b, NoOffset) -> eq_exp a b
-  | BinOp (a, b, c, _), BinOp (d, e, f, _) -> a = d && eq_exp b e && eq_exp c f
-  | UnOp (a, b, _), UnOp (c, d, _) -> a = c && eq_exp b d
-  | CastE (a, b), CastE (c, d) -> a = c && eq_exp b d
-  | AddrOf (Var a, NoOffset), AddrOf (Var b, NoOffset) -> a.vname = b.vname
-  | AddrOf (Mem a, NoOffset), AddrOf (Mem b, NoOffset) -> eq_exp a b
-  | StartOf (Var a, NoOffset), StartOf (Var b, NoOffset) -> a.vname = b.vname
-  | StartOf (Mem a, NoOffset), StartOf (Mem b, NoOffset) -> eq_exp a b
-  | Cil.SizeOfE a, Cil.SizeOfE b -> eq_exp a b
-  | Const a, Const b -> a = b
-  | Lval (Var a, NoOffset), StartOf (Var b, NoOffset)
-  | StartOf (Var a, NoOffset), Lval (Var b, NoOffset) ->
-      a.vname = b.vname
-  | _ -> false
-
-let eq_global_type glob1 glob2 =
-  match (glob1, glob2) with
-  | Cil.GType _, Cil.GType _
-  | Cil.GCompTag _, Cil.GCompTag _
-  | Cil.GCompTagDecl _, Cil.GCompTagDecl _
-  | Cil.GEnumTag _, Cil.GEnumTag _
-  | Cil.GEnumTagDecl _, Cil.GEnumTagDecl _
-  | Cil.GVar _, Cil.GVar _
-  | Cil.GVarDecl _, Cil.GVarDecl _
-  | Cil.GFun _, Cil.GFun _
-  | Cil.GAsm _, Cil.GAsm _
-  | Cil.GPragma _, Cil.GPragma _ ->
-      true
-  | _ -> false
-
-let eq_lval l1 l2 =
-  match (l1, l2) with
-  | (lhost1, _), (lhost2, _) -> (
-      match (lhost1, lhost2) with
-      | Cil.Var vi1, Cil.Var vi2 -> vi1.Cil.vname = vi2.Cil.vname
-      | Cil.Mem _, Cil.Mem _ -> true
-      | _ -> false)
-
-let extract_exp_change e1 e2 context =
-  if eq_exp e1 e2 then []
-  else
-    let _ = L.debug "exp update detected" in
-    print_endline "exp update detected";
-    [ UpdateExp (context, e1, e2) ]
-
-let rec find_param_change_rec e1 es2 pred result_list =
-  match es2 with
-  | [] -> result_list
-  | e2 :: es2' ->
-      if eq_exp e1 e2 then pred :: result_list
-      else find_param_change_rec e1 es2' e2 result_list
-
-let find_param_change e1 es2 result_list =
-  match es2 with
-  | [] -> result_list
-  | e2 :: es2' ->
-      if eq_exp e1 e2 then [ e1 ]
-      else find_param_change_rec e1 es2' e2 result_list
-
-let rec find_continue_point_param param1 params =
-  match params with
-  | [] -> []
-  | hd :: tl ->
-      if eq_exp param1 hd then params else find_continue_point_param param1 tl
-
-let rec fold_params2 params1 params2 context =
-  match (params1, params2) with
-  | p1 :: ps1, p2 :: ps2 ->
-      if eq_exp p1 p2 then fold_params2 ps1 ps2 context
-      else
-        let insertions = find_param_change p1 params2 [] in
-        if insertions <> [] then (
-          let _ = L.debug "param insert detected\n" in
-          print_endline "param insert detected";
-          fold_params2 ps1
-            (find_continue_point_param (List.hd insertions) ps2)
-            context
-          @ List.map
-              (fun p -> InsertExp (ExpContext (p1, context), p1, p))
-              insertions)
-        else
-          let deletions = find_param_change p2 params1 [] in
-          if deletions <> [] then (
-            let _ = L.debug "param delete detected" in
-            print_endline "param delete detected";
-            fold_params2
-              (find_continue_point_param (List.hd deletions) ps1)
-              ps2 context
-            @ List.map
-                (fun p -> DeleteExp (ExpContext (p2, context), p2, p))
-                deletions)
-          else
-            let _ = L.debug "param update detected" in
-            print_endline "param update detected";
-            UpdateExp (ExpContext (p1, context), p1, p2)
-            :: fold_params2 ps1 (List.tl ps2) context
-  | [], [] -> []
-  | _ -> []
-
-let rec find_instr_change_rec i1 is2 pred result_list =
-  match is2 with
-  | [] -> result_list
-  | i2 :: is2' ->
-      if eq_instr i1 i2 then pred :: result_list
-      else find_instr_change_rec i1 is2' i2 result_list
-
-let find_instr_change i1 is2 result_list =
-  match is2 with
-  | [] -> []
-  | i2 :: is2' ->
-      if eq_instr i1 i2 then []
-      else find_instr_change_rec i1 is2' i2 result_list
-
-let extract_instr i1 i2 context =
-  match (i1, i2) with
-  | Cil.Call (_, e1, params1, _), Cil.Call (_, e2, params2, _) ->
-      let e_result = extract_exp_change e1 e2 (ExpContext (e1, context)) in
-      let params_result = fold_params2 params1 params2 context in
-      e_result @ params_result
-  | _ -> []
-
-let rec find_continue_point_instr instr1 instrs =
-  match instrs with
-  | [] -> []
-  | hd :: tl ->
-      if eq_instr instr1 hd then instrs else find_continue_point_instr instr1 tl
-
-let rec fold_instrs2 s1 instrs1 instrs2 context =
-  match (instrs1, instrs2) with
-  | i1 :: is1, i2 :: is2 ->
-      if eq_instr i1 i2 then
-        let work_result = extract_instr i1 i2 (InstrContext (i1, context)) in
-        if work_result <> [] then work_result
-        else fold_instrs2 s1 is1 is2 context
-      else
-        let insertions = find_instr_change i1 instrs2 [] in
-        if insertions <> [] then
-          let _ = L.debug "instr insertion detected\n" in
-          fold_instrs2 s1 is1
-            (find_continue_point_instr (List.hd insertions) is2)
-            context
-          @ List.map (fun i -> InsertInstr (context, i1, i)) insertions
-        else
-          let deletions = find_instr_change i2 instrs1 [] in
-          if deletions <> [] then
-            let _ = L.debug "instr deletion detected\n" in
-            fold_instrs2 s1
-              (find_continue_point_instr (List.hd deletions) is1)
-              is2 context
-            @ List.map (fun i -> DeleteInstr (context, i2, i)) deletions
-          else fold_instrs2 s1 is1 is2 context
-  | [], [] -> []
-  | [], _ -> [ InsertLastInstr (context, s1, instrs2) ]
-  | _, [] -> [ DeleteLastInstr (context, s1, instrs1) ]
-
-let rec find_continue_point_stmt stmt1 stmts =
-  match stmts with
-  | [] -> []
-  | hd :: tl ->
-      if eq_stmt_kind stmt1.Cil.skind hd.Cil.skind then stmts
-      else find_continue_point_stmt stmt1 tl
-
-let rec find_stmt_change_rec s1 ss2 pred result_list =
-  match ss2 with
-  | [] -> result_list
-  | s2 :: ss2' ->
-      if eq_stmt_kind s1.Cil.skind s2.Cil.skind then pred :: result_list
-      else find_stmt_change_rec s1 ss2' s2 result_list
-
-let find_stmt_change s1 ss2 result_list =
-  match ss2 with
-  | [] -> []
-  | s2 :: ss2' ->
-      if eq_stmt_kind s1.Cil.skind s2.Cil.skind then []
-      else find_stmt_change_rec s1 ss2' s2 result_list
-
-let rec fold_stmts2 b1 stmts1 stmts2 context =
-  match (stmts1, stmts2) with
-  | s1 :: ss1, s2 :: ss2 ->
-      if eq_stmt_kind s1.Cil.skind s2.Cil.skind then
-        let extract_result = extract_skind s1 s2 (StmtContext (s1, context)) in
-        if extract_result <> [] then extract_result
-        else fold_stmts2 b1 ss1 ss2 context
-      else
-        let insertions = find_stmt_change s1 stmts2 [] in
-        if insertions <> [] then (
-          let _ = L.debug "stmt insertion detected\n" in
-          print_endline "stmt insertion detected";
-          fold_stmts2 b1 ss1
-            (find_continue_point_stmt (List.hd insertions) ss2)
-            context
-          @ List.map (fun s -> InsertStmt (context, s1, s)) insertions)
-        else
-          let deletions = find_stmt_change s2 stmts1 [] in
-          if deletions <> [] then (
-            let _ = L.debug "stmt deletion detected\n" in
-            print_endline "stmt deletion detected";
-            fold_stmts2 b1
-              (find_continue_point_stmt (List.hd deletions) ss1)
-              ss2 context
-            @ List.map (fun s -> DeleteStmt (context, s2, s)) deletions)
-          else UpdateStmt (context, s1, s2) :: fold_stmts2 b1 ss1 ss2 context
-  | [], [] -> []
-  | [], _ -> [ InsertLastStmt (context, b1, stmts2) ]
-  | _, [] -> [ DeleteLastStmt (context, b1, stmts1) ]
-
-and extract_block block1 block2 context =
-  fold_stmts2 block1 block1.Cil.bstmts block2.Cil.bstmts context
-
-and extract_skind s1 s2 context =
-  match (s1.Cil.skind, s2.Cil.skind) with
-  | Cil.Instr instrs1, Cil.Instr instrs2 ->
-      let instr_result = fold_instrs2 s1 instrs1 instrs2 context in
-      if instr_result <> [] then instr_result else []
-  | Cil.If (_, t_block1, e_block1, _), Cil.If (_, t_block2, e_block2, _) ->
-      let t_result = extract_block t_block1 t_block2 context in
-      let e_result = extract_block e_block1 e_block2 context in
-      t_result @ e_result
-  | _ -> []
 
 let eq_typ typ_info1 typ_info2 =
   match (typ_info1, typ_info2) with
@@ -466,81 +114,62 @@ let eq_global glob1 glob2 =
       true
   | _ -> false
 
-let extract_global glob1 glob2 =
+let eq_stmt_kind skind1 skind2 =
+  match (skind1, skind2) with
+  | Cil.Instr _, Cil.Instr _
+  | Cil.Return _, Cil.Return _
+  | Cil.Goto _, Cil.Goto _
+  | Cil.ComputedGoto _, Cil.ComputedGoto _
+  | Cil.Break _, Cil.Break _
+  | Cil.Continue _, Cil.Continue _
+  | Cil.If _, Cil.If _
+  | Cil.Loop _, Cil.Loop _
+  | Cil.Block _, Cil.Block _
+  | Cil.TryExcept _, Cil.TryExcept _
+  | Cil.TryFinally _, Cil.TryFinally _ ->
+      true
+  | _ -> false
+
+let rec eq_exp (a : Cil.exp) (b : Cil.exp) =
+  match (a, b) with
+  | Lval (Var a, NoOffset), Lval (Var b, NoOffset) -> a.vname = b.vname
+  | Lval (Mem a, NoOffset), Lval (Mem b, NoOffset) -> eq_exp a b
+  | BinOp (a, b, c, _), BinOp (d, e, f, _) -> a = d && eq_exp b e && eq_exp c f
+  | UnOp (a, b, _), UnOp (c, d, _) -> a = c && eq_exp b d
+  | CastE (a, b), CastE (c, d) -> a = c && eq_exp b d
+  | AddrOf (Var a, NoOffset), AddrOf (Var b, NoOffset) -> a.vname = b.vname
+  | AddrOf (Mem a, NoOffset), AddrOf (Mem b, NoOffset) -> eq_exp a b
+  | StartOf (Var a, NoOffset), StartOf (Var b, NoOffset) -> a.vname = b.vname
+  | StartOf (Mem a, NoOffset), StartOf (Mem b, NoOffset) -> eq_exp a b
+  | Cil.SizeOfE a, Cil.SizeOfE b -> eq_exp a b
+  | Const a, Const b -> a = b
+  | Lval (Var a, NoOffset), StartOf (Var b, NoOffset)
+  | StartOf (Var a, NoOffset), Lval (Var b, NoOffset) ->
+      a.vname = b.vname
+  | Question (a, b, c, _), Question (d, e, f, _) ->
+      eq_exp a d && eq_exp b e && eq_exp c f
+  | _ -> false
+
+let eq_global_type glob1 glob2 =
   match (glob1, glob2) with
-  | Cil.GFun (func_info1, _), Cil.GFun (func_info2, _) ->
-      if
-        eq_typ func_info1.svar.vtype func_info2.svar.vtype
-        && eq_global glob1 glob2
-      then
-        let diff_result =
-          extract_block func_info1.sbody func_info2.sbody (GlobalContext glob1)
-        in
-        if diff_result = [] then [ Equal ] else diff_result
-      else []
-  | Cil.GVarDecl (v1, _), Cil.GVarDecl (v2, _) ->
-      if v1.vname = v2.vname then [ Equal ] else []
-  | _ -> []
-
-let rec find_global_change_rec glob1 globals pred result_list =
-  match globals with
-  | [] -> result_list
-  | hd :: tl ->
-      if eq_global glob1 hd then pred :: result_list
-      else find_global_change_rec glob1 tl hd (pred :: result_list)
-
-let find_global_change glob1 glob2 globals =
-  match globals with
-  | [] -> []
-  | hd :: tl ->
-      if eq_global glob1 hd then [ glob2 ]
-      else find_global_change_rec glob1 tl hd [ glob2 ]
-
-let rec find_continue_point_glob glob1 globals =
-  match globals with
-  | [] -> []
-  | hd :: tl ->
-      if eq_global glob1 hd then tl else find_continue_point_glob glob1 tl
-
-let rec fold_globals2 doner_gobals patch_globals =
-  match (doner_gobals, patch_globals) with
-  | hd1 :: tl1, hd2 :: tl2 ->
-      let es = extract_global hd1 hd2 in
-      if es <> [] then
-        if List.hd es = Equal then fold_globals2 tl1 tl2
-        else es @ fold_globals2 tl1 tl2
-      else
-        let insertions = find_global_change hd1 hd2 tl2 in
-        if insertions <> [] then
-          let _ =
-            L.debug "global insertion detected";
-            print_endline "global insertion detected"
-          in
-          fold_globals2 tl1 (find_continue_point_glob hd1 tl2)
-          @ List.map (fun g -> InsertGlobal (hd1, g)) insertions
-        else
-          let deletions = find_global_change hd2 hd1 tl1 in
-          if deletions <> [] then
-            let _ =
-              L.debug "global deletion detected";
-              print_endline "global deletion detected"
-            in
-            fold_globals2 tl1 (find_continue_point_glob (List.hd deletions) tl2)
-            @ List.map (fun g -> DeleteGlobal (hd2, g)) deletions
-          else fold_globals2 tl1 tl2
-  | [], _ -> [ InsertLastGlobal doner_gobals ]
-  | _, [] -> [ DeleteLastGlobal patch_globals ]
-
-let extract doner_file patch_file =
-  fold_globals2 doner_file.Cil.globals patch_file.Cil.globals
+  | Cil.GType _, Cil.GType _
+  | Cil.GCompTag _, Cil.GCompTag _
+  | Cil.GCompTagDecl _, Cil.GCompTagDecl _
+  | Cil.GEnumTag _, Cil.GEnumTag _
+  | Cil.GEnumTagDecl _, Cil.GEnumTagDecl _
+  | Cil.GVar _, Cil.GVar _
+  | Cil.GVarDecl _, Cil.GVarDecl _
+  | Cil.GFun _, Cil.GFun _
+  | Cil.GAsm _, Cil.GAsm _
+  | Cil.GPragma _, Cil.GPragma _ ->
+      true
+  | _ -> false
 
 let trim_node_str str =
   Str.global_replace (Str.regexp " ") ""
     (Str.global_replace (Str.regexp "?") "\\\\"
        (Str.global_replace (Str.regexp "\\\\") ""
           (Str.global_replace (Str.regexp "\\\\\\") "?" str)))
-
-let remove_skip map = StrMap.filter (fun _ v -> not (String.equal v "skip")) map
 
 let explode s =
   let rec exp i l = if i < 0 then l else exp (i - 1) (s.[i] :: l) in
@@ -569,139 +198,43 @@ let subset s1 s2 =
   let set2 = explode s2 in
   search_seq set1 set2
 
-let extract_location str =
-  let parsed_str =
-    if str <> ":-1" then List.nth (Str.split (Str.regexp_string ":") str) 1
-    else Str.global_replace (Str.regexp_string ":") "" str
-  in
-  int_of_string parsed_str
+let print_ikind instr =
+  match instr with
+  | Cil.Call _ -> print_endline "Call"
+  | Cil.Set _ -> print_endline "Set"
+  | Cil.Asm _ -> print_endline "Asm"
 
-let rec parse_args_rec args output tmp_str bracket_num =
-  match args with
-  | [] -> [ tmp_str ] @ output
-  | hd :: tl -> (
-      match hd with
-      | '(' ->
-          if bracket_num <> 0 then
-            parse_args_rec tl output (tmp_str ^ "(") (bracket_num + 1)
-          else parse_args_rec tl output tmp_str (bracket_num + 1)
-      | ')' ->
-          if bracket_num > 1 then
-            parse_args_rec tl output (tmp_str ^ ")") (bracket_num - 1)
-          else parse_args_rec tl output tmp_str (bracket_num - 1)
-      | ',' ->
-          if bracket_num = 1 then
-            parse_args_rec tl ([ tmp_str ] @ output) "" bracket_num
-          else parse_args_rec tl output (tmp_str ^ ",") bracket_num
-      | ' ' -> parse_args_rec tl output tmp_str bracket_num
-      | _ -> parse_args_rec tl output (tmp_str ^ String.make 1 hd) bracket_num)
+let print_ekind exp =
+  match exp with
+  | Cil.Const _ -> print_endline "Const"
+  | Cil.Lval _ -> print_endline "Lval"
+  | Cil.SizeOf _ -> print_endline "SizeOf"
+  | Cil.SizeOfE _ -> print_endline "SizeOfE"
+  | Cil.SizeOfStr _ -> print_endline "SizeOfStr"
+  | Cil.AlignOf _ -> print_endline "AlignOf"
+  | Cil.AlignOfE _ -> print_endline "AlignOfE"
+  | Cil.UnOp _ -> print_endline "UnOp"
+  | Cil.BinOp _ -> print_endline "BinOp"
+  | Cil.Question _ -> print_endline "Question"
+  | Cil.CastE _ -> print_endline "CastE"
+  | Cil.AddrOf _ -> print_endline "AddrOf"
+  | Cil.AddrOfLabel _ -> print_endline "AddrOfLabel"
+  | Cil.StartOf _ -> print_endline "StartOf"
 
-let parse_args args =
-  rev (parse_args_rec (explode (trim_node_str args)) [] "" 0)
-
-let parse_node node_path =
-  let json = J.from_file node_path in
-  let nodes = J.Util.member "nodes" json in
-  let key_list = J.Util.keys nodes in
-  List.fold_left
-    (fun acc k ->
-      let cont = J.Util.member k nodes in
-      let cmd = J.Util.to_list (J.Util.member "cmd" cont) in
-      let loc = J.Util.member "loc" cont in
-      let cmd =
-        match J.Util.to_string (List.hd cmd) with
-        | "skip" -> Skip (J.Util.to_string (List.nth cmd 1))
-        | "return" -> Return (J.Util.to_string (List.nth cmd 1))
-        | "call" ->
-            let lval =
-              try J.Util.to_string (List.nth cmd 1) with _ -> ""
-              (* if J.Util.to_string (List.nth cmd 1) = null then ""
-                 else J.Util.to_string (List.nth cmd 1) *)
-            in
-            Call
-              ( lval,
-                J.Util.to_string (List.nth cmd 2),
-                parse_args (J.Util.to_string (List.nth cmd 3)) )
-        | "assume" ->
-            Assume
-              ( J.Util.to_bool (List.nth cmd 1),
-                J.Util.to_string (List.nth cmd 2) )
-        | "salloc" ->
-            Salloc
-              ( J.Util.to_string (List.nth cmd 1),
-                J.Util.to_string (List.nth cmd 2) )
-        | "set" ->
-            Set
-              ( J.Util.to_string (List.nth cmd 1),
-                J.Util.to_string (List.nth cmd 2) )
-        | "alloc" ->
-            Alloc
-              ( J.Util.to_string (List.nth cmd 1),
-                J.Util.to_string (List.nth cmd 2) )
-        | "falloc" ->
-            Falloc
-              ( J.Util.to_string (List.nth cmd 1),
-                J.Util.to_string (List.nth cmd 2) )
-        | _ -> failwith "Unknown Command"
-      in
-      acc @ [ Node (k, cmd, extract_location (J.Util.to_string loc)) ])
-    [] key_list
-
-let rec print_sparrow_node node =
-  match node with
-  | Node (id, cmd, loc) ->
-      print_endline "Node: ";
-      print_string "\tid: ";
-      print_endline id;
-      print_endline "\tcmd: ";
-      print_sparrow_node cmd;
-      print_string "\tloc: ";
-      print_int loc;
-      print_endline ""
-  | Skip str ->
-      print_string "\t\tSkip: ";
-      print_endline str
-  | Return str ->
-      print_string "\t\tReturn: ";
-      print_endline str
-  | Call (lval, func, args) ->
-      print_endline "\t\tCall: ";
-      print_string "\t\t\tlval: ";
-      print_endline lval;
-      print_string "\t\t\tfunc: ";
-      print_endline func;
-      print_endline "\t\t\targs: ";
-      List.iter (fun x -> print_endline ("\t\t\t\t" ^ x)) args
-  | Assume (b, exp) ->
-      print_endline "\t\tAssume: ";
-      print_string "\t\t\tbool: ";
-      if b = true then print_endline "true" else print_endline "false";
-      print_string "\t\t\texp: ";
-      print_endline exp
-  | Salloc (to_, from_) ->
-      print_endline "\t\tSalloc: ";
-      print_string "\t\t\tto: ";
-      print_endline to_;
-      print_string "\t\t\tfrom: ";
-      print_endline from_
-  | Set (to_, from_) ->
-      print_endline "\t\tSet: ";
-      print_string "\t\t\tto: ";
-      print_endline to_;
-      print_string "\t\t\tfrom: ";
-      print_endline from_
-  | Alloc (to_, from_) ->
-      print_endline "\t\tAlloc: ";
-      print_string "\t\t\tto: ";
-      print_endline to_;
-      print_string "\t\t\tfrom: ";
-      print_endline from_
-  | Falloc (to_, from_) ->
-      print_endline "\t\tFalloc: ";
-      print_string "\t\t\tto: ";
-      print_endline to_;
-      print_string "\t\t\tfrom: ";
-      print_endline from_
+let print_skind skind =
+  match skind with
+  | Cil.Instr _ -> print_endline "Instr"
+  | Cil.Return _ -> print_endline "Return"
+  | Cil.Goto _ -> print_endline "Goto"
+  | Cil.Break _ -> print_endline "Break"
+  | Cil.Continue _ -> print_endline "Continue"
+  | Cil.If _ -> print_endline "If"
+  | Cil.Switch _ -> print_endline "Switch"
+  | Cil.Loop _ -> print_endline "Loop"
+  | Cil.Block _ -> print_endline "Block"
+  | Cil.TryExcept _ -> print_endline "TryExcept"
+  | Cil.TryFinally _ -> print_endline "TryFinally"
+  | Cil.ComputedGoto _ -> print_endline "ComputedGoto"
 
 let rec parse_strmap file map =
   match file with
@@ -732,97 +265,25 @@ let print_map_exp map =
       print_endline "")
     map
 
-let print_node node =
-  print_string "ID: ";
-  print_endline node.id;
-  print_string "Element: ";
-  (match node.elem with
-  | EExp e -> print_endline (string_of_exp e)
-  | EStmt s -> print_endline (string_of_stmt s)
-  | EInstr c -> print_endline (string_of_instr c)
-  | _ -> print_string "Unknown");
-  print_endline "";
-  print_endline "Sub: ";
-  print_map_exp node.subelem;
-  print_endline ""
-
-let read_lines name =
-  let ic = open_in name in
-  let try_read () = try Some (input_line ic) with End_of_file -> None in
-  let rec loop acc =
-    match try_read () with
-    | Some s -> loop (s :: acc)
-    | None ->
-        close_in ic;
-        List.rev acc
-  in
-  loop []
-
-let rec create_temp_map node_lst output_map =
-  match node_lst with
-  | [] -> output_map
-  | hd :: tl -> (
-      match hd with
-      | Node (_, node, _) -> (
-          match node with
-          | Alloc (to_, from_) | Salloc (to_, from_) | Set (to_, from_) ->
-              if subset to_ "__cil_tmp" then
-                create_temp_map tl
-                  (StrMap.union
-                     (fun _ v1 _ -> Some v1)
-                     (StrMap.add (trim_node_str to_) (trim_node_str from_)
-                        StrMap.empty)
-                     output_map)
-              else if subset from_ "__cil_tmp" then
-                create_temp_map tl
-                  (StrMap.union
-                     (fun _ v1 _ -> Some v1)
-                     (StrMap.add (trim_node_str from_) (trim_node_str to_)
-                        StrMap.empty)
-                     output_map)
-              else create_temp_map tl output_map
-          | _ -> create_temp_map tl output_map)
-      | _ -> create_temp_map tl output_map)
-
-let print_map map =
+let print_map_str map =
   StrMap.iter
     (fun k v ->
+      print_string "\t";
       print_string (k ^ " -> ");
-      print_endline v)
+      print_string v;
+      print_endline "")
     map
 
-let print_bool b =
-  if b = true then print_endline "true" else print_endline "false"
-
-let print_graph graph =
-  print_endline "==========Nodes========= ";
-  graph.nodes |> List.iter (fun node -> print_node node);
-  print_endline "==========CFG========= ";
-  graph.cfg_edges
-  |> List.iter (fun edge ->
-         match edge with
-         | from_, to_ ->
-             print_string (from_ ^ " -> ");
-             print_endline to_);
-  print_endline "==========DUG========= ";
-  graph.dug_edges
-  |> List.iter (fun edge ->
-         match edge with
-         | from_, to_ ->
-             print_string (from_ ^ " -> ");
-             print_endline to_)
-
 let read_lines name =
-  let ic = open_in name in
-  let try_read () = try Some (input_line ic) with End_of_file -> None in
-  let rec loop acc =
-    match try_read () with
-    | Some s -> loop (s :: acc)
-    | None ->
-        close_in ic;
-        List.rev acc
+  let file = open_in name in
+  let rec read_lines acc =
+    match input_line file with
+    | line -> read_lines (line :: acc)
+    | exception End_of_file -> List.rev acc
   in
-  loop []
+  let lines = read_lines [] in
+  close_in file;
+  lines
 
 let make_str_map path =
   let lines = read_lines path in
@@ -831,46 +292,398 @@ let make_str_map path =
       let splited = Str.split (Str.regexp "\t") line in
       let key = List.hd splited in
       let value = List.hd (List.tl splited) in
-      StrMap.add (trim_node_str key) (trim_node_str value) map)
+      StrMap.add key value map)
     StrMap.empty lines
 
-let append_before_elt elt loc lst =
-  let rec loop lst acc =
-    match lst with
-    | [] -> acc
-    | hd :: tl ->
-        if string_of_exp hd = string_of_exp loc then
-          List.rev ([ elt ] @ acc) @ [ hd ] @ tl
-        else loop tl ([ hd ] @ acc)
-  in
-  loop lst []
+let make_str_map_rev path =
+  let lines = read_lines path in
+  List.fold_left
+    (fun map line ->
+      let splited = Str.split (Str.regexp "\t") line in
+      let key = List.hd splited in
+      let value = List.hd (List.tl splited) in
+      StrMap.add value key map)
+    StrMap.empty lines
 
-let eq_call context target_instr =
-  let extract_instr_from_node node =
-    match node.elem with
-    | EInstr i -> i
-    | _ -> raise (Failure "Not an instruction")
+let make_cil_str_map path =
+  let lines = read_lines path in
+  List.fold_left
+    (fun map line ->
+      let splited = Str.split (Str.regexp "\t") line in
+      let key = List.hd splited in
+      let value = List.hd (List.tl splited) in
+      StrMap.add (trim_node_str value) (trim_node_str key) map)
+    StrMap.empty lines
+
+let append_before_elt_exp elt exp lst =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_exp elt = string_of_exp hd then aux (elt :: exp :: acc) tl
+        else aux (hd :: acc) tl
   in
-  let instr =
-    match context with
-    | NodeLevelContext n -> extract_instr_from_node n
-    | _ -> raise (Failure "Not a node")
+  let result = aux [] lst in
+  if List.length result = List.length lst + 1 then result
+  else failwith "exp_list append error"
+
+let append_after_elt_exp elt exp lst =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_exp elt = string_of_exp hd then aux (exp :: elt :: acc) tl
+        else aux (hd :: acc) tl
   in
-  let exp_lst =
-    match instr with
-    | Call (_, _, exp_lst, _) -> exp_lst
-    | _ -> raise (Failure "Not a call")
+  let result = aux [] lst in
+  if List.length result = List.length lst + 1 then result
+  else failwith "exp_list append error"
+
+let append_before_elt_stmt elt stmt lst =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_stmt elt = string_of_stmt hd then
+          aux (elt :: stmt :: acc) tl
+        else aux (hd :: acc) tl
   in
-  let target_exp_lst =
-    match target_instr with
-    | Cil.Call (_, _, exp_lst, _) -> exp_lst
-    | _ -> raise (Failure "Not a call")
+  let result = aux [] lst in
+  if List.length result = List.length lst + 1 then result
+  else failwith "stmt_list append error"
+
+let append_after_elt_stmt elt stmt lst =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_stmt elt = string_of_stmt hd then
+          aux (stmt :: elt :: acc) tl
+        else aux (hd :: acc) tl
   in
-  let rec loop exp_lst target_exp_lst =
-    match (exp_lst, target_exp_lst) with
-    | [], [] -> true
-    | [], _ | _, [] -> false
-    | hd :: tl, hd' :: tl' ->
-        if string_of_exp hd = string_of_exp hd' then loop tl tl' else false
+  let result = aux [] lst in
+  if List.length result = List.length lst + 1 then result
+  else failwith "stmt_list append error"
+
+let delete_elt_stmt elt list =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_stmt elt = string_of_stmt hd then aux acc tl
+        else aux (hd :: acc) tl
   in
-  loop exp_lst target_exp_lst
+  let result = aux [] list in
+  if List.length result = List.length list - 1 then result
+  else failwith "stmt_list delete error"
+
+let delete_before_elt_stmt elt lst =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_stmt elt = string_of_stmt hd then
+          let new_acc = match acc with [] -> [] | _ :: tl -> tl in
+          aux (elt :: new_acc) tl
+        else aux (hd :: acc) tl
+  in
+  let result = aux [] lst in
+  if List.length result = List.length lst - 1 then result
+  else failwith "stmt_list delete error"
+
+let delete_after_elt_stmt elt lst =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_stmt elt = string_of_stmt hd then
+          let new_tl = match tl with [] -> [] | _ :: tl -> tl in
+          aux (elt :: acc) new_tl
+        else aux (hd :: acc) tl
+  in
+  let result = aux [] lst in
+  if List.length result = List.length lst - 1 then result
+  else failwith "stmt_list delete error"
+
+let delete_elt_exp elt list =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_exp elt = string_of_exp hd then aux acc tl
+        else aux (hd :: acc) tl
+  in
+  let result = aux [] list in
+  if List.length result = List.length list - 1 then result
+  else failwith "exp_list delete error"
+
+let delete_before_elt_exp elt lst =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_exp elt = string_of_exp hd then
+          let new_acc = match acc with [] -> [] | _ :: tl -> tl in
+          aux (elt :: new_acc) tl
+        else aux (hd :: acc) tl
+  in
+  let result = aux [] lst in
+  if List.length result = List.length lst - 1 then result
+  else failwith "exp_list delete error"
+
+let delete_after_elt_exp elt lst =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if string_of_exp elt = string_of_exp hd then
+          let new_tl = match tl with [] -> [] | _ :: tl -> tl in
+          aux (elt :: acc) new_tl
+        else aux (hd :: acc) tl
+  in
+  let result = aux [] lst in
+  if List.length result = List.length lst - 1 then result
+  else failwith "exp_list delete error"
+
+type loc = { file : string; line : int }
+
+type cmd =
+  | Cnone
+  | Cset of string * string * loc (* (lv, e, loc) *)
+  | Cexternal of string * loc (*(lv, loc)*)
+  | Calloc of string * string * loc (*(lv, Array e, _, loc) *)
+  | Csalloc of string * string * loc (*(lv, s, loc) *)
+  | Cfalloc of string * string * loc (*(lv, f, loc) *)
+  | Ccall of string * cmd * loc (*(Some lv, CcallExp(fexp, params, loc))*)
+  | CcallExp of string * string list * loc (*(None, fexp, params, loc)*)
+  | Creturn1 of string * loc (*(Some e, loc) *)
+  | Creturn2 of loc (*(None, loc) *)
+  | Cif of loc (*(_, _, _, loc) *)
+  | Cassume of string * loc (*(e, _, loc) *)
+  | CLoop of loc (*loc *)
+  | Casm of loc (*(_, _, _, _, _, loc) *)
+  | Cskip of loc (*(_, loc)*)
+
+let print_cmd cmd =
+  match cmd with
+  | Cset (lv, e, loc) ->
+      print_endline
+        ("set\t" ^ lv ^ "\t" ^ e ^ "\t" ^ loc.file ^ ":"
+       ^ string_of_int loc.line)
+  | Cexternal (lv, loc) ->
+      print_endline
+        ("external\t" ^ lv ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | Calloc (lv, e, loc) ->
+      print_endline
+        ("alloc\t" ^ lv ^ "\t" ^ e ^ "\t" ^ loc.file ^ ":"
+       ^ string_of_int loc.line)
+  | Csalloc (lv, s, loc) ->
+      print_endline
+        ("salloc\t" ^ lv ^ "\t" ^ s ^ "\t" ^ loc.file ^ ":"
+       ^ string_of_int loc.line)
+  | Cfalloc (lv, f, loc) ->
+      print_endline
+        ("falloc\t" ^ lv ^ "\t" ^ f ^ "\t" ^ loc.file ^ ":"
+       ^ string_of_int loc.line)
+  | Creturn1 (e, loc) ->
+      print_endline
+        ("return\t" ^ e ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | Creturn2 loc ->
+      print_endline
+        ("return\t" ^ "null" ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | Cif loc -> print_endline ("if\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | Cassume (e, loc) ->
+      print_endline
+        ("assume\t" ^ e ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | CLoop loc ->
+      print_endline ("loop\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | Casm loc -> print_endline ("asm\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | Cskip loc ->
+      print_endline ("skip\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | _ -> ()
+
+module CmdMap = Map.Make (struct
+  type t = cmd
+
+  let compare = compare
+end)
+
+let parse_loc loc =
+  let parsed = Str.split (Str.regexp ":") loc in
+  if List.length parsed <> 2 then { file = ""; line = -1 }
+  else { file = List.nth parsed 0; line = int_of_string (List.nth parsed 1) }
+
+let parse_facts facts_path =
+  let lines = read_lines facts_path in
+  List.fold_left
+    (fun map line ->
+      let keyval = Str.split (Str.regexp "\t") line in
+      let id = List.hd keyval in
+      let elmt = List.tl keyval in
+      StrMap.add id elmt map)
+    StrMap.empty lines
+
+let parse_call_facts facts_path =
+  let lines = read_lines facts_path in
+  List.fold_left
+    (fun map line ->
+      let keyval = Str.split (Str.regexp "\t") line in
+      let id = List.hd keyval in
+      let arg = List.nth keyval 2 in
+      if not (String.contains arg 'C') then map
+      else StrMap.add id (List.tl keyval) map)
+    StrMap.empty lines
+
+let parse_args_facts facts_path =
+  let lines = read_lines facts_path in
+  let result =
+    List.fold_left
+      (fun map line ->
+        let keyval = Str.split (Str.regexp "\t") line in
+        let id = List.hd keyval in
+        match StrMap.find_opt id map with
+        | None -> StrMap.add id [ List.nth keyval 1 ] map
+        | Some lst ->
+            StrMap.update id (fun _ -> Some (List.nth keyval 1 :: lst)) map)
+      StrMap.empty lines
+  in
+  StrMap.map (fun lst -> List.rev lst) result
+(* | "AllocExp.facts" -> "Alloc"
+   | "Arg.facts" -> "Arg"
+   | "Set.facts" -> "Set"
+   | "BinOpExp.facts" -> "BinOp"
+   | "UnOpExp.facts" -> "UnOp"
+   | "CallExp.facts" -> "Call"
+   | "CFPath.facts" -> "CFPath"
+   | "DUPath.facts" -> "DUPath"
+   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
+   | "LibCallExp.facts" -> "LibCall"
+   | "LvalExp.facts" -> "LvalExp"
+   | "Return.facts" -> "Return"
+   | "SAllocExp.facts" -> "SAlloc"
+   | "Skip.facts" -> "Skip" *)
+
+let parse_sparrow sparrow_dir =
+  let node_json = Yojson.Basic.from_file (sparrow_dir ^ "/node.json") in
+  let path = Filename.concat sparrow_dir "taint/datalog" in
+  let lval_exp_facts =
+    make_str_map_rev (Filename.concat path "LvalExp.facts")
+  in
+  let alloc_exp_facts = parse_facts (Filename.concat path "AllocExp.facts") in
+  let args_facts = parse_args_facts (Filename.concat path "Arg.facts") in
+  let set_facts =
+    let parsed = parse_facts (Filename.concat path "Set.facts") in
+    StrMap.fold
+      (fun k v acc ->
+        let v' =
+          List.map
+            (fun x -> try StrMap.find x lval_exp_facts with Not_found -> x)
+            v
+        in
+        StrMap.add k v' acc)
+      parsed StrMap.empty
+  in
+  let call_facts = parse_call_facts (Filename.concat path "Set.facts") in
+  (* let bin_op_exp = parse_facts (Filename.concat path "BinOpExp.facts") in
+     let un_op_exp = parse_facts (Filename.concat path "UnOpExp.facts") in
+     let call_exp_facts =
+       StrMap.union
+         (fun _ _ y -> Some y)
+         (parse_facts (Filename.concat path "CallExp.facts"))
+         (parse_facts (Filename.concat path "LibCallExp.facts"))
+     in *)
+  (* let var_facts =
+       StrMap.union
+         (fun _ _ y -> Some y)
+         (parse_facts (Filename.concat path "GlobalVar.facts"))
+         (parse_facts (Filename.concat path "LocalVar.facts"))
+     in *)
+  let return_facts = parse_facts (Filename.concat path "Return.facts") in
+  (* let salloc_exp_facts = parse_facts (Filename.concat path "SAllocExp.facts") in *)
+  let assume_facts = parse_facts (Filename.concat path "Assume.facts") in
+  let nodes = J.member "nodes" node_json in
+  let key_list = J.keys nodes in
+  List.fold_left
+    (fun acc k ->
+      let cont = J.member k nodes in
+      let cmd = J.to_list (J.member "cmd" cont) in
+      let loc = J.member "loc" cont in
+      let cmd =
+        match J.to_string (List.hd cmd) with
+        | "skip" -> Cskip (parse_loc (J.to_string loc))
+        | "return" ->
+            let arg = StrMap.find k return_facts in
+            if arg <> [] then Creturn1 (List.hd arg, parse_loc (J.to_string loc))
+            else Creturn2 (parse_loc (J.to_string loc))
+        | "call" ->
+            let arg = StrMap.find k call_facts in
+            let call_exp = List.nth arg 1 in
+            let lval = List.nth arg 0 in
+            let arg_lst = StrMap.find_opt call_exp args_facts in
+            let arg_lst = if arg_lst = None then [] else Option.get arg_lst in
+            Ccall
+              ( List.hd arg,
+                CcallExp (lval, arg_lst, parse_loc (J.to_string loc)),
+                parse_loc (J.to_string loc) )
+        | "assume" ->
+            let arg = StrMap.find k assume_facts in
+            Cassume (List.hd arg, parse_loc (J.to_string loc))
+        | "set" ->
+            let arg = StrMap.find k set_facts in
+            Cset (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
+        | "alloc" -> (
+            let arg = StrMap.find_opt k alloc_exp_facts in
+            match arg with
+            | None -> Cnone
+            | Some arg ->
+                Calloc (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
+            )
+        | "falloc" -> Cnone
+        | _ -> failwith "Unknown Command"
+      in
+      match cmd with Cnone -> acc | _ -> CmdMap.add cmd k acc)
+    CmdMap.empty key_list
+
+let extract_stmt_lst file =
+  let extract_stmt stmt =
+    match stmt.Cil.skind with
+    | Cil.If (_, t_b, e_b, _) -> t_b.bstmts @ e_b.bstmts
+    | Cil.Loop (b, _, _, _) -> b.bstmts
+    | Cil.Block b -> b.bstmts
+    | _ -> []
+  in
+  let fold_glob glob =
+    match glob with
+    | Cil.GFun (fdec, _) ->
+        List.fold_left
+          (fun acc stmt -> acc @ [ stmt ] @ extract_stmt stmt)
+          [] fdec.Cil.sbody.Cil.bstmts
+    | _ -> []
+  in
+  List.fold_left (fun acc g -> acc @ fold_glob g) [] file.Cil.globals
+
+let print_info (info : stmt_info) =
+  print_endline (string_of_stmt info.stmt);
+  ExpMap.iter
+    (fun exp e -> print_endline ("\t" ^ string_of_exp exp ^ " -> " ^ e))
+    info.exps;
+  LvalMap.iter
+    (fun lval lv -> print_endline ("\t" ^ string_of_lval lval ^ " -> " ^ lv))
+    info.lvals
+
+let print_info_map info_map =
+  InfoMap.iter
+    (fun info id ->
+      print_endline id;
+      print_info info)
+    info_map
+
+let get_info_key stmt cil_map =
+  let lst =
+    InfoMap.fold
+      (fun key _ acc -> if key.stmt = stmt then key :: acc else acc)
+      cil_map []
+  in
+  List.hd lst
+
+let rev_expmap map =
+  ExpMap.fold (fun k v acc -> StrMap.add v k acc) map StrMap.empty
+
+let rev_lvalmap map =
+  LvalMap.fold (fun k v acc -> StrMap.add v k acc) map StrMap.empty
+
+let extract_snk path =
+  let lst = read_lines path in
+  let donee_srcsnk = List.nth lst 1 in
+  let donee_srcsnk = Str.split (Str.regexp " ") donee_srcsnk in
+  List.nth donee_srcsnk 1
