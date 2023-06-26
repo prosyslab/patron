@@ -9,7 +9,8 @@ let match_const const =
   | S.SElement.SFloatConst f -> Cil.CReal (f, Cil.FFloat, None)
   | S.SElement.SStringConst s -> Cil.CStr s
 
-let rec match_sym imap emap (lmap : Cil.lval H.StrMap.t) (sym : S.SElement.t) =
+let rec match_sym imap (emap : Cil.exp H.StrMap.t) (lmap : Cil.lval H.StrMap.t)
+    (sym : S.SElement.t) =
   match sym with
   | SNull -> D.CilElement.Null
   | SStmt stmt ->
@@ -26,122 +27,197 @@ let rec match_sym imap emap (lmap : Cil.lval H.StrMap.t) (sym : S.SElement.t) =
 
 and match_lval (lmap : Cil.lval H.StrMap.t) (lval : S.SElement.sym_lval) =
   match lval with
-  | SLID id -> [ H.StrMap.find id lmap ]
-  | LOriginal _ -> []
-  | _ -> failwith "match_exp: undefined behavior"
+  | LID (LvalID id) -> [ H.StrMap.find id lmap ]
+  | _ -> failwith "match_lval: undefined behavior"
 
 and match_exp lmap emap (exp : S.SElement.sym_exp) =
   match exp with
-  | SEID id -> [ H.StrMap.find id emap ]
-  | SSizeOf typ -> [ Cil.SizeOf (S.SElement.to_typ typ) ]
-  | SSizeOfE exp ->
-      let e = match_exp lmap emap exp in
-      if e <> [] then [ Cil.SizeOfE (List.hd e) ] else []
-  | SSizeOfStr str -> [ Cil.SizeOfStr str ]
-  | SBinOp (op, exp1, exp2, typ) ->
-      let e1 =
-        let e = match_exp lmap emap exp1 in
-        if e <> [] then List.hd e else failwith "match_exp: undefined behavior"
-      in
-      let e2 =
-        let e = match_exp lmap emap exp2 in
-        if e <> [] then List.hd e else failwith "match_exp: undefined behavior"
-      in
-      [ Cil.BinOp (S.SElement.to_binop op, e1, e2, S.SElement.to_typ typ) ]
-  | SCastE (typ, exp) ->
-      let exp =
-        let e = match_exp lmap emap exp in
-        if e <> [] then List.hd e else failwith "match_exp: undefined behavior"
-      in
-      [ Cil.CastE (S.SElement.to_typ typ, exp) ]
+  | EID (ExpID id) -> [ H.StrMap.find id emap ]
+  | SSizeOf (typ, id) -> (
+      match id with
+      | ExpID id ->
+          let info = H.StrMap.find id emap in
+          [ info ]
+      | _ -> [ Cil.SizeOf (S.SElement.to_typ typ) ])
+  | SSizeOfE (exp, id) -> (
+      match id with
+      | ExpID id ->
+          let info = H.StrMap.find id emap in
+          [ info ]
+      | _ ->
+          let e = match_exp lmap emap exp in
+          if e <> [] then [ Cil.SizeOfE (List.hd e) ] else [])
+  | SSizeOfStr (str, id) -> (
+      match id with
+      | ExpID id ->
+          let info = H.StrMap.find id emap in
+          [ info ]
+      | _ -> [ Cil.SizeOfStr str ])
+  | SBinOp (op, exp1, exp2, typ, id) -> (
+      match id with
+      | ExpID id ->
+          let info = H.StrMap.find id emap in
+          [ info ]
+      | _ ->
+          let e1 =
+            let e = match_exp lmap emap exp1 in
+            if e <> [] then List.hd e
+            else failwith "match_exp: undefined behavior"
+          in
+          let e2 =
+            let e = match_exp lmap emap exp2 in
+            if e <> [] then List.hd e
+            else failwith "match_exp: undefined behavior"
+          in
+          [ Cil.BinOp (S.SElement.to_binop op, e1, e2, S.SElement.to_typ typ) ])
+  | SCastE (typ, exp, id) -> (
+      match id with
+      | ExpID id ->
+          let info = H.StrMap.find id emap in
+          [ info ]
+      | _ ->
+          let exp =
+            let e = match_exp lmap emap exp in
+            if e <> [] then List.hd e
+            else failwith "match_exp: undefined behavior"
+          in
+          [ Cil.CastE (S.SElement.to_typ typ, exp) ])
   | SENULL -> []
-  | SConst const -> [ Cil.Const (match_const const) ]
-  | SELval lval ->
-      let lval = match_lval lmap lval in
-      if lval <> [] then [ Cil.Lval (List.hd lval) ] else []
-  | EOriginal _ -> []
+  | SConst (const, id) -> (
+      match id with
+      | ExpID id ->
+          let info = H.StrMap.find id emap in
+          [ info ]
+      | _ -> [ Cil.Const (match_const const) ])
+  | SELval (lval, id) -> (
+      match id with
+      | ExpID id ->
+          let info = H.StrMap.find id emap in
+          [ info ]
+      | _ -> (
+          match lval with
+          | LID (ExpID id) -> match_exp lmap emap (EID (ExpID id))
+          | LID (LvalID _) ->
+              let lval = match_lval lmap lval in
+              if lval <> [] then [ Cil.Lval (List.hd lval) ] else []
+          | _ -> failwith "match_exp: undefined behavior"))
   | _ -> failwith "match_exp: undefined behavior"
 
 and match_stmt (imap : H.stmt_info_rev H.StrMap.t) emap lmap
     (stmt : S.SElement.sym_stmt) =
-  (* H.StrMap.iter (fun k v -> print_endline (k ^ " " ^ (H.string_of_stmt v.stmt))) imap; *)
   match stmt with
-  | SSID id ->
+  | SID (StmtID id) ->
       let info = H.StrMap.find id imap in
       [ info.stmt ]
-  | SIf (cond, then_, else_) ->
-      let cond =
-        let exp = match_exp lmap emap cond in
-        if exp <> [] then List.hd exp else failwith "match_stmt: cond is null"
-      in
-      let then_ =
-        List.flatten
-          (List.rev
-             (List.fold_left
-                (fun acc s ->
-                  let stmt = match_stmt imap emap lmap s in
-                  if stmt <> [] then stmt :: acc else acc)
-                [] then_))
-      in
-      let else_ =
-        List.flatten
-          (List.rev
-             (List.fold_left
-                (fun acc s ->
-                  let stmt = match_stmt imap emap lmap s in
-                  if stmt <> [] then stmt :: acc else acc)
-                [] else_))
-      in
-      [
-        Cil.mkStmt
-          (If (cond, Cil.mkBlock then_, Cil.mkBlock else_, Cil.locUnknown));
-      ]
-  | SReturn (Some exp) ->
-      let value =
-        let exp = match_exp lmap emap exp in
-        if exp <> [] then List.hd exp else failwith "match_stmt: cond is null"
-      in
-      [ Cil.mkStmt (Return (Some value, Cil.locUnknown)) ]
-  | SReturn None -> [ Cil.mkStmt (Return (None, Cil.locUnknown)) ]
-  | SSet (lval, exp) ->
-      let lval = match_lval lmap lval in
-      let e =
-        let exp = match_exp lmap emap exp in
-        if exp <> [] then List.hd exp else failwith "match_stmt: cond is null"
-      in
-      let l =
-        if lval <> [] then List.hd lval else failwith "match_stmt: lval"
-      in
-      [ Cil.mkStmt (Instr [ Set (l, e, Cil.locUnknown) ]) ]
-  | SCall (None, exp, exps) ->
-      let e =
-        let exp = match_exp lmap emap exp in
-        if exp <> [] then List.hd exp else failwith "match_stmt: cond is null"
-      in
-
-      let mapped_exps = List.map (fun e -> match_exp lmap emap e) exps in
-      let exps =
-        if List.length mapped_exps <> List.length exps then
-          failwith "match_stmt: cond is null"
-        else List.map (fun e -> List.hd e) mapped_exps
-      in
-
-      [ Cil.mkStmt (Instr [ Call (None, e, exps, Cil.locUnknown) ]) ]
-  | SCall (Some lv, exp, exps) ->
-      let lv = match_lval lmap lv in
-      let l = if lv <> [] then List.hd lv else failwith "match_stmt: lval" in
-      let e =
-        let exp = match_exp lmap emap exp in
-        if exp <> [] then List.hd exp else failwith "match_stmt: cond is null"
-      in
-      let mapped_exps = List.map (fun e -> match_exp lmap emap e) exps in
-      let exps =
-        if List.length mapped_exps <> List.length exps then
-          failwith "match_stmt: cond is null"
-        else List.map (fun e -> List.hd e) mapped_exps
-      in
-      [ Cil.mkStmt (Instr [ Call (Some l, e, exps, Cil.locUnknown) ]) ]
+  | SIf (cond, then_, else_, id) -> (
+      match id with
+      | StmtID id ->
+          let info = H.StrMap.find id imap in
+          [ info.stmt ]
+      | _ ->
+          let cond =
+            let exp = match_exp lmap emap cond in
+            if exp <> [] then List.hd exp
+            else failwith "match_stmt: cond is null"
+          in
+          let then_ =
+            List.flatten
+              (List.rev
+                 (List.fold_left
+                    (fun acc s ->
+                      let stmt = match_stmt imap emap lmap s in
+                      if stmt <> [] then stmt :: acc else acc)
+                    [] then_))
+          in
+          let else_ =
+            List.flatten
+              (List.rev
+                 (List.fold_left
+                    (fun acc s ->
+                      let stmt = match_stmt imap emap lmap s in
+                      if stmt <> [] then stmt :: acc else acc)
+                    [] else_))
+          in
+          [
+            Cil.mkStmt
+              (If (cond, Cil.mkBlock then_, Cil.mkBlock else_, Cil.locUnknown));
+          ])
+  | SReturn (Some exp, id) -> (
+      match id with
+      | StmtID id ->
+          let info = H.StrMap.find id imap in
+          [ info.stmt ]
+      | _ ->
+          let value =
+            let exp = match_exp lmap emap exp in
+            if exp <> [] then List.hd exp
+            else failwith "match_stmt: cond is null"
+          in
+          [ Cil.mkStmt (Return (Some value, Cil.locUnknown)) ])
+  | SReturn (None, id) -> (
+      match id with
+      | StmtID id ->
+          let info = H.StrMap.find id imap in
+          [ info.stmt ]
+      | _ -> [ Cil.mkStmt (Return (None, Cil.locUnknown)) ])
+  | SSet (lval, exp, id) -> (
+      match id with
+      | StmtID id ->
+          let info = H.StrMap.find id imap in
+          [ info.stmt ]
+      | _ ->
+          let lval = match_lval lmap lval in
+          let e =
+            let exp = match_exp lmap emap exp in
+            if exp <> [] then List.hd exp
+            else failwith "match_stmt: cond is null"
+          in
+          let l =
+            if lval <> [] then List.hd lval else failwith "match_stmt: lval"
+          in
+          [ Cil.mkStmt (Instr [ Set (l, e, Cil.locUnknown) ]) ])
+  | SCall (None, exp, exps, id) -> (
+      match id with
+      | StmtID id ->
+          let info = H.StrMap.find id imap in
+          [ info.stmt ]
+      | _ ->
+          let e =
+            let exp = match_exp lmap emap exp in
+            if exp <> [] then List.hd exp
+            else failwith "match_stmt: cond is null"
+          in
+          let mapped_exps = List.map (fun e -> match_exp lmap emap e) exps in
+          let exps =
+            if List.length mapped_exps <> List.length exps then
+              failwith "match_stmt: cond is null"
+            else List.map (fun e -> List.hd e) mapped_exps
+          in
+          [ Cil.mkStmt (Instr [ Call (None, e, exps, Cil.locUnknown) ]) ])
+  | SCall (Some lv, exp, exps, id) -> (
+      match id with
+      | StmtID id ->
+          let info = H.StrMap.find id imap in
+          [ info.stmt ]
+      | _ ->
+          let lv = match_lval lmap lv in
+          let l =
+            if lv <> [] then List.hd lv else failwith "match_stmt: lval"
+          in
+          let e =
+            let exp = match_exp lmap emap exp in
+            if exp <> [] then List.hd exp
+            else failwith "match_stmt: cond is null"
+          in
+          let mapped_exps = List.map (fun e -> match_exp lmap emap e) exps in
+          let exps =
+            if List.length mapped_exps <> List.length exps then
+              failwith "match_stmt: cond is null"
+            else List.map (fun e -> List.hd e) mapped_exps
+          in
+          [ Cil.mkStmt (Instr [ Call (Some l, e, exps, Cil.locUnknown) ]) ])
   | SSNull -> []
+  | _ -> failwith "match_stmt: undefined behavior"
 
 let match_context imap emap (lmap : Cil.lval H.StrMap.t)
     (context : S.SDiff.sym_context) =
@@ -198,7 +274,7 @@ let translate_action imap emap (lmap : Cil.lval H.StrMap.t) (action : S.SDiff.t)
         if exp <> [] then List.hd exp
         else
           match _to with
-          | EOriginal str ->
+          | EID (IDNotAvailable str) ->
               Cil.Lval
                 (Cil.Var (Cil.makeGlobalVar str Cil.intType), Cil.NoOffset)
           | _ -> failwith "translate_action: exp is null"
@@ -232,7 +308,7 @@ let translate_action imap emap (lmap : Cil.lval H.StrMap.t) (action : S.SDiff.t)
         if lval <> [] then List.hd lval
         else
           match _to with
-          | LOriginal str ->
+          | LID (IDNotAvailable str) ->
               (Cil.Var (Cil.makeGlobalVar str Cil.intType), Cil.NoOffset)
           | _ -> failwith "translate_action: lval is null"
       in
@@ -242,6 +318,39 @@ let translate_diff imap emap (lmap : Cil.lval H.StrMap.t) diff =
   List.fold_left
     (fun acc action -> translate_action imap emap lmap action :: acc)
     [] diff
+
+let remove_cast sparrow_path exp =
+  let exp_map = Filename.concat sparrow_path "taint/datalog/Exp.map" in
+  let exp_map = H.make_str_map_rev exp_map in
+  let rec parse_exp exp =
+    match exp with
+    | Cil.Const const ->
+        if H.StrMap.exists (fun k _ -> H.string_of_constant const = k) exp_map
+        then
+          let sub_exp_id = H.StrMap.find (H.string_of_constant const) exp_map in
+          H.StrMap.add sub_exp_id exp H.StrMap.empty
+        else H.StrMap.empty
+    | Cil.Lval lval ->
+        if H.StrMap.exists (fun k _ -> H.string_of_lval lval = k) exp_map then
+          let sub_exp_id = H.StrMap.find (H.string_of_lval lval) exp_map in
+          H.StrMap.add sub_exp_id exp H.StrMap.empty
+        else H.StrMap.empty
+    | Cil.CastE (_, sub_exp) -> parse_exp sub_exp
+    | Cil.UnOp (_, sub_exp, _) -> parse_exp sub_exp
+    | Cil.BinOp (_, sub_exp1, sub_exp2, _) ->
+        H.StrMap.union
+          (fun _ _ y -> Some y)
+          (parse_exp sub_exp1) (parse_exp sub_exp2)
+    | Cil.Question (sub_exp1, sub_exp2, sub_exp3, _) ->
+        H.StrMap.union
+          (fun _ _ y -> Some y)
+          (H.StrMap.union
+             (fun _ _ y -> Some y)
+             (parse_exp sub_exp1) (parse_exp sub_exp2))
+          (parse_exp sub_exp3)
+    | _ -> H.StrMap.empty
+  in
+  parse_exp exp
 
 let translate sparrow_path donee edit_function solution_path =
   let solution = H.make_str_map solution_path in
@@ -261,7 +370,13 @@ let translate sparrow_path donee edit_function solution_path =
   let emap =
     H.StrMap.fold
       (fun _ v acc ->
-        H.StrMap.fold (fun a b ac -> H.StrMap.add a b ac) v.H.exps acc)
+        H.StrMap.fold
+          (fun a b ac ->
+            H.StrMap.union
+              (fun _ _ y -> Some y)
+              (remove_cast sparrow_path b)
+              (H.StrMap.add a b ac))
+          v.H.exps acc)
       info_map_fliped H.StrMap.empty
   in
   let lmap =
@@ -270,5 +385,5 @@ let translate sparrow_path donee edit_function solution_path =
         H.StrMap.fold (fun a b ac -> H.StrMap.add a b ac) v.H.lvals acc)
       info_map_fliped H.StrMap.empty
   in
-  let sym_diff = S.convert_diff sparrow_path solution edit_function in
+  let sym_diff = S.convert_diff solution edit_function in
   translate_diff info_map_fliped emap lmap sym_diff

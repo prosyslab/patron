@@ -4,16 +4,21 @@
  (wrapped false)
  (libraries cmdliner logger))
 
- ; (library
- ;  (name transformers)
- ;  (modules transformer transformerHelper symDiff diff transplanter translator))
-
 (executable
  (name main)
- (modules main maps z3env z3utils parser chc bugPatDB patTrans transformer transformerHelper symDiff diff transplanter translator)
+ (modules
+  main
+  maps
+  z3env
+  z3utils
+  parser
+  chc
+  bugPatDB
+  patTrans
+  transformer
+  transformerHelper
+  translator
+  symDiff
+  diff
+  transplanter)
  (libraries patronlib yojson core core_unix.sys_unix z3 cil))
-
-; (executable
-;  (name transformer)
-;  (modules transformer transformerHelper)
-;  (libraries patronlib cil unix yojson core z3 logger))

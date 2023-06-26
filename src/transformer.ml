@@ -15,10 +15,11 @@ let extract_edit_function doner_dir patch_dir db_dir =
   L.info "#ast_diff: %d\n%a\n" (List.length ast_diff) D.Diff.pp_edit_script
     ast_diff;
   let sym_diff =
-    S.define_sym_diff (S.map_cil_to_cmd doner_sparrow_dir donor) ast_diff
+    S.define_sym_diff doner_sparrow_dir
+      (S.map_cil_to_cmd doner_sparrow_dir donor)
+      ast_diff
   in
   S.to_json sym_diff ast_diff db_dir;
-
   L.info
     "Given bug pattern is successfully written into an edit function at %s\n"
     db_dir
@@ -31,8 +32,7 @@ let transplant db_dir donee_dir patron_out_dir =
   let donee = D.parse_file donee_file in
   let sink_node =
     H.extract_snk
-      (Filename.concat donee_dir
-         "sparrow-out/taint/datalog/IOErrorConstraint.rules")
+      (Filename.concat donee_sparrow_dir "taint/datalog/IOErrorConstraint.rules")
   in
   let edit_function = S.parse_edit_function sink_node edit_function_path in
   let translated =

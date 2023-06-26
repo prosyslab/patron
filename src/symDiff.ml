@@ -3,6 +3,14 @@ module H = TransformerHelper
 module D = Diff
 
 module SElement = struct
+  type sym_id =
+    | IDNotAvailable of string
+    | GlobID of string
+    | StmtID of string
+    | ExpID of string
+    | LvalID of string
+    | LvalIDSet of string * string
+
   type sym_typ = SVoid | SInt | SFloat | SPtr of sym_typ
 
   type sym_binop =
@@ -35,36 +43,39 @@ module SElement = struct
     | SCharConst of char
     | SStringConst of string
 
-  type sym_lval =
-    | SLLIT of string * string
-    | LOriginal of string
-    | SLID of string
-    | SLNULL
+  type sym_lval = SLNULL | LID of sym_id
 
   type sym_exp =
     | SENULL
-    | SELit of string * string (* (id , literal) *)
-    | EOriginal of string
-    | SEID of string
-    | SConst of sym_const
-    | SELval of sym_lval
-    | SSizeOf of sym_typ
-    | SSizeOfE of sym_exp
-    | SSizeOfStr of string
-    | SBinOp of sym_binop * sym_exp * sym_exp * sym_typ
-    | SUnOp of string * sym_exp
-    | SQuestion of sym_exp * sym_exp * sym_exp
-    | SCastE of sym_typ * sym_exp
+    | EID of sym_id
+    | SConst of sym_const * sym_id
+    | SELval of sym_lval * sym_id
+    | SSizeOf of sym_typ * sym_id
+    | SSizeOfE of sym_exp * sym_id
+    | SSizeOfStr of string * sym_id
+    | SBinOp of sym_binop * sym_exp * sym_exp * sym_typ * sym_id
+    | SUnOp of string * sym_exp * sym_id
+    | SQuestion of sym_exp * sym_exp * sym_exp * sym_id
+    | SCastE of sym_typ * sym_exp * sym_id
 
   type sym_stmt =
     | SSNull
-    | SSID of string (* (id , literal) *)
-    | SIf of sym_exp * sym_stmt list * sym_stmt list
-    | SSet of sym_lval * sym_exp
-    | SCall of sym_lval option * sym_exp * sym_exp list
-    | SReturn of sym_exp option
+    | SID of sym_id
+    | SIf of sym_exp * sym_stmt list * sym_stmt list * sym_id
+    | SSet of sym_lval * sym_exp * sym_id
+    | SCall of sym_lval option * sym_exp * sym_exp list * sym_id
+    | SReturn of sym_exp option * sym_id
 
   type t = SNull | SStmt of sym_stmt | SExp of sym_exp | SLval of sym_lval
+
+  let pp_id fmt id =
+    match id with
+    | GlobID s -> Format.fprintf fmt "ID: GlobID(%s)" s
+    | StmtID s -> Format.fprintf fmt "ID: StmtID(%s)" s
+    | ExpID s -> Format.fprintf fmt "ID: ExpID(%s)" s
+    | LvalID s -> Format.fprintf fmt "ID: LvalID(%s)" s
+    | IDNotAvailable s -> Format.fprintf fmt "ID: IDNotAvailable(%s)" s
+    | LvalIDSet (s1, s2) -> Format.fprintf fmt "ID: LvalIDSet(%s, %s)" s1 s2
 
   let rec pp_selement fmt e =
     match e with
@@ -79,23 +90,31 @@ module SElement = struct
   and pp_sstmt fmt s =
     match s with
     | SSNull -> Format.fprintf fmt "SSNull"
-    | SSID s -> Format.fprintf fmt "SSID(%s)" s
-    | SIf (e, s1, s2) ->
+    | SID id -> pp_id fmt id
+    | SIf (e, s1, s2, id) ->
+        pp_id fmt id;
+        print_newline ();
         Format.fprintf fmt "SIf(%a, %a, %a)" pp_sexp e pp_sstmts s1 pp_sstmts s2
-    | SSet (l, e) -> Format.fprintf fmt "SSet(%a, %a)" pp_slval l pp_sexp e
-    | SCall (l, e, es) ->
+    | SSet (l, e, id) ->
+        pp_id fmt id;
+        print_newline ();
+        Format.fprintf fmt "SSet(%a, %a)" pp_slval l pp_sexp e
+    | SCall (l, e, es, id) ->
+        pp_id fmt id;
+        print_newline ();
         Format.fprintf fmt "SCall(%a, %a, %a)" pp_soptlval l pp_sexp e pp_sexps
           es
-    | SReturn e -> Format.fprintf fmt "SReturn(%a)" pp_soptexp e
+    | SReturn (e, id) ->
+        pp_id fmt id;
+        print_newline ();
+        Format.fprintf fmt "SReturn(%a)" pp_soptexp e
 
   and pp_soptlval fmt l =
     match l with None -> Format.fprintf fmt "None" | Some l -> pp_slval fmt l
 
   and pp_slval fmt l =
     match l with
-    | SLLIT (id, lit) -> Format.fprintf fmt "SLLIT(%s, %s)" id lit
-    | LOriginal s -> Format.fprintf fmt "LOriginal(%s)" s
-    | SLID s -> Format.fprintf fmt "SLID(%s)" s
+    | LID lid -> pp_id fmt lid
     | SLNULL -> Format.fprintf fmt "SLNULL"
 
   and pp_sexps fmt es =
@@ -107,22 +126,45 @@ module SElement = struct
   and pp_sexp fmt e =
     match e with
     | SENULL -> Format.fprintf fmt "SENULL"
-    | SELit (id, lit) -> Format.fprintf fmt "SELit(%s, %s)" id lit
-    | EOriginal s -> Format.fprintf fmt "EOriginal(%s)" s
-    | SEID s -> Format.fprintf fmt "SEID(%s)" s
-    | SConst c -> Format.fprintf fmt "SConst(%a)" pp_sconst c
-    | SELval l -> Format.fprintf fmt "SELval(%a)" pp_slval l
-    | SSizeOf t -> Format.fprintf fmt "SSizeOf(%a)" pp_styp t
-    | SSizeOfE e -> Format.fprintf fmt "SSizeOfE(%a)" pp_sexp e
-    | SSizeOfStr s -> Format.fprintf fmt "SSizeOfStr(%s)" s
-    | SBinOp (op, e1, e2, t) ->
+    | EID id -> pp_id fmt id
+    | SConst (c, id) ->
+        pp_id fmt id;
+        print_newline ();
+        Format.fprintf fmt "SConst(%a)" pp_sconst c
+    | SELval (l, id) ->
+        pp_id fmt id;
+        print_newline ();
+        Format.fprintf fmt "SELval(%a)" pp_slval l
+    | SSizeOf (t, id) ->
+        pp_id fmt id;
+        print_newline ();
+        Format.fprintf fmt "SSizeOf(%a)" pp_styp t
+    | SSizeOfE (e, id) ->
+        pp_id fmt id;
+        print_newline ();
+        Format.fprintf fmt "SSizeOfE(%a)" pp_sexp e
+    | SSizeOfStr (s, id) ->
+        pp_id fmt id;
+        print_newline ();
+        Format.fprintf fmt "SSizeOfStr(%s)" s
+    | SBinOp (op, e1, e2, t, id) ->
+        pp_id fmt id;
+        print_newline ();
         Format.fprintf fmt "SBinOp(%a, %a, %a, %a)" pp_sbinop op pp_sexp e1
           pp_sexp e2 pp_styp t
-    | SUnOp (op, e) -> Format.fprintf fmt "SUnOp(%s, %a)" op pp_sexp e
-    | SQuestion (e1, e2, e3) ->
+    | SUnOp (op, e, id) ->
+        pp_id fmt id;
+        print_newline ();
+        Format.fprintf fmt "SUnOp(%s, %a)" op pp_sexp e
+    | SQuestion (e1, e2, e3, id) ->
+        pp_id fmt id;
+        print_newline ();
         Format.fprintf fmt "SQuestion(%a, %a, %a)" pp_sexp e1 pp_sexp e2 pp_sexp
           e3
-    | SCastE (t, e) -> Format.fprintf fmt "SCastE(%a, %a)" pp_styp t pp_sexp e
+    | SCastE (t, e, id) ->
+        pp_id fmt id;
+        print_newline ();
+        Format.fprintf fmt "SCastE(%a, %a)" pp_styp t pp_sexp e
 
   and pp_sconst fmt c =
     match c with
@@ -410,64 +452,111 @@ let rec parse_typ typ =
 
 let parse_lval_json lval =
   match lval with
-  | `Assoc [ ("sym", c1); ("lit", c2) ] ->
-      let sym = c1 |> J.to_string in
-      let lit = c2 |> J.to_string in
-      if String.contains sym '-' then SElement.SLLIT (sym, lit)
-      else LOriginal sym
+  | `Assoc [ ("lval_id", lid); ("exp_id", eid) ] ->
+      let lval_id = lid |> J.to_string in
+      let exp_id = eid |> J.to_string in
+      SElement.LID (SElement.LvalIDSet (lval_id, exp_id))
+  | `Assoc [ ("id", lid) ] ->
+      let id = lid |> J.to_string in
+      SElement.LID (SElement.LvalID id)
+  | `Assoc [ ("literal", str) ] ->
+      let literal = str |> J.to_string in
+      SElement.LID (SElement.IDNotAvailable literal)
   | _ -> failwith "parse_lval_json: undefined behavior"
 
-let parse_const_json const =
+let extract_exp_id is_id id_or_lit =
+  if is_id then SElement.ExpID id_or_lit else IDNotAvailable id_or_lit
+
+let parse_const_json const is_id id_or_lit =
   match const with
-  | `Assoc [ ("type", typ); ("lit", lit) ] -> (
+  | `Assoc [ ("type", typ); ("literal", lit) ] -> (
       let t = J.to_string typ in
       let l = J.to_string lit in
       match t with
-      | "int" -> SElement.SConst (SIntConst (int_of_string l))
-      | "float" -> SConst (SFloatConst (float_of_string l))
-      | "char" -> SConst (SCharConst (List.hd (H.explode l)))
-      | "string" -> SConst (SStringConst l)
+      | "int" ->
+          SElement.SConst
+            (SIntConst (int_of_string l), extract_exp_id is_id id_or_lit)
+      | "float" ->
+          SConst
+            (SFloatConst (float_of_string l), extract_exp_id is_id id_or_lit)
+      | "char" ->
+          SConst
+            (SCharConst (List.hd (H.explode l)), extract_exp_id is_id id_or_lit)
+      | "string" -> SConst (SStringConst l, extract_exp_id is_id id_or_lit)
       | _ -> failwith "parse_const_json: undefined behavior")
   | _ -> failwith "parse_const_json: undefined behavior"
 
-let rec parse_exp_json exp =
-  match exp with
-  | `Assoc [ ("sym", c1); ("lit", c2) ] ->
-      let s = c1 |> J.to_string in
-      let lit = c2 |> J.to_string in
-      if String.contains s '-' then SElement.SELit (s, lit) else EOriginal s
-  | `Assoc [ ("const", contents) ] -> parse_const_json contents
-  | `Assoc [ ("binop", contents) ] ->
-      let op = parse_op (contents |> J.member "op" |> J.to_string) in
-      let typ = parse_typ (contents |> J.member "typ") in
-      let e1 = parse_exp_json (contents |> J.member "e1") in
-      let e2 = parse_exp_json (contents |> J.member "e2") in
-      SBinOp (op, e1, e2, typ)
-  | `Assoc [ ("cast", contents) ] ->
-      let typ = parse_typ (contents |> J.member "typ") in
-      let e = parse_exp_json (contents |> J.member "e") in
-      SCastE (typ, e)
-  | `Assoc [ ("sizeof", contents) ] ->
-      let e = parse_exp_json contents in
-      SSizeOfE e
-  | `Assoc [ ("lval", contents) ] ->
-      let lv = parse_lval_json contents in
-      SELval lv
-  | _ -> failwith "parse_exp_json: undefined behavior"
+let rec parse_exp_json contents =
+  let sub = J.member "sub" contents in
+  let is_id = not (Yojson.Basic.Util.member "id" contents = `Null) in
+  let id_or_lit =
+    if is_id then J.member "id" contents else J.member "literal" contents
+  in
+  let id_or_lit = id_or_lit |> J.to_string in
+  if sub <> `Null then
+    match sub with
+    | `Assoc [ ("const", contents) ] ->
+        parse_const_json contents is_id id_or_lit
+    | `Assoc [ ("binop", contents) ] ->
+        let op = parse_op (contents |> J.member "op" |> J.to_string) in
+        let typ = parse_typ (contents |> J.member "typ") in
+        let e1 = parse_exp_json (contents |> J.member "e1") in
+        let e2 = parse_exp_json (contents |> J.member "e2") in
+        if is_id then SElement.SBinOp (op, e1, e2, typ, ExpID id_or_lit)
+        else SBinOp (op, e1, e2, typ, IDNotAvailable id_or_lit)
+    | `Assoc [ ("cast", contents) ] ->
+        let typ = parse_typ (contents |> J.member "typ") in
+        let e = parse_exp_json (contents |> J.member "e") in
+        if is_id then SElement.SCastE (typ, e, ExpID id_or_lit)
+        else SCastE (typ, e, IDNotAvailable id_or_lit)
+    | `Assoc [ ("sizeof", contents) ] ->
+        let e = parse_exp_json contents in
+        if is_id then SElement.SSizeOfE (e, ExpID id_or_lit)
+        else SSizeOfE (e, IDNotAvailable id_or_lit)
+    | `Assoc [ ("lval", contents) ] ->
+        let lv = parse_lval_json contents in
+        if is_id then SElement.SELval (lv, ExpID id_or_lit)
+        else SELval (lv, IDNotAvailable id_or_lit)
+    | _ -> failwith "parse_exp_json: undefined behavior"
+  else if is_id then SElement.EID (ExpID id_or_lit)
+  else SElement.EID (IDNotAvailable id_or_lit)
 
-let parse_return_json stmt =
-  match stmt with
+let parse_return_json contents =
+  let sub = J.member "sub" contents in
+  let is_id = not (Yojson.Basic.Util.member "id" contents = `Null) in
+  let id_or_lit =
+    if is_id then J.member "id" contents else J.member "literal" contents
+  in
+  let id_or_lit = id_or_lit |> J.to_string in
+  match sub with
   | `Assoc [ ("exp", exp) ] -> (
       match exp with
       | `String s ->
-          if s = "None" then SElement.SReturn None
-          else SReturn (Some (parse_exp_json exp))
-      | `Assoc _ -> SReturn (Some (parse_exp_json exp))
+          if is_id then
+            if s = "None" then SElement.SReturn (None, SElement.StmtID id_or_lit)
+            else SReturn (Some (parse_exp_json exp), SElement.StmtID id_or_lit)
+          else if s = "None" then
+            SReturn (None, SElement.IDNotAvailable id_or_lit)
+          else
+            SReturn
+              (Some (parse_exp_json exp), SElement.IDNotAvailable id_or_lit)
+      | `Assoc _ ->
+          if is_id then
+            SReturn (Some (parse_exp_json exp), SElement.StmtID id_or_lit)
+          else
+            SReturn
+              (Some (parse_exp_json exp), SElement.IDNotAvailable id_or_lit)
       | _ -> failwith "parse_return_json: undefined behavior")
   | _ -> failwith "parse_return_json: undefined behavior"
 
-let rec parse_if_json stmt =
-  match stmt with
+let rec parse_if_json contents =
+  let sub = J.member "sub" contents in
+  let is_id = not (Yojson.Basic.Util.member "id" contents = `Null) in
+  let id_or_lit =
+    if is_id then J.member "id" contents else J.member "literal" contents
+  in
+  let id_or_lit = id_or_lit |> J.to_string in
+  match sub with
   | `Assoc [ ("cond", cond); ("then", then_block); ("else", else_block) ] ->
       let cond = parse_exp_json cond in
       let then_block =
@@ -478,15 +567,17 @@ let rec parse_if_json stmt =
         let es_block = J.to_list else_block in
         List.fold_left (fun acc s -> parse_stmt_json s :: acc) [] es_block
       in
-      SElement.SIf (cond, then_block, else_block)
+      if is_id then
+        SElement.SIf (cond, then_block, else_block, SElement.StmtID id_or_lit)
+      else SIf (cond, then_block, else_block, IDNotAvailable id_or_lit)
   | _ -> failwith "parse_if_json: undefined behavior"
 
 and parse_stmt_json sym =
   match sym with
-  | `Assoc [ (stmt_name, stmt) ] -> (
+  | `Assoc [ (stmt_name, contents) ] -> (
       match stmt_name with
-      | "if" -> parse_if_json stmt
-      | "return" -> parse_return_json stmt
+      | "if" -> parse_if_json contents
+      | "return" -> parse_return_json contents
       | _ -> failwith "parse_stmt_json: not implemented")
   | _ -> failwith "parse_stmt_json: undefined behavior"
 
@@ -494,51 +585,54 @@ let parse_context sink_node action context =
   match action with
   | "insert_stmt" | "delete_stmt" ->
       let parent = J.member "parent" context in
-      let parent_sym = J.member "sym" parent |> J.to_string in
+      let parent_sym = J.member "id" parent |> J.to_string in
       let s_parent =
-        if parent_sym = "Null" then SElement.SNull else SStmt (SSID parent_sym)
+        if parent_sym = "Null" then SElement.SNull
+        else SStmt (SID (StmtID parent_sym))
       in
       let left = J.member "left" context in
-      let left_sym = J.member "sym" left |> J.to_string in
+      let left_sym = J.member "id" left |> J.to_string in
       let s_left_sibling =
-        if left_sym = "Null" then SElement.SNull else SStmt (SSID left_sym)
+        if left_sym = "Null" then SElement.SNull
+        else SStmt (SID (StmtID left_sym))
       in
       let right = J.member "right" context in
-      let right_sym = J.member "sym" right |> J.to_string in
+      let right_sym = J.member "id" right |> J.to_string in
       let s_right_sibling =
-        if right_sym = "Null" then SElement.SNull else SStmt (SSID right_sym)
+        if right_sym = "Null" then SElement.SNull
+        else SStmt (SID (StmtID right_sym))
       in
       {
         SDiff.s_parent;
         s_left_sibling;
         s_right_sibling;
-        s_snk = SElement.SStmt (SElement.SSID sink_node);
+        s_snk = SElement.SStmt (SElement.SID sink_node);
       }
   | "insert_exp" | "delete_exp" | "update_exp" | "insert_lval" | "delete_lval"
   | "update_lval" ->
       let parent = J.member "parent" context in
-      let parent_sym = J.member "sym" parent |> J.to_string in
+      let parent_sym = J.member "id" parent |> J.to_string in
       let s_parent =
         if parent_sym = "Null" then SElement.SNull
-        else SElement.SStmt (SSID parent_sym)
+        else SElement.SStmt (SID (StmtID parent_sym))
       in
       let left = J.member "left" context in
-      let left_sym = J.member "sym" left |> J.to_string in
+      let left_sym = J.member "id" left |> J.to_string in
       let s_left_sibling =
         if left_sym = "Null" then SElement.SNull
-        else SElement.SExp (SEID left_sym)
+        else SElement.SExp (EID (ExpID left_sym))
       in
       let right = J.member "right" context in
-      let right_sym = J.member "sym" right |> J.to_string in
+      let right_sym = J.member "id" right |> J.to_string in
       let s_right_sibling =
         if right_sym = "Null" then SElement.SNull
-        else SElement.SExp (SEID right_sym)
+        else SElement.SExp (EID (ExpID right_sym))
       in
       {
         s_parent;
         s_left_sibling;
         s_right_sibling;
-        s_snk = SElement.SStmt (SElement.SSID sink_node);
+        s_snk = SElement.SStmt (SElement.SID sink_node);
       }
   | _ -> failwith "parse_sym_json: undefined behavior"
 
@@ -569,7 +663,7 @@ let parse_sym_json sink_node action context sym =
       | _ -> failwith "undefined action")
   | _ -> failwith "undefined action"
 
-let parse_edit_function sink_node path_name =
+let parse_edit_function (sink_node : string) path_name =
   let json = Yojson.Basic.from_file path_name in
   let diffs = json |> J.member "diffs" in
   let key_list = diffs |> J.keys in
@@ -587,107 +681,131 @@ let parse_edit_function sink_node path_name =
          let action = diff |> J.member "action" |> J.to_string in
          let context = diff |> J.member "context" in
          let sym = diff |> J.member "change" in
-         parse_sym_json sink_node action context sym :: acc)
+         parse_sym_json (StmtID sink_node) action context sym :: acc)
        [] diffs)
 
-let match_converted_exp l_to_e_map sym =
-  let converted = H.StrMap.find_opt sym l_to_e_map in
-
-  match converted with
-  | Some eid -> SElement.SExp (SElement.SEID eid)
-  | None -> SElement.SNull
-
-let match_lval l_to_e_map sol lv =
+let match_lval (sol : string H.StrMap.t) lv =
   match lv with
-  | SElement.SLLIT (sym, _) -> (
-      let opt = H.StrMap.find_opt sym sol in
-      match opt with
-      | Some new_id -> SElement.SLval (SElement.SLID new_id)
-      | None -> match_converted_exp l_to_e_map sym)
-  | SLID id -> (
+  | SElement.LID (LvalID id) -> (
       let opt = H.StrMap.find_opt id sol in
-      match opt with Some id -> SElement.SLval (SLID id) | None -> SNull)
-  | LOriginal str -> SElement.SLval (LOriginal str)
+      match opt with
+      | Some id -> SElement.SLval (LID (LvalID id))
+      | None -> failwith "lval id not found")
+  | SElement.LID (LvalIDSet (lid, eid)) -> (
+      let opt = H.StrMap.find_opt lid sol in
+      match opt with
+      | Some id -> SElement.SLval (LID (LvalID id))
+      | None ->
+          let id = H.StrMap.find eid sol in
+          SElement.SExp (EID (ExpID id)))
   | SLNULL -> SNull
+  | _ -> failwith "undefined behavior"
 
-let rec match_exp l_to_e_map sol exp =
+let check_exp_id id (sol : string H.StrMap.t) =
+  print_endline id;
+  let opt = H.StrMap.find_opt id sol in
+  match opt with Some new_id -> SElement.EID (ExpID new_id) | _ -> SENULL
+
+let rec match_exp (sol : string H.StrMap.t) exp =
   match exp with
-  | SElement.SELit (sym, lit) -> (
-      let opt = H.StrMap.find_opt sym sol in
-      match opt with
-      | Some new_id -> SElement.SEID new_id
-      | None -> EOriginal lit)
-  | EOriginal c -> EOriginal c
-  | SEID id -> (
-      let opt = H.StrMap.find_opt id sol in
-      match opt with Some new_id -> SEID new_id | _ -> SENULL)
-  | SConst c -> SConst c
-  | SSizeOf t -> SSizeOf t
-  | SSizeOfE e -> SSizeOfE (match_exp l_to_e_map sol e)
-  | SSizeOfStr s -> SSizeOfStr s
-  | SBinOp (b, e1, e2, t) ->
-      SBinOp (b, match_exp l_to_e_map sol e1, match_exp l_to_e_map sol e2, t)
-  | SUnOp (u, e) -> SUnOp (u, match_exp l_to_e_map sol e)
-  | SQuestion (e1, e2, e3) ->
-      SQuestion
-        ( match_exp l_to_e_map sol e1,
-          match_exp l_to_e_map sol e2,
-          match_exp l_to_e_map sol e3 )
-  | SCastE (t, e) -> SCastE (t, match_exp l_to_e_map sol e)
-  | SELval lv -> (
-      let return = match_lval l_to_e_map sol lv in
-      match return with
-      | SElement.SLval lv -> SElement.SELval lv
-      | SElement.SExp e -> match_exp l_to_e_map sol e
-      | _ -> failwith "undefined behavior")
+  | SElement.EID (ExpID id) -> check_exp_id id sol
+  | SConst (c, id) -> (
+      match id with ExpID id -> check_exp_id id sol | _ -> SConst (c, id))
+  | SSizeOf (t, id) -> (
+      match id with ExpID id -> check_exp_id id sol | _ -> SSizeOf (t, id))
+  | SSizeOfE (e, id) -> (
+      match id with
+      | ExpID id -> check_exp_id id sol
+      | _ -> SSizeOfE (match_exp sol e, id))
+  | SSizeOfStr (s, id) -> (
+      match id with ExpID id -> check_exp_id id sol | _ -> SSizeOfStr (s, id))
+  | SBinOp (b, e1, e2, t, id) -> (
+      match id with
+      | ExpID id -> check_exp_id id sol
+      | _ -> SBinOp (b, match_exp sol e1, match_exp sol e2, t, id))
+  | SUnOp (u, e, id) -> (
+      match id with
+      | ExpID id -> check_exp_id id sol
+      | _ -> SUnOp (u, match_exp sol e, id))
+  | SQuestion (e1, e2, e3, id) -> (
+      match id with
+      | ExpID id -> check_exp_id id sol
+      | _ -> SQuestion (match_exp sol e1, match_exp sol e2, match_exp sol e3, id)
+      )
+  | SCastE (t, e, id) -> (
+      match id with
+      | ExpID id -> check_exp_id id sol
+      | _ -> SCastE (t, match_exp sol e, id))
+  | SELval (lv, id) -> (
+      match id with
+      | ExpID id -> check_exp_id id sol
+      | _ -> (
+          let return = match_lval sol lv in
+          match return with
+          | SElement.SLval lv -> SElement.SELval (lv, id)
+          | SElement.SExp (EID e) -> SElement.EID e
+          | _ -> failwith "undefined behavior"))
   | _ -> failwith "match_exp: undefined behavior"
 
-let extract_lval l_to_e_map sol lv =
-  let return = match_lval l_to_e_map sol lv in
+let extract_lval sol lv =
+  let return = match_lval sol lv in
   match return with
   | SElement.SLval lv -> lv
   | _ -> failwith "undefined behavior"
 
-let rec match_stmt l_to_e_map sol stmt =
-  match stmt with
-  | SElement.SSID id -> (
-      let opt = H.StrMap.find_opt id sol in
-      match opt with Some new_id -> SElement.SSID new_id | _ -> SSNull)
-  | SIf (cond, then_block, else_block) ->
-      let new_cond = match_exp l_to_e_map sol cond in
-      let new_then_block = List.map (match_stmt l_to_e_map sol) then_block in
-      let new_else_block = List.map (match_stmt l_to_e_map sol) else_block in
-      SIf (new_cond, new_then_block, new_else_block)
-  | SReturn (Some exp) -> SReturn (Some (match_exp l_to_e_map sol exp))
-  | SReturn None -> SReturn None
-  | SSNull -> SSNull
-  | SSet (lv, exp) ->
-      SSet (extract_lval l_to_e_map sol lv, match_exp l_to_e_map sol exp)
-  | SCall (None, func, param) ->
-      SCall
-        ( None,
-          match_exp l_to_e_map sol func,
-          List.map (match_exp l_to_e_map sol) param )
-  | SCall (Some lv, func, param) ->
-      SCall
-        ( Some (extract_lval l_to_e_map sol lv),
-          match_exp l_to_e_map sol func,
-          List.map (match_exp l_to_e_map sol) param )
+let check_stmt_id id (sol : string H.StrMap.t) =
+  let opt = H.StrMap.find_opt id sol in
+  match opt with Some new_id -> SElement.SID (StmtID new_id) | _ -> SSNull
 
-let match_selem l_to_e_map sol (selem : SElement.t) =
+let rec match_stmt (sol : string H.StrMap.t) stmt =
+  match stmt with
+  | SElement.SID (StmtID id) -> check_stmt_id id sol
+  | SIf (cond, then_block, else_block, id) -> (
+      match id with
+      | StmtID id -> check_stmt_id id sol
+      | _ ->
+          let new_cond = match_exp sol cond in
+          let new_then_block = List.map (match_stmt sol) then_block in
+          let new_else_block = List.map (match_stmt sol) else_block in
+          SIf (new_cond, new_then_block, new_else_block, id))
+  | SReturn (Some exp, id) -> (
+      match id with
+      | StmtID id -> check_stmt_id id sol
+      | _ -> SReturn (Some (match_exp sol exp), id))
+  | SReturn (None, id) -> (
+      match id with StmtID id -> check_stmt_id id sol | _ -> SReturn (None, id))
+  | SSNull -> SSNull
+  | SSet (lv, exp, id) -> (
+      match id with
+      | StmtID id -> check_stmt_id id sol
+      | _ -> SSet (extract_lval sol lv, match_exp sol exp, id))
+  | SCall (None, func, param, id) -> (
+      match id with
+      | StmtID id -> check_stmt_id id sol
+      | _ -> SCall (None, match_exp sol func, List.map (match_exp sol) param, id)
+      )
+  | SCall (Some lv, func, param, id) -> (
+      match id with
+      | StmtID id -> check_stmt_id id sol
+      | _ ->
+          SCall
+            ( Some (extract_lval sol lv),
+              match_exp sol func,
+              List.map (match_exp sol) param,
+              id ))
+  | _ -> failwith "match_stmt: undefined behavior"
+
+let match_selem (sol : string H.StrMap.t) (selem : SElement.t) =
   match selem with
   | SElement.SNull -> SElement.SNull
-  | SStmt stmt -> SStmt (match_stmt l_to_e_map sol stmt)
-  | SExp exp -> SExp (match_exp l_to_e_map sol exp)
+  | SStmt stmt -> SStmt (match_stmt sol stmt)
+  | SExp exp -> SExp (match_exp sol exp)
   | SLval _ -> failwith "not implemented"
 
 (* delete this *)
 let print_setype (exp : SElement.sym_exp) =
   match exp with
-  | SELit _ -> "SLiteral"
   | SENULL -> "SENULL"
-  | EOriginal _ -> "EOriginal"
-  | SEID _ -> "SEID"
   | SConst _ -> "SConst"
   | SSizeOf _ -> "SSizeOf"
   | SSizeOfE _ -> "SSizeOfE"
@@ -698,70 +816,55 @@ let print_setype (exp : SElement.sym_exp) =
   | SCastE _ -> "SCastE"
   | _ -> failwith "print_setype: undefined behavior"
 
-let match_sym l_to_e_map sol (action : SDiff.t) =
+let match_sym (sol : string H.StrMap.t) (action : SDiff.t) =
   match action with
   | SInsertStmt (context, sym) ->
-      let s_parent = match_selem l_to_e_map sol context.s_parent in
-      let s_left_sibling = match_selem l_to_e_map sol context.s_left_sibling in
-      let s_right_sibling =
-        match_selem l_to_e_map sol context.s_right_sibling
-      in
-      let sym = match_stmt l_to_e_map sol sym in
+      let s_parent = match_selem sol context.s_parent in
+      let s_left_sibling = match_selem sol context.s_left_sibling in
+      let s_right_sibling = match_selem sol context.s_right_sibling in
+      let sym = match_stmt sol sym in
       SDiff.SInsertStmt
         ( { s_parent; s_left_sibling; s_right_sibling; s_snk = context.s_snk },
           sym )
   | SDeleteStmt (context, sym) ->
-      let s_parent = match_selem l_to_e_map sol context.s_parent in
-      let s_left_sibling = match_selem l_to_e_map sol context.s_left_sibling in
-      let s_right_sibling =
-        match_selem l_to_e_map sol context.s_right_sibling
-      in
-      let sym = match_stmt l_to_e_map sol sym in
+      let s_parent = match_selem sol context.s_parent in
+      let s_left_sibling = match_selem sol context.s_left_sibling in
+      let s_right_sibling = match_selem sol context.s_right_sibling in
+      let sym = match_stmt sol sym in
       SDeleteStmt
         ( { s_parent; s_left_sibling; s_right_sibling; s_snk = context.s_snk },
           sym )
   | SInsertExp (context, sym) ->
-      let s_parent = match_selem l_to_e_map sol context.s_parent in
-      let s_left_sibling = match_selem l_to_e_map sol context.s_left_sibling in
-      let s_right_sibling =
-        match_selem l_to_e_map sol context.s_right_sibling
-      in
-      let sym = match_exp l_to_e_map sol sym in
+      let s_parent = match_selem sol context.s_parent in
+      let s_left_sibling = match_selem sol context.s_left_sibling in
+      let s_right_sibling = match_selem sol context.s_right_sibling in
+      let sym = match_exp sol sym in
       SInsertExp
         ( { s_parent; s_left_sibling; s_right_sibling; s_snk = context.s_snk },
           sym )
   | SDeleteExp (context, sym) ->
-      let s_parent = match_selem l_to_e_map sol context.s_parent in
-      let s_left_sibling = match_selem l_to_e_map sol context.s_left_sibling in
-      let s_right_sibling =
-        match_selem l_to_e_map sol context.s_right_sibling
-      in
-      let sym = match_exp l_to_e_map sol sym in
+      let s_parent = match_selem sol context.s_parent in
+      let s_left_sibling = match_selem sol context.s_left_sibling in
+      let s_right_sibling = match_selem sol context.s_right_sibling in
+      let sym = match_exp sol sym in
       SDeleteExp
         ( { s_parent; s_left_sibling; s_right_sibling; s_snk = context.s_snk },
           sym )
   | SUpdateExp (context, from, to_) ->
-      let s_parent = match_selem l_to_e_map sol context.s_parent in
-      let s_left_sibling = match_selem l_to_e_map sol context.s_left_sibling in
-      let s_right_sibling =
-        match_selem l_to_e_map sol context.s_right_sibling
-      in
-      let from = match_exp l_to_e_map sol from in
-      let to_ = match_exp l_to_e_map sol to_ in
+      let s_parent = match_selem sol context.s_parent in
+      let s_left_sibling = match_selem sol context.s_left_sibling in
+      let s_right_sibling = match_selem sol context.s_right_sibling in
+      let from = match_exp sol from in
+      let to_ = match_exp sol to_ in
       SUpdateExp
         ( { s_parent; s_left_sibling; s_right_sibling; s_snk = context.s_snk },
           from,
           to_ )
   | _ -> failwith "not implemented"
 
-let convert_diff sparrow_path sol ef =
-  let l_to_e_map =
-    H.make_str_map (Filename.concat sparrow_path "taint/datalog/Lval.facts")
-  in
+let convert_diff sol ef =
   List.rev
-    (List.fold_left
-       (fun acc action -> match_sym l_to_e_map sol action :: acc)
-       [] ef)
+    (List.fold_left (fun acc action -> match_sym sol action :: acc) [] ef)
 
 let map_cil_to_cmd sparrow_dir file =
   let cmd_str_map = H.parse_sparrow sparrow_dir in
@@ -776,86 +879,95 @@ let rec cil_to_sym_typ typ =
   | Cil.TPtr (t, _) -> SElement.SPtr (cil_to_sym_typ t)
   | _ -> failwith "cil_to_sym_typ: undefined type"
 
+let find_lval_sym l_to_e_map lval lval_map =
+  let matched_id =
+    H.LvalMap.fold
+      (fun k v acc -> if H.eq_lval_conc k lval then v :: acc else acc)
+      lval_map []
+  in
+  let exp_id =
+    H.StrMap.fold
+      (fun k v acc -> if k = List.hd matched_id then v :: acc else acc)
+      l_to_e_map []
+  in
+  if List.length matched_id <> 0 then
+    if List.length exp_id <> 0 then
+      SElement.LvalIDSet (List.hd matched_id, List.hd exp_id)
+    else SElement.LvalID (List.hd matched_id)
+  else IDNotAvailable (H.string_of_lval lval)
+
 let get_lval_sym stmt lval cil_map =
   let info_key = H.get_info_key stmt cil_map in
-  if
-    H.LvalMap.exists
-      (fun k _ -> H.string_of_lval k = H.string_of_lval lval)
-      info_key.H.lvals
-  then
+  if H.LvalMap.exists (fun k _ -> H.eq_lval_conc k lval) info_key.H.lvals then
     let result =
       H.LvalMap.fold
-        (fun k v acc ->
-          if H.string_of_lval k = H.string_of_lval lval then v :: acc else acc)
+        (fun k v acc -> if H.eq_lval_conc k lval then v :: acc else acc)
         info_key.H.lvals []
     in
     match List.rev result with
-    | hd :: _ -> SElement.SLID hd
-    | [] -> failwith "get_exp_sym: not found"
-  else failwith "get_exp_sym: not found"
+    | hd :: _ -> SElement.LID (LvalID hd)
+    | [] -> failwith "get_lval_sym: not found"
+  else SElement.LID (IDNotAvailable (H.string_of_lval lval))
 
-let find_lval_sym lval lval_map_lst =
-  let rec find_lval_sym' lval map_lst =
-    match map_lst with
-    | [] -> SElement.LOriginal (H.string_of_lval lval)
-    | hd :: tl ->
-        if
-          H.LvalMap.exists
-            (fun k _ -> H.string_of_lval k = H.string_of_lval lval)
-            hd
-        then
-          let result =
-            H.LvalMap.fold
-              (fun k v acc ->
-                if H.string_of_lval k = H.string_of_lval lval then v :: acc
-                else acc)
-              hd []
-          in
-          match List.rev result with
-          | hd :: _ -> SElement.SLID hd
-          | [] -> failwith "find_lval_sym: not found"
-        else find_lval_sym' lval tl
+let make_lval_map stmt cil_map =
+  let map =
+    H.InfoMap.fold
+      (fun k _ acc ->
+        if H.eq_stmt_conc k.stmt stmt then k.lvals :: acc else acc)
+      cil_map []
   in
-  find_lval_sym' lval lval_map_lst
+  if List.length map <> 0 then List.hd map
+  else
+    H.InfoMap.fold
+      (fun k _ acc -> H.LvalMap.union (fun _ _ y -> Some y) k.lvals acc)
+      cil_map H.LvalMap.empty
 
-let make_lval_map_lst cil_map =
-  H.InfoMap.fold (fun k _ acc -> k.lvals :: acc) cil_map []
-
-let make_exp_sym exp cil_map =
-  let exp_map_lst = H.InfoMap.fold (fun k _ acc -> k.exps :: acc) cil_map [] in
-  let lval_map_lst =
-    H.InfoMap.fold (fun k _ acc -> k.lvals :: acc) cil_map []
+let make_exp_map stmt cil_map =
+  let map =
+    H.InfoMap.fold
+      (fun k _ acc -> if H.eq_stmt_conc k.stmt stmt then k.exps :: acc else acc)
+      cil_map []
   in
-  let rec find_exp_sym (exp : Cil.exp) map_lst =
-    match map_lst with
-    | [] -> (
-        match exp with
-        | Cil.SizeOfE e -> SElement.SSizeOfE (find_exp_sym e exp_map_lst)
-        | Cil.CastE (typ, e) ->
-            SElement.SCastE (cil_to_sym_typ typ, find_exp_sym e exp_map_lst)
-        | Cil.BinOp (op, e1, e2, typ) ->
-            SElement.SBinOp
-              ( SElement.to_sbinop op,
-                find_exp_sym e1 exp_map_lst,
-                find_exp_sym e2 exp_map_lst,
-                cil_to_sym_typ typ )
-        | Cil.Lval lval -> SElement.SELval (find_lval_sym lval lval_map_lst)
-        | Cil.Const c -> SElement.SConst (SElement.to_sconst c)
-        | _ -> failwith "find_exp_sym: undefined expression")
-    | hd :: tl -> (
-        let result =
-          H.ExpMap.fold
-            (fun k v acc ->
-              if H.string_of_exp k = H.string_of_exp exp then v :: acc else acc)
-            hd []
-        in
-        match List.rev result with
-        | hd :: _ -> SEID hd
-        | [] -> find_exp_sym exp tl)
-  in
-  find_exp_sym exp exp_map_lst
+  if List.length map <> 0 then List.hd map
+  else
+    H.InfoMap.fold
+      (fun k _ acc -> H.ExpMap.union (fun _ _ y -> Some y) k.exps acc)
+      cil_map H.ExpMap.empty
 
-let get_exp_sym stmt exp cil_map =
+let make_exp_sym l_to_e_map p_stmt exp cil_map =
+  let exp_map = make_exp_map p_stmt cil_map in
+  let lval_map = make_lval_map p_stmt cil_map in
+  let rec find_exp_sym (exp : Cil.exp) =
+    let e_id =
+      let matched_id =
+        H.ExpMap.fold
+          (fun k v acc -> if H.eq_exp_conc k exp then v :: acc else acc)
+          exp_map []
+      in
+      if List.length matched_id = 0 then
+        SElement.IDNotAvailable (H.string_of_exp exp)
+      else SElement.ExpID (List.hd matched_id)
+    in
+    match exp with
+    | Cil.SizeOfE e -> SElement.SSizeOfE (find_exp_sym e, e_id)
+    | Cil.CastE (typ, e) ->
+        SElement.SCastE (cil_to_sym_typ typ, find_exp_sym e, e_id)
+    | Cil.BinOp (op, e1, e2, typ) ->
+        SElement.SBinOp
+          ( SElement.to_sbinop op,
+            find_exp_sym e1,
+            find_exp_sym e2,
+            cil_to_sym_typ typ,
+            e_id )
+    | Cil.Lval lval ->
+        SElement.SELval
+          (SElement.LID (find_lval_sym l_to_e_map lval lval_map), e_id)
+    | Cil.Const c -> SElement.SConst (SElement.to_sconst c, e_id)
+    | _ -> SElement.EID e_id
+  in
+  find_exp_sym exp
+
+let get_exp_sym l_to_e_map stmt exp cil_map =
   let info_key = H.get_info_key stmt cil_map in
   if
     H.ExpMap.exists
@@ -869,9 +981,9 @@ let get_exp_sym stmt exp cil_map =
         info_key.H.exps []
     in
     match List.rev result with
-    | hd :: _ -> SElement.SEID hd
+    | hd :: _ -> SElement.EID (SElement.ExpID hd)
     | [] -> failwith "get_exp_sym: not found"
-  else make_exp_sym exp cil_map
+  else make_exp_sym l_to_e_map stmt exp cil_map
 
 let get_main_sym (stmt : Cil.stmt) (cil_map : string H.InfoMap.t) =
   let result =
@@ -897,13 +1009,13 @@ let get_main_sym (stmt : Cil.stmt) (cil_map : string H.InfoMap.t) =
   in
   match List.rev result with [] -> None | hd :: _ -> Some hd
 
-let make_sym_context context cil_map =
+let make_sym_context l_to_e_map context cil_map =
   let parent_sym =
     match context.D.Diff.parent with
     | Null | EGlobal _ -> SElement.to_null
     | EStmt stmt -> (
         let sym = get_main_sym stmt cil_map in
-        match sym with None -> SNull | Some s -> SStmt (SSID s))
+        match sym with None -> SNull | Some s -> SStmt (SID (StmtID s)))
     | _ -> failwith "make_sym_context: unexpected parent"
   in
   let left_sibling_sym =
@@ -911,10 +1023,12 @@ let make_sym_context context cil_map =
     | Null | EGlobal _ -> SElement.to_null
     | EStmt stmt -> (
         let sym = get_main_sym stmt cil_map in
-        match sym with None -> SNull | Some s -> SStmt (SSID s))
+        match sym with None -> SNull | Some s -> SStmt (SID (StmtID s)))
     | EExp exp ->
         SExp
-          (get_exp_sym (D.CilElement.elem_to_stmt context.parent) exp cil_map)
+          (get_exp_sym l_to_e_map
+             (D.CilElement.elem_to_stmt context.parent)
+             exp cil_map)
     | _ -> failwith "make_sym_context: unexpected left sibling"
   in
   let right_sibling_sym =
@@ -922,10 +1036,12 @@ let make_sym_context context cil_map =
     | Null | EGlobal _ -> SElement.to_null
     | EStmt stmt -> (
         let sym = get_main_sym stmt cil_map in
-        match sym with None -> SNull | Some s -> SStmt (SSID s))
+        match sym with None -> SNull | Some s -> SStmt (SID (StmtID s)))
     | EExp exp ->
         SExp
-          (get_exp_sym (D.CilElement.elem_to_stmt context.parent) exp cil_map)
+          (get_exp_sym l_to_e_map
+             (D.CilElement.elem_to_stmt context.parent)
+             exp cil_map)
     | _ -> failwith "make_sym_context: unexpected right sibling"
   in
   {
@@ -935,117 +1051,133 @@ let make_sym_context context cil_map =
     s_snk = SElement.to_null;
   }
 
-let rec make_main_sym stmt cil_map =
+let find_stmt_sym stmt cil_map =
+  let matched =
+    H.InfoMap.fold
+      (fun k v acc ->
+        if H.string_of_stmt k.stmt = H.string_of_stmt stmt then v :: acc
+        else acc)
+      cil_map []
+  in
+  if List.length matched = 1 then SElement.StmtID (List.hd matched)
+  else SElement.IDNotAvailable (H.string_of_stmt stmt)
+
+let rec make_main_sym l_to_e_map stmt cil_map =
+  let stmt_id = find_stmt_sym stmt cil_map in
+  let lval_map = make_lval_map stmt cil_map in
   match stmt.Cil.skind with
   | Cil.Instr i -> (
       match List.hd i with
       | Cil.Call (None, f, exps, _) ->
           SElement.SCall
             ( None,
-              make_exp_sym f cil_map,
+              make_exp_sym l_to_e_map stmt f cil_map,
               List.fold_left
-                (fun acc exp -> make_exp_sym exp cil_map :: acc)
-                [] exps )
+                (fun acc exp -> make_exp_sym l_to_e_map stmt exp cil_map :: acc)
+                [] exps,
+              stmt_id )
       | Cil.Call (Some lv, f, exps, _) ->
           SElement.SCall
-            ( Some (find_lval_sym lv (make_lval_map_lst cil_map)),
-              make_exp_sym f cil_map,
+            ( Some (SElement.LID (find_lval_sym l_to_e_map lv lval_map)),
+              make_exp_sym l_to_e_map stmt f cil_map,
               List.fold_left
-                (fun acc exp -> make_exp_sym exp cil_map :: acc)
-                [] exps )
+                (fun acc exp -> make_exp_sym l_to_e_map stmt exp cil_map :: acc)
+                [] exps,
+              stmt_id )
       | Cil.Set (lv, exp, _) ->
           SElement.SSet
-            ( find_lval_sym lv (make_lval_map_lst cil_map),
-              make_exp_sym exp cil_map )
+            ( SElement.LID (find_lval_sym l_to_e_map lv lval_map),
+              make_exp_sym l_to_e_map stmt exp cil_map,
+              stmt_id )
       | _ -> failwith "make_main_sym: undefined instruction")
   | Cil.If (cond, t_b, e_b, _) ->
-      let cond_sym = make_exp_sym cond cil_map in
+      let cond_sym = make_exp_sym l_to_e_map stmt cond cil_map in
       let t_stmts = t_b.bstmts in
       let e_stmts = e_b.bstmts in
-      let t_syms = List.map (fun stmt -> make_main_sym stmt cil_map) t_stmts in
-      let e_syms = List.map (fun stmt -> make_main_sym stmt cil_map) e_stmts in
-      SElement.SIf (cond_sym, t_syms, e_syms)
+      let t_syms =
+        List.map (fun stmt -> make_main_sym l_to_e_map stmt cil_map) t_stmts
+      in
+      let e_syms =
+        List.map (fun stmt -> make_main_sym l_to_e_map stmt cil_map) e_stmts
+      in
+      SElement.SIf (cond_sym, t_syms, e_syms, stmt_id)
   | Cil.Return (Some exp, _) ->
-      SElement.SReturn (Some (make_exp_sym exp cil_map))
-  | Cil.Return (None, _) -> SElement.SReturn None
+      SElement.SReturn (Some (make_exp_sym l_to_e_map stmt exp cil_map), stmt_id)
+  | Cil.Return (None, _) -> SElement.SReturn (None, stmt_id)
   | _ -> failwith "make_main_sym: undefined statement"
 
-let make_sym_stmt_node stmt cil_map =
-  match stmt.Cil.skind with
-  | Cil.If (cond, t_b, e_b, _) ->
-      let cond_sym = make_exp_sym cond cil_map in
-      let t_stmts = t_b.bstmts in
-      let e_stmts = e_b.bstmts in
-      let t_syms = List.map (fun stmt -> make_main_sym stmt cil_map) t_stmts in
-      let e_syms = List.map (fun stmt -> make_main_sym stmt cil_map) e_stmts in
-      SElement.SIf (cond_sym, t_syms, e_syms)
-  | _ -> failwith "make_sym_stmt_node: undefined statement"
-
-let rec fold_diff cil_map ast_diff acc =
+let rec fold_diff l_to_e_map cil_map ast_diff acc =
   match ast_diff with
   | [] -> acc
   | hd :: tl -> (
       match hd with
       | D.Diff.InsertStmt (context, stmt) ->
           SDiff.SInsertStmt
-            (make_sym_context context cil_map, make_sym_stmt_node stmt cil_map)
-          :: fold_diff cil_map tl acc
+            ( make_sym_context l_to_e_map context cil_map,
+              make_main_sym l_to_e_map stmt cil_map )
+          :: fold_diff l_to_e_map cil_map tl acc
       | DeleteStmt (context, stmt) ->
           SDiff.SDeleteStmt
-            ( make_sym_context context cil_map,
+            ( make_sym_context l_to_e_map context cil_map,
               let sym = get_main_sym stmt cil_map in
-              match sym with None -> SSNull | Some s -> SSID s )
-          :: fold_diff cil_map tl acc
+              match sym with
+              | None -> SID (IDNotAvailable (H.string_of_stmt stmt))
+              | Some s -> SID (StmtID s) )
+          :: fold_diff l_to_e_map cil_map tl acc
       | InsertExp (context, exp) ->
           SDiff.SInsertExp
-            ( make_sym_context context cil_map,
-              get_exp_sym (D.CilElement.elem_to_stmt context.parent) exp cil_map
-            )
-          :: fold_diff cil_map tl acc
+            ( make_sym_context l_to_e_map context cil_map,
+              make_exp_sym l_to_e_map
+                (D.CilElement.elem_to_stmt context.parent)
+                exp cil_map )
+          :: fold_diff l_to_e_map cil_map tl acc
       | DeleteExp (context, exp) ->
           SDiff.SDeleteExp
-            ( make_sym_context context cil_map,
-              get_exp_sym (D.CilElement.elem_to_stmt context.parent) exp cil_map
-            )
-          :: fold_diff cil_map tl acc
+            ( make_sym_context l_to_e_map context cil_map,
+              make_exp_sym l_to_e_map
+                (D.CilElement.elem_to_stmt context.parent)
+                exp cil_map )
+          :: fold_diff l_to_e_map cil_map tl acc
       | UpdateExp (context, _from, _to) ->
           SDiff.SUpdateExp
-            ( make_sym_context context cil_map,
-              get_exp_sym
+            ( make_sym_context l_to_e_map context cil_map,
+              make_exp_sym l_to_e_map
                 (D.CilElement.elem_to_stmt context.parent)
                 _from cil_map,
-              SElement.EOriginal (H.string_of_exp _to) )
-          :: fold_diff cil_map tl acc
+              SElement.EID (SElement.IDNotAvailable (H.string_of_exp _to)) )
+          :: fold_diff l_to_e_map cil_map tl acc
       | InsertLval (context, lval) ->
           SDiff.SInsertLval
-            ( make_sym_context context cil_map,
+            ( make_sym_context l_to_e_map context cil_map,
               get_lval_sym
                 (D.CilElement.elem_to_stmt context.parent)
                 lval cil_map )
-          :: fold_diff cil_map tl acc
+          :: fold_diff l_to_e_map cil_map tl acc
       | DeleteLval (context, lval) ->
           SDiff.SDeleteLval
-            ( make_sym_context context cil_map,
+            ( make_sym_context l_to_e_map context cil_map,
               get_lval_sym
                 (D.CilElement.elem_to_stmt context.parent)
                 lval cil_map )
-          :: fold_diff cil_map tl acc
+          :: fold_diff l_to_e_map cil_map tl acc
       | UpdateLval (context, _from, _to) ->
           SDiff.SUpdateLval
-            ( make_sym_context context cil_map,
+            ( make_sym_context l_to_e_map context cil_map,
               get_lval_sym
                 (D.CilElement.elem_to_stmt context.parent)
                 _from cil_map,
               get_lval_sym
                 (D.CilElement.elem_to_stmt context.parent)
                 _to cil_map )
-          :: fold_diff cil_map tl acc
-      | _ -> fold_diff cil_map tl acc)
+          :: fold_diff l_to_e_map cil_map tl acc
+      | _ -> fold_diff l_to_e_map cil_map tl acc)
 
-let define_sym_diff cil_map ast_diff = fold_diff cil_map ast_diff []
-
-let slval_to_sym (slval : SElement.sym_lval) =
-  match slval with SLID id -> id | _ -> "Null"
+let define_sym_diff sparrow_path cil_map ast_diff =
+  let l_to_e_map =
+    H.make_str_map_rev
+      (Filename.concat sparrow_path "taint/datalog/LvalExp.facts")
+  in
+  fold_diff l_to_e_map cil_map ast_diff []
 
 let sbinop_to_sym (op : SElement.sym_binop) =
   match op with
@@ -1079,257 +1211,302 @@ let rec styp_to_sym (styp : SElement.sym_typ) =
   | SFloat -> "float"
   | SPtr t -> "ptr" ^ styp_to_sym t
 
-let sexp_to_sym (sexp : SElement.sym_exp) =
-  match sexp with SEID str -> str | _ -> "Null"
-
 let slval_to_json (slval : SElement.sym_lval) diff =
   match (slval, diff) with
-  | SLID id, _ ->
-      `Assoc [ ("sym", `String id); ("lit", `String (H.string_of_lval diff)) ]
-  | LOriginal str, _ -> `Assoc [ ("sym", `String "Null"); ("lit", `String str) ]
-  | SLNULL, _ -> `Assoc [ ("sym", `String "Null"); ("lit", `String "Null") ]
+  | LID (LvalID id), _ -> `Assoc [ ("id", `String id) ]
+  | LID (LvalIDSet (lid, eid)), _ ->
+      `Assoc [ ("lval_id", `String lid); ("exp_id", `String eid) ]
+  | LID (IDNotAvailable str), _ -> `Assoc [ ("literal", `String str) ]
+  | SLNULL, _ -> `Assoc [ ("id", `String "Null") ]
   | _ -> failwith "slval_to_json: undefined slval"
 
 let sconst_to_json (sconst : SElement.sym_const) diff =
   match (sconst, diff) with
   | SIntConst i, _ ->
-      `Assoc [ ("type", `String "int"); ("lit", `String (Int.to_string i)) ]
+      `Assoc [ ("type", `String "int"); ("literal", `String (Int.to_string i)) ]
   | SFloatConst f, _ ->
-      `Assoc [ ("type", `String "float"); ("lit", `String (Float.to_string f)) ]
-  | SStringConst s, _ -> `Assoc [ ("type", `String "str"); ("lit", `String s) ]
+      `Assoc
+        [ ("type", `String "float"); ("literal", `String (Float.to_string f)) ]
+  | SStringConst s, _ ->
+      `Assoc [ ("type", `String "str"); ("literal", `String s) ]
   | SCharConst c, _ ->
-      `Assoc [ ("type", `String "char"); ("lit", `String (String.make 1 c)) ]
+      `Assoc
+        [ ("type", `String "char"); ("literal", `String (String.make 1 c)) ]
+
+let extract_exp_id id =
+  match id with
+  | SElement.ExpID id -> ("id", `String id)
+  | SElement.IDNotAvailable str -> ("literal", `String str)
+  | _ -> failwith "extract_exp_id: undefined id"
 
 let rec sexp_to_json (sexp : SElement.sym_exp) diff =
   match (sexp, diff) with
-  | EOriginal str, _ -> `Assoc [ ("sym", `String "Null"); ("lit", `String str) ]
-  | SEID id, _ ->
-      `Assoc [ ("sym", `String id); ("lit", `String (H.string_of_exp diff)) ]
-  | SConst const, _ -> `Assoc [ ("const", sconst_to_json const diff) ]
-  | SELval lv1, Cil.Lval lv2 -> `Assoc [ ("lval", slval_to_json lv1 lv2) ]
-  | SSizeOfE e1, Cil.SizeOfE e2 -> `Assoc [ ("sizeof", sexp_to_json e1 e2) ]
-  | SBinOp (op1, e1_1, e2_1, typ1), Cil.BinOp (_, e1_2, e2_2, _) ->
+  | EID (ExpID id), _ -> `Assoc [ ("id", `String id) ]
+  | EID (IDNotAvailable str), _ -> `Assoc [ ("literal", `String str) ]
+  | SConst (const, id), _ ->
       `Assoc
         [
-          ( "binop",
+          ("sub", `Assoc [ ("const", sconst_to_json const diff) ]);
+          extract_exp_id id;
+        ]
+  | SELval (lv1, id), Cil.Lval lv2 ->
+      `Assoc
+        [
+          ("sub", `Assoc [ ("lval", slval_to_json lv1 lv2) ]); extract_exp_id id;
+        ]
+  | SSizeOfE (e1, id), Cil.SizeOfE e2 ->
+      `Assoc
+        [
+          ("sub", `Assoc [ ("sizeof", `Assoc [ ("e", sexp_to_json e1 e2) ]) ]);
+          extract_exp_id id;
+        ]
+  | SBinOp (op1, e1_1, e2_1, typ1, id), Cil.BinOp (_, e1_2, e2_2, _) ->
+      `Assoc
+        [
+          ( "sub",
             `Assoc
               [
-                ("op", `String (sbinop_to_sym op1));
-                ("typ", `String (styp_to_sym typ1));
-                ("e1", sexp_to_json e1_1 e1_2);
-                ("e2", sexp_to_json e2_1 e2_2);
+                ( "binop",
+                  `Assoc
+                    [
+                      ("op", `String (sbinop_to_sym op1));
+                      ("typ", `String (styp_to_sym typ1));
+                      ("e1", sexp_to_json e1_1 e1_2);
+                      ("e2", sexp_to_json e2_1 e2_2);
+                    ] );
               ] );
+          extract_exp_id id;
         ]
-  | SCastE (typ, e1), Cil.CastE (_, e2) ->
+  | SCastE (typ, e1, id), Cil.CastE (_, e2) ->
       `Assoc
         [
-          ( "cast",
+          ( "sub",
             `Assoc
-              [ ("typ", `String (styp_to_sym typ)); ("e", sexp_to_json e1 e2) ]
-          );
+              [
+                ( "cast",
+                  `Assoc
+                    [
+                      ("typ", `String (styp_to_sym typ));
+                      ("e", sexp_to_json e1 e2);
+                    ] );
+              ] );
+          extract_exp_id id;
         ]
   | _ -> failwith "sexp_to_json: undefined sexp"
 
+let extract_stmt_id id =
+  match id with
+  | SElement.StmtID id -> ("id", `String id)
+  | SElement.IDNotAvailable str -> ("literal", `String str)
+  | _ -> failwith "extract_stmt_id: undefined id"
+
 let rec sstmt_to_json (sstmt : SElement.sym_stmt) diff =
   match (sstmt, diff.Cil.skind) with
-  | SSID ssid, _ ->
-      `Assoc [ ("sym", `String ssid); ("lit", `String (H.string_of_stmt diff)) ]
-  | SIf (exp1, tb1, eb1), Cil.If (exp2, tb2, eb2, _) ->
+  | SID ssid, _ -> (
+      match ssid with
+      | StmtID id -> `Assoc [ ("id", `String id) ]
+      | IDNotAvailable lit -> `Assoc [ ("literal", `String lit) ]
+      | _ -> failwith "sstmt_to_json: undefined ssid type")
+  | SIf (exp1, tb1, eb1, id), Cil.If (exp2, tb2, eb2, _) ->
       `Assoc
         [
           ( "if",
             `Assoc
               [
-                ("cond", sexp_to_json exp1 exp2);
-                ( "then",
-                  `List
-                    (List.rev
-                       (List.fold_left2
-                          (fun acc x y -> sstmt_to_json x y :: acc)
-                          [] tb1 tb2.bstmts)) );
-                ( "else",
-                  `List
-                    (List.rev
-                       (List.fold_left2
-                          (fun acc x y -> sstmt_to_json x y :: acc)
-                          [] eb1 eb2.bstmts)) );
+                ( "sub",
+                  `Assoc
+                    [
+                      ("cond", sexp_to_json exp1 exp2);
+                      ( "then",
+                        `List
+                          (List.rev
+                             (List.fold_left2
+                                (fun acc x y -> sstmt_to_json x y :: acc)
+                                [] tb1 tb2.bstmts)) );
+                      ( "else",
+                        `List
+                          (List.rev
+                             (List.fold_left2
+                                (fun acc x y -> sstmt_to_json x y :: acc)
+                                [] eb1 eb2.bstmts)) );
+                    ] );
+                extract_stmt_id id;
               ] );
         ]
-  | SSet (lv1, e1), Cil.Instr [ Cil.Set (lv2, e2, _) ] ->
+  | SSet (lv1, e1, id), Cil.Instr [ Cil.Set (lv2, e2, _) ] ->
       `Assoc
         [
-          ("set", `Assoc [ ("lval", slval_to_json lv1 lv2) ]);
-          ("exp", sexp_to_json e1 e2);
+          ( "set",
+            `Assoc
+              [
+                ( "sub",
+                  `Assoc
+                    [
+                      ("lval", slval_to_json lv1 lv2);
+                      ("exp", sexp_to_json e1 e2);
+                    ] );
+                extract_stmt_id id;
+              ] );
         ]
-  | SCall (Some lv1, e1, es1), Cil.Instr [ Cil.Call (Some lv2, e2, es2, _) ] ->
+  | SCall (Some lv1, e1, es1, id), Cil.Instr [ Cil.Call (Some lv2, e2, es2, _) ]
+    ->
       `Assoc
         [
-          ("call", `Assoc [ ("lval", slval_to_json lv1 lv2) ]);
-          ("exp", sexp_to_json e1 e2);
-          ( "exps",
-            `List
-              (List.rev
-                 (List.fold_left2
-                    (fun acc x y -> sexp_to_json x y :: acc)
-                    [] es1 es2)) );
+          ( "call",
+            `Assoc
+              [
+                ( "sub",
+                  `Assoc
+                    [
+                      ("lval", slval_to_json lv1 lv2);
+                      ("exp", sexp_to_json e1 e2);
+                      ( "exps",
+                        `List
+                          (List.rev
+                             (List.fold_left2
+                                (fun acc x y -> sexp_to_json x y :: acc)
+                                [] es1 es2)) );
+                    ] );
+                extract_stmt_id id;
+              ] );
         ]
-  | SCall (None, e1, es1), Cil.Instr [ Cil.Call (None, e2, es2, _) ] ->
+  | SCall (None, e1, es1, id), Cil.Instr [ Cil.Call (None, e2, es2, _) ] ->
       `Assoc
         [
-          ("call", `Assoc [ ("lval", `String "None") ]);
-          ("exp", sexp_to_json e1 e2);
-          ( "exps",
-            `List
-              (List.rev
-                 (List.fold_left2
-                    (fun acc x y -> sexp_to_json x y :: acc)
-                    [] es1 es2)) );
+          ( "call",
+            `Assoc
+              [
+                ( "sub",
+                  `Assoc
+                    [
+                      ("lval", `String "None");
+                      ("exp", sexp_to_json e1 e2);
+                      ( "exps",
+                        `List
+                          (List.rev
+                             (List.fold_left2
+                                (fun acc x y -> sexp_to_json x y :: acc)
+                                [] es1 es2)) );
+                    ] );
+                extract_stmt_id id;
+              ] );
         ]
-  | SReturn (Some e1), Cil.Return (Some e2, _) ->
-      `Assoc [ ("return", `Assoc [ ("exp", sexp_to_json e1 e2) ]) ]
-  | SReturn None, Cil.Return (None, _) -> `Assoc [ ("return", `String "") ]
-  | _ -> failwith "sstmt_to_json: undefined sstmt"
+  | SReturn (Some e1, id), Cil.Return (Some e2, _) ->
+      `Assoc
+        [
+          ( "return",
+            `Assoc
+              [
+                ("sub", `Assoc [ ("exp", sexp_to_json e1 e2) ]);
+                extract_stmt_id id;
+              ] );
+        ]
+  | SReturn (None, id), Cil.Return (None, _) ->
+      `Assoc
+        [
+          ( "return",
+            `Assoc
+              [
+                ("sub", `Assoc [ ("exp", `String "None") ]); extract_stmt_id id;
+              ] );
+        ]
+  | _ ->
+      SElement.pp_sstmt Format.std_formatter sstmt;
+      failwith "sstmt_to_json: undefined sstmt"
+
+let slval_to_sym (slval : SElement.sym_lval) =
+  match slval with
+  | LID (LvalID id) -> `Assoc [ ("id", `String id) ]
+  | LID (IDNotAvailable s) -> `Assoc [ ("literal", `String s) ]
+  | _ -> failwith "slval_to_sym: undefined slval"
+
+let sexp_to_sym (sexp : SElement.sym_exp) =
+  match sexp with
+  | EID (ExpID str) -> `Assoc [ ("id", `String str) ]
+  | EID (IDNotAvailable s) -> `Assoc [ ("literal", `String s) ]
+  | _ -> failwith "sexp_to_sym: undefined sexp"
 
 let sstmt_to_sym (sstmt : SElement.sym_stmt) =
-  match sstmt with SSID ssid -> ssid | _ -> "Null"
+  match sstmt with
+  | SID (StmtID id) -> `Assoc [ ("id", `String id) ]
+  | SID (IDNotAvailable s) -> `Assoc [ ("literal", `String s) ]
+  | _ -> failwith "sstmt_to_sym: undefined sstmt"
 
 let sym_to_lit sym =
   match sym with
   | SElement.SStmt sstmt -> sstmt_to_sym sstmt
   | SElement.SExp sexp -> sexp_to_sym sexp
   | SElement.SLval slval -> slval_to_sym slval
-  | SElement.SNull -> "Null"
+  | SElement.SNull -> `Assoc [ ("id", `String "Null") ]
 
 let get_json_obj (saction : SDiff.t) (caction : D.Diff.t) =
-  let context_json (context1 : SDiff.sym_context) (context2 : D.Diff.context) =
+  let context_json (context : SDiff.sym_context) =
     ( "context",
       `Assoc
         [
-          ( "parent",
-            `Assoc
-              [
-                ("sym", `String (sym_to_lit context1.s_parent));
-                ("lit", `String (D.CilElement.string_of_element context2.parent));
-              ] );
-          ( "left",
-            `Assoc
-              [
-                ("sym", `String (sym_to_lit context1.s_left_sibling));
-                ( "lit",
-                  `String (D.CilElement.string_of_element context2.left_sibling)
-                );
-              ] );
-          ( "right",
-            `Assoc
-              [
-                ("sym", `String (sym_to_lit context1.s_right_sibling));
-                ( "lit",
-                  `String
-                    (D.CilElement.string_of_element context2.right_sibling) );
-              ] );
+          ("parent", sym_to_lit context.s_parent);
+          ("left", sym_to_lit context.s_left_sibling);
+          ("right", sym_to_lit context.s_right_sibling);
         ] )
   in
   match (saction, caction) with
-  | SInsertStmt (context1, sym), InsertStmt (context2, diff) ->
+  | SInsertStmt (context1, sym), InsertStmt (_, diff) ->
       `Assoc
         [
           ("action", `String "insert_stmt");
-          context_json context1 context2;
+          context_json context1;
           ("change", sstmt_to_json sym diff);
         ]
-  | SDeleteStmt (context1, sym), DeleteStmt (context2, _) ->
+  | SDeleteStmt (context1, sym), DeleteStmt (_, _) ->
       `Assoc
         [
           ("action", `String "delete_stmt");
-          context_json context1 context2;
-          ("change", `String (sstmt_to_sym sym));
+          context_json context1;
+          ("change", sstmt_to_sym sym);
         ]
-  | SInsertExp (context1, sym), InsertExp (context2, diff) ->
+  | SInsertExp (context1, sym), InsertExp (_, diff) ->
       `Assoc
         [
           ("action", `String "insert_exp");
-          context_json context1 context2;
+          context_json context1;
           ("change", sexp_to_json sym diff);
         ]
-  | SDeleteExp (context1, sym), DeleteExp (context2, diff) ->
+  | SDeleteExp (context1, sym), DeleteExp (_, _) ->
       `Assoc
         [
           ("action", `String "delete_exp");
-          context_json context1 context2;
-          ( "change",
-            `Assoc
-              [
-                ("sym", `String (sexp_to_sym sym));
-                ("lit", `String (H.string_of_exp diff));
-              ] );
+          context_json context1;
+          ("change", sexp_to_sym sym);
         ]
-  | SUpdateExp (context1, from1, to1), UpdateExp (context2, from2, to2) ->
+  | SUpdateExp (context1, from1, to1), UpdateExp (_, _, _) ->
       `Assoc
         [
           ("action", `String "update_exp");
-          context_json context1 context2;
+          context_json context1;
           ( "change",
-            `Assoc
-              [
-                ( "from",
-                  `Assoc
-                    [
-                      ("sym", `String (sexp_to_sym from1));
-                      ("lit", `String (H.string_of_exp from2));
-                    ] );
-                ( "to",
-                  `Assoc
-                    [
-                      ("sym", `String (sexp_to_sym to1));
-                      ("lit", `String (H.string_of_exp to2));
-                    ] );
-              ] );
+            `Assoc [ ("from", sexp_to_sym from1); ("to", sexp_to_sym to1) ] );
         ]
-  | SInsertLval (context1, sym), InsertLval (context2, diff) ->
+  | SInsertLval (context1, sym), InsertLval (_, _) ->
       `Assoc
         [
           ("action", `String "insert_lval");
-          context_json context1 context2;
-          ( "change",
-            `Assoc
-              [
-                ("sym", `String (slval_to_sym sym));
-                ("lit", `String (H.string_of_lval diff));
-              ] );
+          context_json context1;
+          ("change", slval_to_sym sym);
         ]
-  | SDeleteLval (context1, sym), DeleteLval (context2, diff) ->
+  | SDeleteLval (context1, sym), DeleteLval (_, _) ->
       `Assoc
         [
           ("action", `String "delete_lval");
-          context_json context1 context2;
-          ( "change",
-            `Assoc
-              [
-                ("sym", `String (slval_to_sym sym));
-                ("lit", `String (H.string_of_lval diff));
-              ] );
+          context_json context1;
+          ("change", slval_to_sym sym);
         ]
-  | SUpdateLval (context1, from1, to1), UpdateLval (context2, from2, to2) ->
+  | SUpdateLval (context1, from1, to1), UpdateLval (_, _, _) ->
       `Assoc
         [
           ("action", `String "update_lval");
-          context_json context1 context2;
-          ( "sym",
-            `Assoc
-              [
-                ( "from",
-                  `Assoc
-                    [
-                      ("sym", `String (slval_to_sym from1));
-                      ("lit", `String (H.string_of_lval from2));
-                    ] );
-                ( "to",
-                  `Assoc
-                    [
-                      ("sym", `String (slval_to_sym to1));
-                      ("lit", `String (H.string_of_lval to2));
-                    ] );
-              ] );
+          context_json context1;
+          ( "change",
+            `Assoc [ ("from", slval_to_sym from1); ("to", slval_to_sym to1) ] );
         ]
   | _ -> `Null
 

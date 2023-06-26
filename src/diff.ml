@@ -217,23 +217,20 @@ module Diff = struct
       ])
     else
       let insertion = find_eq_exp_in_tl exp1 expl2 [] in
-      if insertion <> [] then (
+      if insertion <> [] then
         let _ = L.debug "exp insertion detected" in
-        print_endline "exp insertion detected";
         let next = CilElement.exp_to_elem (Some (List.hd insertion)) in
         let insertion = exp2 :: List.tl insertion in
-        make_diff_exp insertion_code parent prev next insertion)
+        make_diff_exp insertion_code parent prev next insertion
       else
         let deletion = find_eq_exp_in_tl exp2 expl1 [] in
-        if deletion <> [] then (
+        if deletion <> [] then
           let _ = L.debug "exp deletion detected" in
-          print_endline "exp deletion detected";
           let next = CilElement.exp_to_elem (Some (List.hd deletion)) in
           let deletion = exp1 :: List.tl deletion in
-          make_diff_exp deletion_code parent prev next deletion)
+          make_diff_exp deletion_code parent prev next deletion
         else
           let _ = L.debug "exp update detected" in
-          print_endline "exp update detected";
           let next =
             if expl1 <> [] then CilElement.exp_to_elem (Some (List.hd expl2))
             else Null

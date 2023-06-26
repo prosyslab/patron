@@ -47,9 +47,25 @@ let string_of_stmt stmt =
 let string_of_exp exp = Cil.d_exp () exp |> Pretty.sprint ~width:80
 let string_of_typ typ = Cil.d_type () typ |> Pretty.sprint ~width:80
 let string_of_lval lval = Cil.d_lval () lval |> Pretty.sprint ~width:80
+let string_of_constant const = Cil.d_const () const |> Pretty.sprint ~width:80
 
 let print_bool b =
   if b = true then print_endline "true" else print_endline "false"
+
+let eq_stmt_conc s1 s2 =
+  let s1_str = string_of_stmt s1 in
+  let s2_str = string_of_stmt s2 in
+  s1_str = s2_str
+
+let eq_exp_conc e1 e2 =
+  let e1_str = string_of_exp e1 in
+  let e2_str = string_of_exp e2 in
+  e1_str = e2_str
+
+let eq_lval_conc l1 l2 =
+  let l1_str = string_of_lval l1 in
+  let l2_str = string_of_lval l2 in
+  l1_str = l2_str
 
 let eq_instr instr1 instr2 =
   match (instr1, instr2) with
@@ -538,58 +554,15 @@ let parse_args_facts facts_path =
       StrMap.empty lines
   in
   StrMap.map (fun lst -> List.rev lst) result
-(* | "AllocExp.facts" -> "Alloc"
-   | "Arg.facts" -> "Arg"
-   | "Set.facts" -> "Set"
-   | "BinOpExp.facts" -> "BinOp"
-   | "UnOpExp.facts" -> "UnOp"
-   | "CallExp.facts" -> "Call"
-   | "CFPath.facts" -> "CFPath"
-   | "DUPath.facts" -> "DUPath"
-   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
-   | "LibCallExp.facts" -> "LibCall"
-   | "LvalExp.facts" -> "LvalExp"
-   | "Return.facts" -> "Return"
-   | "SAllocExp.facts" -> "SAlloc"
-   | "Skip.facts" -> "Skip" *)
 
 let parse_sparrow sparrow_dir =
   let node_json = Yojson.Basic.from_file (sparrow_dir ^ "/node.json") in
   let path = Filename.concat sparrow_dir "taint/datalog" in
-  let lval_exp_facts =
-    make_str_map_rev (Filename.concat path "LvalExp.facts")
-  in
   let alloc_exp_facts = parse_facts (Filename.concat path "AllocExp.facts") in
   let args_facts = parse_args_facts (Filename.concat path "Arg.facts") in
-  let set_facts =
-    let parsed = parse_facts (Filename.concat path "Set.facts") in
-    StrMap.fold
-      (fun k v acc ->
-        let v' =
-          List.map
-            (fun x -> try StrMap.find x lval_exp_facts with Not_found -> x)
-            v
-        in
-        StrMap.add k v' acc)
-      parsed StrMap.empty
-  in
+  let set_facts = parse_facts (Filename.concat path "Set.facts") in
   let call_facts = parse_call_facts (Filename.concat path "Set.facts") in
-  (* let bin_op_exp = parse_facts (Filename.concat path "BinOpExp.facts") in
-     let un_op_exp = parse_facts (Filename.concat path "UnOpExp.facts") in
-     let call_exp_facts =
-       StrMap.union
-         (fun _ _ y -> Some y)
-         (parse_facts (Filename.concat path "CallExp.facts"))
-         (parse_facts (Filename.concat path "LibCallExp.facts"))
-     in *)
-  (* let var_facts =
-       StrMap.union
-         (fun _ _ y -> Some y)
-         (parse_facts (Filename.concat path "GlobalVar.facts"))
-         (parse_facts (Filename.concat path "LocalVar.facts"))
-     in *)
   let return_facts = parse_facts (Filename.concat path "Return.facts") in
-  (* let salloc_exp_facts = parse_facts (Filename.concat path "SAllocExp.facts") in *)
   let assume_facts = parse_facts (Filename.concat path "Assume.facts") in
   let nodes = J.member "nodes" node_json in
   let key_list = J.keys nodes in
