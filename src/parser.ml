@@ -5,12 +5,12 @@ module Map = Stdlib.Map
 module L = Logger
 
 let mk_term s =
-  if Z3utils.is_binop s || Z3utils.is_unop s then Chc.FDNumeral s
+  if Z3utils.is_binop s || Z3utils.is_unop s then Chc.Elt.FDNumeral s
   else
-    try Const (Z.of_string s)
+    try Chc.Elt.Const (Z.of_string s)
     with _ ->
       let splitted = String.split ~on:'-' s in
-      if List.length splitted = 1 then Var s else FDNumeral s
+      if List.length splitted = 1 then Chc.Elt.Var s else Chc.Elt.FDNumeral s
 
 let file2func = function
   | "AllocExp.facts" -> "Alloc"
@@ -20,6 +20,7 @@ let file2func = function
   | "UnOpExp.facts" -> "UnOp"
   | "CallExp.facts" -> "Call"
   | "CFPath.facts" -> "CFPath"
+  | "DetailedDUEdge.facts" -> "DUEdge"
   | "DUPath.facts" -> "DUPath"
   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
   | "LibCallExp.facts" -> "LibCall"
@@ -35,7 +36,7 @@ let parse_facts datalog_dir fact_file =
   In_channel.read_lines fact_file_path
   |> List.map ~f:(fun line ->
          let args = String.split ~on:'\t' line |> List.map ~f:mk_term in
-         Chc.FuncApply (func_name, args))
+         Chc.Elt.FuncApply (func_name, args))
   |> Chc.of_list
 
 let make_facts work_dir =
@@ -45,7 +46,8 @@ let make_facts work_dir =
     z3env.fact_files
 
 let rec sexp2chc = function
-  | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] -> Chc.CLt (sexp2chc e1, sexp2chc e2)
+  | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->
+      Chc.Elt.CLt (sexp2chc e1, sexp2chc e2)
   | Sexp.List [ Sexp.Atom "Gt"; e1; e2 ] -> CGt (sexp2chc e1, sexp2chc e2)
   | Sexp.List [ Sexp.Atom "Le"; e1; e2 ] -> CLe (sexp2chc e1, sexp2chc e2)
   | Sexp.List [ Sexp.Atom "Ge"; e1; e2 ] -> CGe (sexp2chc e1, sexp2chc e2)

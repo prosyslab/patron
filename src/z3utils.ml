@@ -31,7 +31,7 @@ let match_func = function
   | "Alarm" -> z3env.alarm
   | "Reach" -> z3env.reach
   | "IOError" -> z3env.ioerror
-  | "ErrNode" -> z3env.errnode
+  | "ErrTrace" -> z3env.errtrace
   | "Bug" -> z3env.bug
   | s -> L.error "match_func: invalid function - %s" s
 
@@ -112,13 +112,16 @@ let match_sort s =
   if List.length sort_id = 1 then
     if is_binop name then z3env.binop_sort
     else if is_unop name then z3env.unop_sort
+    else if String.equal "l" s then z3env.loc
+    else if String.is_prefix ~prefix:"v" s then z3env.value
     else z3env.bv_sort
   else
     match name with
     | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" -> z3env.expr
     | "ArgList" -> z3env.arg_list
     | "Lval" -> z3env.lval
-    | "Loc" | "Val" -> z3env.value
+    | "Loc" -> z3env.loc
+    | "Val" -> z3env.value
     | "Pos" -> z3env.int_sort
     | _ -> z3env.node
 

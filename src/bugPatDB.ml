@@ -7,39 +7,52 @@ module Set = Stdlib.Set
 module Map = Stdlib.Map
 module TF = Transformer
 
-let collect_deps terms chc =
-  let func_apps = Chc.extract_func_apps chc in
-  let rec fixedpoint terms deps =
-    let deps', terms' =
-      Chc.fold
-        (fun c (deps, terms) ->
-          let is_nec, terms' = Chc.prop_deps terms c in
-          ((if is_nec then Chc.add c deps else deps), terms'))
-        func_apps (deps, terms)
-    in
-    if Chc.subset deps' deps && Chc.subset terms' terms then (deps', terms')
-    else fixedpoint terms' deps'
+let rec fixedpoint rels terms deps =
+  let deps', terms' =
+    Chc.fold
+      (fun c (deps, terms) ->
+        let is_nec, terms' = Chc.prop_deps terms c in
+        ((if is_nec then Chc.add c deps else deps), terms'))
+      rels (deps, terms)
   in
-  fixedpoint terms Chc.empty |> fst |> Chc.inter chc
+  if Chc.subset deps' deps && Chc.subset terms' terms then (deps', terms')
+  else fixedpoint rels terms' deps'
 
-let abstract_bug_pattern donor snk alarm =
+let remove_before_src_after_snk src snk rels =
+  let src_node, snk_node = (Chc.Elt.FDNumeral src, Chc.Elt.FDNumeral snk) in
+  let before_src = Chc.collect_node ~before:true src_node rels in
+  let after_snk = Chc.collect_node ~before:false snk_node rels in
+  let before_deps = fixedpoint rels before_src Chc.empty |> fst in
+  let after_deps = fixedpoint rels after_snk Chc.empty |> fst in
+  rels |> (Fun.flip Chc.diff) before_deps |> (Fun.flip Chc.diff) after_deps
+
+let collect_deps src snk terms chc =
+  let func_apps =
+    Chc.extract_func_apps chc |> remove_before_src_after_snk src snk
+  in
+  fixedpoint func_apps terms Chc.empty
+  |> fst
+  |> Chc.filter (fun dep -> Chc.Elt.is_duedge dep |> not)
+  |> Chc.inter chc
+
+let abstract_bug_pattern donor src snk alarm =
   let alarm_rels = Chc.filter_func_app alarm in
   let init_terms =
     Chc.fold
-      (fun rel terms -> Chc.get_args rel |> Chc.add_args_to_terms terms)
+      (fun rel terms -> Chc.add_args_to_terms terms rel)
       alarm_rels Chc.empty
   in
-  let deps =
-    collect_deps init_terms donor |> (fun deps -> deps) |> Chc.to_list
+  let deps = collect_deps src snk init_terms donor |> Chc.to_list in
+  let errtrace =
+    Chc.Elt.FuncApply ("ErrTrace", [ Chc.Elt.Var src; Chc.Elt.Var snk ])
   in
-  let errnode = Chc.FuncApply ("ErrNode", [ Chc.Var snk ]) in
-  let errnode_rule = Chc.Implies (deps, errnode) |> Chc.numer2var in
-  let error_cons = Chc.numer2var alarm in
-  let err_rel = Chc.get_head error_cons in
+  let errtrace_rule = Chc.Elt.Implies (deps, errtrace) |> Chc.Elt.numer2var in
+  let error_cons = Chc.Elt.numer2var alarm in
+  let err_rel = Chc.Elt.get_head error_cons in
   let bug_rule =
-    Chc.Implies ([ errnode; err_rel ], Chc.FuncApply ("Bug", []))
+    Chc.Elt.Implies ([ errtrace; err_rel ], Chc.Elt.FuncApply ("Bug", []))
   in
-  Chc.of_list [ errnode_rule; error_cons; bug_rule ]
+  Chc.of_list [ errtrace_rule; error_cons; bug_rule ]
 
 let run donor_dir patch_dir db_dir =
   L.info "Add Bug Pattern to DB...";
@@ -55,15 +68,15 @@ let run donor_dir patch_dir db_dir =
   Chc.sexp_dump (Filename.concat out_dir "patch") patch;
   L.info "Make CHC done";
   let alarm_map = Parser.mk_alarm_map donor_dir in
-  let (_, snk), one_alarm = Parser.AlarmMap.choose alarm_map in
-  let pattern = abstract_bug_pattern donor snk one_alarm in
+  let (src, snk), one_alarm = Parser.AlarmMap.choose alarm_map in
+  let pattern = abstract_bug_pattern donor src snk one_alarm in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   L.info "Try matching with Donor...";
   Chc.match_and_log out_dir "donor" donor_maps donor pattern [ z3env.bug ];
-  (* L.info "Try matching with Patch...";
-     Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]; *)
+  L.info "Try matching with Patch...";
+  Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ];
   Maps.dump "donor" donor_maps out_dir;
   Maps.dump "patch" patch_maps out_dir;
   TF.extract_edit_function donor_dir patch_dir out_dir;

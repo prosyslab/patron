@@ -27,9 +27,11 @@ let fold_db f db_dir =
 let match_bug out_dir donee donee_maps donor_cand_path =
   let pattern =
     Parser.parse_chc (Filename.concat donor_cand_path "pattern_mach.chc")
-    |> Chc.map Chc.numer2var
+    |> Chc.map Chc.Elt.numer2var
   in
-  let status = Chc.pattern_match donee_maps donee pattern [ z3env.bug ] in
+  let status =
+    Chc.pattern_match out_dir donee_maps donee pattern [ z3env.bug ]
+  in
   if Option.is_some status then (
     Option.iter
       ~f:(fun ans ->
@@ -62,22 +64,22 @@ let rec find_a a = function
         ss
   | _ -> None
 
-let rec find_errnode_internal ans = function
+let rec find_errtrace_internal ans = function
   | Sexp.List
       (Sexp.List (Sexp.Atom "_" :: Sexp.Atom "hyper-res" :: _)
       :: Sexp.List (Sexp.Atom "asserted" :: _)
       :: tl) as s
     when List.last tl
          |> Option.exists ~f:(function
-              | Sexp.List (Sexp.Atom "ErrNode" :: _) -> true
+              | Sexp.List (Sexp.Atom "ErrTrace" :: _) -> true
               | _ -> false) ->
       Some s
   | Sexp.Atom a when String.is_prefix a ~prefix:"a!" ->
       let a_rule = find_a a ans |> Option.value_exn in
-      find_errnode_internal ans a_rule
+      find_errtrace_internal ans a_rule
   | _ -> None
 
-let find_errnode ans = function
+let find_errtrace ans = function
   | Sexp.List
       (Sexp.List (Sexp.Atom "_" :: Sexp.Atom "hyper-res" :: _)
       :: Sexp.List (Sexp.Atom "asserted" :: _)
@@ -85,9 +87,9 @@ let find_errnode ans = function
     when List.last tl |> Option.exists ~f:(Sexp.equal (Sexp.Atom "Bug")) ->
       let a1 = List.hd_exn tl in
       let a2 = List.nth_exn tl 1 in
-      Option.merge (find_errnode_internal ans a1) (find_errnode_internal ans a2)
-        ~f:(fun a _ -> a)
-  | _ -> L.error "find_errnode: input's head must be bug"
+      Option.merge (find_errtrace_internal ans a1)
+        (find_errtrace_internal ans a2) ~f:(fun a _ -> a)
+  | _ -> L.error "find_errtrace: input's head must be bug"
 
 let rec collect_facts_internal ans = function
   | Sexp.List
@@ -109,12 +111,12 @@ let collect_facts ans = function
       :: tl)
     when List.last tl
          |> Option.exists ~f:(function
-              | Sexp.List (Sexp.Atom "ErrNode" :: _) -> true
+              | Sexp.List (Sexp.Atom "ErrTrace" :: _) -> true
               | _ -> false) -> (
       match List.rev tl with
       | hd :: tl -> hd :: List.map ~f:(collect_facts_internal ans) tl
       | [] -> L.error "collect_facts: ???")
-  | _ -> L.error "collect_facts: input's head must be ErrNode"
+  | _ -> L.error "collect_facts: input's head must be ErrT"
 
 let match_facts =
   List.fold2_exn ~init:PairSet.empty ~f:(fun pairs f1 f2 ->
@@ -160,12 +162,12 @@ let match_ans donee_maps out_dir donor_dir =
   in
   let donor_facts =
     Option.(
-      find_bug donor_ans >>= find_errnode donor_ans >>| collect_facts donor_ans)
+      find_bug donor_ans >>= find_errtrace donor_ans >>| collect_facts donor_ans)
     |> Option.value_exn
   in
   let donee_facts =
     Option.(
-      find_bug donee_ans >>= find_errnode donee_ans >>| collect_facts donee_ans)
+      find_bug donee_ans >>= find_errtrace donee_ans >>| collect_facts donee_ans)
     |> Option.value_exn
   in
   let numeral_pairs = match_facts donor_facts donee_facts in

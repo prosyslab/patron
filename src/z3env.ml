@@ -25,6 +25,7 @@ type t = {
   identifier : Z3.Sort.sort;
   arg_list : Z3.Sort.sort;
   str_literal : Z3.Sort.sort;
+  loc : Z3.Sort.sort;
   value : Z3.Sort.sort;
   const : Z3.Sort.sort;
   (* Functions for specifying source, sink *)
@@ -59,7 +60,7 @@ type t = {
   alarm : Z3.FuncDecl.func_decl;
   reach : Z3.FuncDecl.func_decl;
   ioerror : Z3.FuncDecl.func_decl;
-  errnode : Z3.FuncDecl.func_decl;
+  errtrace : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
   fact_files : String.t list;
   funs : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
@@ -113,7 +114,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.alarm;
   Z3.Fixedpoint.register_relation solver env.reach;
   Z3.Fixedpoint.register_relation solver env.ioerror;
-  Z3.Fixedpoint.register_relation solver env.errnode;
+  Z3.Fixedpoint.register_relation solver env.errtrace;
   Z3.Fixedpoint.register_relation solver env.bug
 
 let mk_env () =
@@ -141,6 +142,7 @@ let mk_env () =
   let identifier = Z3.FiniteDomain.mk_sort_s z3ctx "identifier" 65536L in
   let arg_list = Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" 65536L in
   let str_literal = Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" 65536L in
+  let loc = Z3.FiniteDomain.mk_sort_s z3ctx "loc" 65536L in
   let value = Z3.FiniteDomain.mk_sort_s z3ctx "value" 65536L in
   let const = Z3.FiniteDomain.mk_sort_s z3ctx "const" 65536L in
   let src = Z3.FuncDecl.mk_func_decl_s z3ctx "Src" [ node ] boolean_sort in
@@ -200,14 +202,13 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "DUPath" [ node; node ] boolean_sort
   in
   let evallv =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "EvalLv" [ node; lval; value ] boolean_sort
+    Z3.FuncDecl.mk_func_decl_s z3ctx "EvalLv" [ node; lval; loc ] boolean_sort
   in
   let eval =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Eval" [ node; expr; value ] boolean_sort
   in
   let memory =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "Memory" [ node; value; value ]
-      boolean_sort
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Memory" [ node; loc; value ] boolean_sort
   in
   let arrval =
     Z3.FuncDecl.mk_func_decl_s z3ctx "ArrVal" [ value; bv_sort ] boolean_sort
@@ -232,8 +233,8 @@ let mk_env () =
   let ioerror =
     Z3.FuncDecl.mk_func_decl_s z3ctx "IOError" [ node; bv_sort ] boolean_sort
   in
-  let errnode =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "ErrNode" [ node ] boolean_sort
+  let errtrace =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "ErrTrace" [ node; node ] boolean_sort
   in
   let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "Bug" [] boolean_sort in
   let fact_files =
@@ -244,6 +245,7 @@ let mk_env () =
       "BinOpExp.facts";
       "CallExp.facts";
       "CFPath.facts";
+      "DetailedDUEdge.facts";
       "DUPath.facts";
       (* "GlobalVar.facts"; *)
       "LibCallExp.facts";
@@ -291,16 +293,16 @@ let mk_env () =
       (* "TrueBranch.facts" *)
       (* "TrueCond.facts" *)
       ("UnOpExp.facts", unop, [ expr; unop_sort; expr ]);
-      ("", evallv, [ node; lval; value ]);
+      ("", evallv, [ node; lval; loc ]);
       ("", eval, [ node; expr; value ]);
-      ("", memory, [ node; value; value ]);
+      ("", memory, [ node; loc; value ]);
       ("", arrval, [ value; bv_sort ]);
       ("", conststr, [ value; const ]);
       ("", val_rel, [ value; bv_sort ]);
       ("", sizeof, [ value; bv_sort ]);
       ("", strlen, [ value; bv_sort ]);
       ("", reach, [ node ]);
-      ("", errnode, [ node ]);
+      ("", errtrace, [ node; node ]);
       ("", ioerror, [ node; bv_sort ]);
     ]
   in
@@ -352,6 +354,7 @@ let mk_env () =
       identifier;
       arg_list;
       str_literal;
+      loc;
       value;
       const;
       src;
@@ -383,7 +386,7 @@ let mk_env () =
       alarm;
       reach;
       ioerror;
-      errnode;
+      errtrace;
       bug;
       fact_files;
       funs;
