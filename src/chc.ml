@@ -94,9 +94,9 @@ module Elt = struct
   let is_duedge = function FuncApply ("DUEdge", _) -> true | _ -> false
   let is_dupath = function FuncApply ("DUPath", _) -> true | _ -> false
 
-  let get_cons = function
-    | Implies (cons, _) -> cons
-    | _ -> L.error "get_cons: wrong chc"
+  let get_body = function
+    | Implies (body, _) -> body
+    | _ -> L.error "get_body: wrong chc"
 
   let get_head = function
     | Implies (_, head) -> head
@@ -357,7 +357,7 @@ let sexp_dump file chcs =
 let rec filter_func_app = function
   | Elt.FuncApply _ as chc -> singleton chc
   | Implies _ as chc ->
-      Elt.get_cons chc
+      Elt.get_body chc
       |> List.fold_left ~init:empty ~f:(fun fa c ->
              filter_func_app c |> union fa)
   | _ -> empty
@@ -407,6 +407,42 @@ let prop_deps terms = function
       if mem e terms then (true, terms) else (false, terms)
   | _ -> (false, terms)
 
+let is_child var = function
+  | Elt.FuncApply ("Set", hd :: _)
+  | FuncApply ("Return", hd :: _)
+  | FuncApply ("Arg", _ :: hd :: _)
+  | FuncApply ("BinOp", hd :: _)
+  | FuncApply ("UnOp", hd :: _)
+  | FuncApply ("LvalExp", hd :: _)
+  | FuncApply ("Call", hd :: _)
+  | FuncApply ("LibCall", hd :: _)
+  | FuncApply ("Alloc", hd :: _)
+  | FuncApply ("SAlloc", hd :: _) ->
+      Elt.equal var hd
+  | _ -> false
+
+let collect_children var rels = filter (is_child var) rels
+
+let is_removable rels = function
+  | Elt.FuncApply ("CFPath", args) | FuncApply ("DUPath", args) ->
+      List.exists ~f:(fun arg -> collect_children arg rels |> cardinal = 0) args
+  | FuncApply ("Set", _ :: _ :: args)
+  | FuncApply ("Return", _ :: args)
+  | FuncApply ("Arg", _ :: _ :: args)
+  | FuncApply ("BinOp", _ :: _ :: args)
+  | FuncApply ("UnOp", _ :: _ :: args)
+  | FuncApply ("LvalExp", _ :: args)
+  | FuncApply ("Call", _ :: _ :: args)
+  | FuncApply ("LibCall", _ :: _ :: args)
+  | FuncApply ("Alloc", _ :: args)
+  | FuncApply ("SAlloc", _ :: args) ->
+      List.for_all
+        ~f:(fun arg -> collect_children arg rels |> cardinal = 0)
+        args
+  | _ -> false
+
+let collect_removable chcs = filter (is_removable chcs) chcs
+
 let collect_node ~before node chcs =
   let befores =
     fold
@@ -425,6 +461,17 @@ let collect_node ~before node chcs =
       chcs empty
   in
   if before then diff befores afters else diff afters befores
+
+let find_rule head_name =
+  find_first (function
+    | Elt.Implies (_, FuncApply (f, _)) when String.equal f head_name -> true
+    | _ -> false)
+
+let update_rule head_name new_body chcs =
+  let target = find_rule head_name chcs in
+  let head = Elt.get_head target in
+  let new_rule = Elt.Implies (new_body, head) in
+  remove target chcs |> add new_rule
 
 let add_fact maps solver f =
   if Elt.is_duedge f |> not then

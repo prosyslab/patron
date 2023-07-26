@@ -15,20 +15,14 @@ module PairSet = Set.Make (struct
 end)
 
 let fold_db f db_dir =
-  Sys_unix.fold_dir ~init:(false, "")
-    ~f:(fun (matched, donor) cand ->
-      if matched then (matched, donor)
-      else (
-        L.debug "Try matching with %s..." cand;
-        let cand_path = Filename.concat db_dir cand in
-        if f cand_path then (true, cand) else (matched, donor)))
+  Sys_unix.fold_dir ~init:(false, [])
+    ~f:(fun (matched, donors) cand ->
+      L.debug "Try matching with %s..." cand;
+      let cand_path = Filename.concat db_dir cand in
+      if f cand_path then (true, cand :: donors) else (matched, donors))
     db_dir
 
-let match_bug out_dir donee donee_maps donor_cand_path =
-  let pattern =
-    Parser.parse_chc (Filename.concat donor_cand_path "pattern_mach.chc")
-    |> Chc.map Chc.Elt.numer2var
-  in
+let match_bug out_dir donee donee_maps pattern =
   let status =
     Chc.pattern_match out_dir donee_maps donee pattern [ z3env.bug ]
   in
@@ -42,6 +36,34 @@ let match_bug out_dir donee donee_maps donor_cand_path =
   else (
     L.info "Donee Not Matched";
     false)
+
+let try_until_matched out_dir donee donee_maps pattern =
+  let errtrace_rule = Chc.find_rule "ErrTrace" pattern in
+  let syntactic_pattern = Chc.Elt.get_body errtrace_rule |> Chc.of_list in
+  let removable = Chc.collect_removable syntactic_pattern in
+  if match_bug out_dir donee donee_maps pattern then true
+  else
+    let rec loop removable =
+      if Chc.is_empty removable then false
+      else
+        let cand = Chc.min_elt removable in
+        let syntactic_pattern' =
+          Chc.remove cand syntactic_pattern |> Chc.to_list
+        in
+        let pattern' = Chc.update_rule "ErrTrace" syntactic_pattern' pattern in
+        if match_bug out_dir donee donee_maps pattern' then true
+        else
+          let removable' = Chc.remove cand removable in
+          loop removable'
+    in
+    loop removable
+
+let match_bug_for_one_prj out_dir donee donee_maps donor_cand_path =
+  let pattern =
+    Parser.parse_chc (Filename.concat donor_cand_path "pattern_mach.chc")
+    |> Chc.map Chc.Elt.numer2var
+  in
+  try_until_matched out_dir donee donee_maps pattern
 
 let rec find_bug = function
   | Sexp.List
@@ -130,8 +152,10 @@ let match_facts =
               | _ -> L.error "match_facts: wrong format")
       | _ -> L.error "match_facts: wrong format")
 
-let dump_sol_map donor_maps donee_maps out_dir pairs =
-  let oc = Out_channel.create (Filename.concat out_dir "sol.map") in
+let dump_sol_map donor_name donor_maps donee_maps out_dir pairs =
+  let oc =
+    Out_channel.create (Filename.concat out_dir (donor_name ^ "_sol.map"))
+  in
   let fmt = F.formatter_of_out_channel oc in
   PairSet.iter
     (fun (donor_n, donee_n) ->
@@ -151,7 +175,8 @@ let dump_sol_map donor_maps donee_maps out_dir pairs =
   F.pp_print_flush fmt ();
   Out_channel.close oc
 
-let match_ans donee_maps out_dir donor_dir =
+let match_ans donee_maps out_dir db_dir donor_name =
+  let donor_dir = Filename.concat db_dir donor_name in
   let donor_ans =
     Filename.concat donor_dir "donor_ans.smt2"
     |> In_channel.read_all |> Sexp.of_string
@@ -177,7 +202,7 @@ let match_ans donee_maps out_dir donor_dir =
     In_channel.create (Filename.concat donor_dir "donor_numeral.map")
   in
   Maps.load_numeral_map donor_numeral_map_ic donor_maps.Maps.numeral_map;
-  dump_sol_map donor_maps donee_maps out_dir numeral_pairs
+  dump_sol_map donor_name donor_maps donee_maps out_dir numeral_pairs
 
 let run db_dir donee_dir out_dir =
   L.info "Finding bug pattern from DB...";
@@ -187,12 +212,15 @@ let run db_dir donee_dir out_dir =
   Chc.pretty_dump (Filename.concat out_dir "donee") donee;
   Chc.sexp_dump (Filename.concat out_dir "donee") donee;
   L.info "Make CHC done";
-  let is_matched, donor_dir =
-    fold_db (match_bug out_dir donee donee_maps) db_dir
+  let is_matched, matched_donors =
+    fold_db (match_bug_for_one_prj out_dir donee donee_maps) db_dir
   in
   if not is_matched then (
     L.info ~to_console:true "There is no donor to donate patch TT";
     exit 1);
-  let donor_dir = Filename.concat db_dir donor_dir in
-  match_ans donee_maps out_dir donor_dir;
-  TF.transplant db_dir donee_dir out_dir
+  List.iter
+    ~f:(fun donor_name ->
+      match_ans donee_maps out_dir db_dir donor_name;
+      TF.transplant db_dir donee_dir out_dir
+      (* TODO: if success then immediately exit 0 *))
+    matched_donors
