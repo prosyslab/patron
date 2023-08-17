@@ -38,5 +38,10 @@ let transplant db_dir donee_dir patron_out_dir =
   let translated =
     T.translate donee_sparrow_dir donee edit_function solution_path
   in
-  P.apply donee translated patron_out_dir;
-  L.info "Patch is successfully written at %s/applied.c\n" patron_out_dir
+  P.apply donee translated
+
+let write_out out_dir donee =
+  let out_file = out_dir ^ "/applied.c" in
+  let out_chan = open_out out_file in
+  Cil.dumpFile Cil.defaultCilPrinter out_chan "" donee;
+  close_out out_chan

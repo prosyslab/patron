@@ -283,9 +283,7 @@ let apply_action donee action =
       ignore (Cil.visitCilFile vis donee)
   | _ -> failwith "Not implemented"
 
-let apply donee edit_script out_dir =
+let apply donee edit_script =
+  let donee_backup = donee in
   List.iter (fun action -> apply_action donee action) edit_script;
-  let out_file = out_dir ^ "/applied.c" in
-  let out_chan = open_out out_file in
-  Cil.dumpFile Cil.defaultCilPrinter out_chan "" donee;
-  close_out out_chan
+  if H.compare_files donee_backup donee then (true, donee) else (false, donee)

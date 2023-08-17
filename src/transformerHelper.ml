@@ -660,3 +660,6 @@ let extract_snk path =
   let donee_srcsnk = List.nth lst 1 in
   let donee_srcsnk = Str.split (Str.regexp " ") donee_srcsnk in
   List.nth donee_srcsnk 1
+
+let compare_files (file1 : Cil.file) (file2 : Cil.file) =
+  string_of_file file1 = string_of_file file2
