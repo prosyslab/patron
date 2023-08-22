@@ -67,35 +67,22 @@ let eq_lval_conc l1 l2 =
   let l2_str = string_of_lval l2 in
   l1_str = l2_str
 
-let eq_instr instr1 instr2 =
-  match (instr1, instr2) with
-  | Cil.Set (lv1, _, _), Cil.Set (lv2, _, _) ->
-      string_of_lval lv1 = string_of_lval lv2
-  | Cil.Call (lv1, _, _, _), Cil.Call (lv2, _, _, _) -> (
-      match (lv1, lv2) with
-      | None, None -> true
-      | Some lv1, Some lv2 -> string_of_lval lv1 = string_of_lval lv2
-      | _ -> false)
-  | Cil.Asm _, Cil.Asm _ -> true
-  | _ -> false
-
-let eq_stmt skind1 skind2 =
-  match (skind1, skind2) with
-  | Cil.Instr i1, Cil.Instr i2 -> eq_instr (List.hd i1) (List.hd i2)
-  | Cil.Return (Some e1, _), Cil.Return (Some e2, _) ->
-      string_of_exp e1 = string_of_exp e2
-  | Cil.Return (None, _), Cil.Return (None, _) -> true
-  | Cil.Goto _, Cil.Goto _
-  | Cil.ComputedGoto _, Cil.ComputedGoto _
-  | Cil.Break _, Cil.Break _
-  | Cil.Continue _, Cil.Continue _
-  | Cil.If _, Cil.If _
-  | Cil.Loop _, Cil.Loop _
-  | Cil.Block _, Cil.Block _
-  | Cil.TryExcept _, Cil.TryExcept _
-  | Cil.TryFinally _, Cil.TryFinally _ ->
-      true
-  | _ -> false
+let eq_instr i1 i2 =
+  if i1 = [] && i2 = [] then true
+  else if i1 = [] || i2 = [] then false
+  else
+    let instr1 = List.hd i1 in
+    let instr2 = List.hd i2 in
+    match (instr1, instr2) with
+    | Cil.Set (lv1, _, _), Cil.Set (lv2, _, _) ->
+        string_of_lval lv1 = string_of_lval lv2
+    | Cil.Call (lv1, _, _, _), Cil.Call (lv2, _, _, _) -> (
+        match (lv1, lv2) with
+        | None, None -> true
+        | Some lv1, Some lv2 -> string_of_lval lv1 = string_of_lval lv2
+        | _ -> false)
+    | Cil.Asm _, Cil.Asm _ -> true
+    | _ -> false
 
 let eq_typ typ_info1 typ_info2 =
   match (typ_info1, typ_info2) with
@@ -109,6 +96,45 @@ let eq_typ typ_info1 typ_info2 =
   | Cil.TComp _, Cil.TComp _
   | Cil.TEnum _, Cil.TEnum _ ->
       true
+  | _ -> string_of_typ typ_info1 = string_of_typ typ_info2
+
+let rec eq_exp (a : Cil.exp) (b : Cil.exp) =
+  match (a, b) with
+  | Lval (Var a, NoOffset), Lval (Var b, NoOffset) -> a.vname = b.vname
+  | Lval (Mem a, NoOffset), Lval (Mem b, NoOffset) -> eq_exp a b
+  | BinOp (a, b, c, _), BinOp (d, e, f, _) -> a = d && eq_exp b e && eq_exp c f
+  | UnOp (a, b, _), UnOp (c, d, _) -> a = c && eq_exp b d
+  | CastE (a, b), CastE (c, d) -> eq_typ a c && eq_exp b d
+  | AddrOf (Var a, NoOffset), AddrOf (Var b, NoOffset) -> a.vname = b.vname
+  | AddrOf (Mem a, NoOffset), AddrOf (Mem b, NoOffset) -> eq_exp a b
+  | StartOf (Var a, NoOffset), StartOf (Var b, NoOffset) -> a.vname = b.vname
+  | StartOf (Mem a, NoOffset), StartOf (Mem b, NoOffset) -> eq_exp a b
+  | Cil.SizeOfE a, Cil.SizeOfE b -> eq_exp a b
+  | Const a, Const b -> a = b
+  | Lval (Var a, NoOffset), StartOf (Var b, NoOffset)
+  | StartOf (Var a, NoOffset), Lval (Var b, NoOffset) ->
+      a.vname = b.vname
+  | Question (a, b, c, _), Question (d, e, f, _) ->
+      eq_exp a d && eq_exp b e && eq_exp c f
+  | _ -> string_of_exp a = string_of_exp b
+
+let rec eq_stmt skind1 skind2 =
+  match (skind1, skind2) with
+  | Cil.Instr i1, Cil.Instr i2 -> eq_instr i1 i2
+  | Cil.Return (Some e1, _), Cil.Return (Some e2, _) ->
+      string_of_exp e1 = string_of_exp e2
+  | Cil.Return (None, _), Cil.Return (None, _) -> true
+  | Cil.Goto (dest1, _), Cil.Goto (dest2, _) ->
+      if eq_stmt !dest1.skind !dest2.skind then true else false
+  | Cil.If (cond1, _, _, _), Cil.If (cond2, _, _, _) -> eq_exp cond1 cond2
+  | Cil.Loop _, Cil.Loop _
+  | Cil.ComputedGoto _, Cil.ComputedGoto _
+  | Cil.Block _, Cil.Block _
+  | Cil.TryExcept _, Cil.TryExcept _
+  | Cil.TryFinally _, Cil.TryFinally _
+  | Cil.Break _, Cil.Break _
+  | Cil.Continue _, Cil.Continue _ ->
+      true
   | _ -> false
 
 let eq_global glob1 glob2 =
@@ -116,7 +142,8 @@ let eq_global glob1 glob2 =
   | Cil.GFun (func_info1, _), Cil.GFun (func_info2, _) ->
       eq_typ func_info1.svar.vtype func_info2.svar.vtype
       && func_info1.svar.vname = func_info2.svar.vname
-  | Cil.GType _, Cil.GType _
+  | Cil.GType (typinfo1, _), Cil.GType (typinfo2, _) ->
+      typinfo1.tname = typinfo2.tname && eq_typ typinfo1.ttype typinfo2.ttype
   | Cil.GCompTag _, Cil.GCompTag _
   | Cil.GCompTagDecl _, Cil.GCompTagDecl _
   | Cil.GEnumTag _, Cil.GEnumTag _
@@ -129,6 +156,12 @@ let eq_global glob1 glob2 =
   | Cil.GText _, Cil.GText _ ->
       true
   | _ -> false
+
+let remove_comments globs =
+  List.rev
+    (List.fold_left
+       (fun acc glob -> match glob with Cil.GText _ -> acc | _ -> glob :: acc)
+       [] globs)
 
 let eq_stmt_kind skind1 skind2 =
   match (skind1, skind2) with
@@ -146,25 +179,22 @@ let eq_stmt_kind skind1 skind2 =
       true
   | _ -> false
 
-let rec eq_exp (a : Cil.exp) (b : Cil.exp) =
-  match (a, b) with
-  | Lval (Var a, NoOffset), Lval (Var b, NoOffset) -> a.vname = b.vname
-  | Lval (Mem a, NoOffset), Lval (Mem b, NoOffset) -> eq_exp a b
-  | BinOp (a, b, c, _), BinOp (d, e, f, _) -> a = d && eq_exp b e && eq_exp c f
-  | UnOp (a, b, _), UnOp (c, d, _) -> a = c && eq_exp b d
-  | CastE (a, b), CastE (c, d) -> a = c && eq_exp b d
-  | AddrOf (Var a, NoOffset), AddrOf (Var b, NoOffset) -> a.vname = b.vname
-  | AddrOf (Mem a, NoOffset), AddrOf (Mem b, NoOffset) -> eq_exp a b
-  | StartOf (Var a, NoOffset), StartOf (Var b, NoOffset) -> a.vname = b.vname
-  | StartOf (Mem a, NoOffset), StartOf (Mem b, NoOffset) -> eq_exp a b
-  | Cil.SizeOfE a, Cil.SizeOfE b -> eq_exp a b
-  | Const a, Const b -> a = b
-  | Lval (Var a, NoOffset), StartOf (Var b, NoOffset)
-  | StartOf (Var a, NoOffset), Lval (Var b, NoOffset) ->
-      a.vname = b.vname
-  | Question (a, b, c, _), Question (d, e, f, _) ->
-      eq_exp a d && eq_exp b e && eq_exp c f
-  | _ -> false
+let print_exp_type exp =
+  match exp with
+  | Cil.Lval _ -> print_endline "Lval"
+  | Cil.SizeOf _ -> print_endline "SizeOf"
+  | Cil.SizeOfE _ -> print_endline "SizeOfE"
+  | Cil.SizeOfStr _ -> print_endline "SizeOfStr"
+  | Cil.AlignOf _ -> print_endline "AlignOf"
+  | Cil.AlignOfE _ -> print_endline "AlignOfE"
+  | Cil.UnOp _ -> print_endline "UnOp"
+  | Cil.BinOp _ -> print_endline "BinOp"
+  | Cil.Question _ -> print_endline "Question"
+  | Cil.CastE _ -> print_endline "CastE"
+  | Cil.AddrOf _ -> print_endline "AddrOf"
+  | Cil.AddrOfLabel _ -> print_endline "AddrOfLabel"
+  | Cil.StartOf _ -> print_endline "StartOf"
+  | Cil.Const _ -> print_endline "Const"
 
 let eq_global_type glob1 glob2 =
   match (glob1, glob2) with
@@ -180,6 +210,20 @@ let eq_global_type glob1 glob2 =
   | Cil.GPragma _, Cil.GPragma _ ->
       true
   | _ -> false
+
+let print_global_type glob =
+  match glob with
+  | Cil.GType _ -> print_endline "GType"
+  | Cil.GCompTag _ -> print_endline "GCompTag"
+  | Cil.GCompTagDecl _ -> print_endline "GCompTagDecl"
+  | Cil.GEnumTag _ -> print_endline "GEnumTag"
+  | Cil.GEnumTagDecl _ -> print_endline "GEnumTagDecl"
+  | Cil.GVar _ -> print_endline "GVar"
+  | Cil.GVarDecl _ -> print_endline "GVarDecl"
+  | Cil.GFun _ -> print_endline "GFun"
+  | Cil.GAsm _ -> print_endline "GAsm"
+  | Cil.GPragma _ -> print_endline "GPragma"
+  | _ -> print_endline "Other"
 
 let trim_node_str str =
   Str.global_replace (Str.regexp " ") ""
@@ -236,21 +280,6 @@ let print_ekind exp =
   | Cil.AddrOf _ -> print_endline "AddrOf"
   | Cil.AddrOfLabel _ -> print_endline "AddrOfLabel"
   | Cil.StartOf _ -> print_endline "StartOf"
-
-let print_skind skind =
-  match skind with
-  | Cil.Instr _ -> print_endline "Instr"
-  | Cil.Return _ -> print_endline "Return"
-  | Cil.Goto _ -> print_endline "Goto"
-  | Cil.Break _ -> print_endline "Break"
-  | Cil.Continue _ -> print_endline "Continue"
-  | Cil.If _ -> print_endline "If"
-  | Cil.Switch _ -> print_endline "Switch"
-  | Cil.Loop _ -> print_endline "Loop"
-  | Cil.Block _ -> print_endline "Block"
-  | Cil.TryExcept _ -> print_endline "TryExcept"
-  | Cil.TryFinally _ -> print_endline "TryFinally"
-  | Cil.ComputedGoto _ -> print_endline "ComputedGoto"
 
 let rec parse_strmap file map =
   match file with
@@ -625,6 +654,9 @@ let extract_stmt_lst file =
   in
   List.fold_left (fun acc g -> acc @ fold_glob g) [] file.Cil.globals
 
+let is_empty_instr stmt =
+  match stmt.Cil.skind with Cil.Instr [] -> true | _ -> false
+
 let print_info (info : stmt_info) =
   print_endline (string_of_stmt info.stmt);
   ExpMap.iter
@@ -660,6 +692,3 @@ let extract_snk path =
   let donee_srcsnk = List.nth lst 1 in
   let donee_srcsnk = Str.split (Str.regexp " ") donee_srcsnk in
   List.nth donee_srcsnk 1
-
-let compare_files (file1 : Cil.file) (file2 : Cil.file) =
-  string_of_file file1 = string_of_file file2

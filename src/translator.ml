@@ -225,7 +225,7 @@ let match_context imap emap (lmap : Cil.lval H.StrMap.t)
   let left = match_sym imap emap lmap context.s_left_sibling in
   let right = match_sym imap emap lmap context.s_right_sibling in
   let snk = match_sym imap emap lmap context.s_snk in
-  { D.Diff.parent; left_sibling = left; right_sibling = right; snk }
+  { D.Diff.parent; left_sibling = left; right_sibling = right; snk; depth = 0 }
 
 let translate_action imap emap (lmap : Cil.lval H.StrMap.t) (action : S.SDiff.t)
     =

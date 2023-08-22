@@ -1,6 +1,5 @@
 module H = TransformerHelper
 module J = Yojson.Basic
-module L = Logger
 module StrMap = Map.Make (String)
 
 module CilElement = struct
@@ -42,6 +41,7 @@ module Diff = struct
   let update_code = 2
 
   type context = {
+    depth : int;
     parent : CilElement.t;
     left_sibling : CilElement.t;
     right_sibling : CilElement.t;
@@ -63,78 +63,127 @@ module Diff = struct
   let pp_action fmt = function
     | InsertGlobal (c, g2) ->
         H.F.fprintf fmt
-          "InsertGlobal: %s\n\
-           Parent -> %s\n\
-           Left -> %s\n\
-           Right -> %s\n\
-           ================="
+          "InsertGlobal: \n\
+           %s\n\n\
+           =================\n\
+          \           Parent -> \n\
+           %s\n\n\
+           =================\n\
+          \           Left -> \n\
+           %s\n\n\
+           =================\n\
+          \           Right -> \n\
+           %s\n\n\
+           =================================="
           (H.string_of_global g2)
-          (CilElement.string_of_element c.parent)
+          (Str.first_chars (CilElement.string_of_element c.parent) 20)
           (CilElement.string_of_element c.left_sibling)
           (CilElement.string_of_element c.right_sibling)
     | DeleteGlobal (c, g2) ->
         H.F.fprintf fmt
-          "DeleteGlobal: %s\n\
-           Parent -> %s\n\
-           Left -> %s\n\
-           Right -> %s\n\
-           ================="
+          "DeleteGlobal: \n\
+           %s\n\n\
+           =================\n\
+          \           Parent -> \n\
+           %s\n\n\
+           =================\n\
+          \           Left -> \n\
+           %s\n\n\
+           =================\n\
+          \           Right -> \n\
+           %s\n\n\
+           =================================="
           (H.string_of_global g2)
-          (CilElement.string_of_element c.parent)
+          (Str.first_chars (CilElement.string_of_element c.parent) 20)
           (CilElement.string_of_element c.left_sibling)
           (CilElement.string_of_element c.right_sibling)
     | InsertStmt (c, s1) ->
         H.F.fprintf fmt
-          "InsertStmt: %s\n\
-           Parent -> %s\n\
-           Left -> %s\n\
-           Right -> %s\n\
-           ================="
+          "InsertStmt: \n\
+           %s\n\n\
+           =================\n\
+          \           Parent -> \n\
+           %s\n\n\
+           =================\n\
+          \           Left -> \n\
+           %s\n\n\
+           =================\n\
+          \           Right -> \n\
+           %s\n\n\
+           =================================="
           (H.string_of_stmt s1)
-          (CilElement.string_of_element c.parent)
+          (Str.first_chars (CilElement.string_of_element c.parent) 20)
           (CilElement.string_of_element c.left_sibling)
           (CilElement.string_of_element c.right_sibling)
     | DeleteStmt (c, s1) ->
         H.F.fprintf fmt
-          "DeleteStmt: %s\n\
-           Parent -> %s\n\
-           Left -> %s\n\
-           Right -> %s\n\
-           ================="
+          "DeleteStmt: \n\
+           %s\n\n\
+           =================\n\
+          \           Parent -> \n\
+           %s\n\n\
+           =================\n\
+          \           Left -> \n\
+           %s\n\n\
+           =================\n\
+          \           Right -> \n\
+           %s\n\n\
+           =================================="
           (H.string_of_stmt s1)
-          (CilElement.string_of_element c.parent)
+          (Str.first_chars (CilElement.string_of_element c.parent) 20)
           (CilElement.string_of_element c.left_sibling)
           (CilElement.string_of_element c.right_sibling)
     | InsertExp (c, e1) ->
         H.F.fprintf fmt
-          "InsertExp: %s\n\
-           Parent -> %s\n\
-           Left -> %s\n\
-           Right -> %s\n\
-           ================="
+          "InsertExp: \n\
+           %s\n\n\
+           =================\n\
+          \           Parent -> \n\
+           %s\n\n\
+           =================\n\
+          \           Left -> \n\
+           %s\n\n\
+           =================\n\
+          \           Right -> \n\
+           %s\n\n\
+           =================================="
           (H.string_of_exp e1)
           (CilElement.string_of_element c.parent)
           (CilElement.string_of_element c.left_sibling)
           (CilElement.string_of_element c.right_sibling)
     | DeleteExp (c, e1) ->
         H.F.fprintf fmt
-          "DeleteExp: %s\n\
-           Parent -> %s\n\
-           Left -> %s\n\
-           Right -> %s\n\
-           ================="
+          "DeleteExp: \n\
+           %s\n\n\
+           =================\n\
+          \           Parent -> \n\
+           %s\n\n\
+           =================\n\
+          \           Left -> \n\
+           %s\n\n\
+           =================\n\
+          \           Right -> \n\
+           %s\n\n\
+           =================================="
           (H.string_of_exp e1)
           (CilElement.string_of_element c.parent)
           (CilElement.string_of_element c.left_sibling)
           (CilElement.string_of_element c.right_sibling)
     | UpdateExp (c, e1, e2) ->
         H.F.fprintf fmt
-          "UpdateExp: %s\n\
-           \t->%s\n\
-           Parent -> %s\n\
-           Left -> %s\n\
-           Right -> %s\n\
-           ================="
+          "UpdateExp: \n\
+           %s\n\n\
+           To->%s\n\n\
+           =================\n\
+          \           Parent -> \n\
+           %s\n\n\
+           =================\n\
+          \           Left -> \n\
+           %s\n\n\
+           =================\n\
+          \           Right -> \n\
+           %s\n\n\
+           =================================="
           (H.string_of_exp e1) (H.string_of_exp e2)
           (CilElement.string_of_element c.parent)
           (CilElement.string_of_element c.left_sibling)
@@ -145,12 +194,19 @@ module Diff = struct
         H.F.fprintf fmt "DeleteLval: %s" (H.string_of_lval l1)
     | UpdateLval (c, l1, l2) ->
         H.F.fprintf fmt
-          "UpdateLval: %s\n\
-           \t->%s\n\
-           Parent -> %s\n\
-           Left -> %s\n\
-           Right -> %s\n\
-           ================="
+          "UpdateLval: \n\
+           %s\n\n\
+           To->%s\n\n\
+           =================\n\
+          \           Parent -> \n\
+           %s\n\n\
+           =================\n\
+          \           Left -> \n\
+           %s\n\n\
+           =================\n\
+          \           Right -> \n\
+           %s\n\n\
+           =================================="
           (H.string_of_lval l1) (H.string_of_lval l2)
           (CilElement.string_of_element c.parent)
           (CilElement.string_of_element c.left_sibling)
@@ -167,14 +223,20 @@ module Diff = struct
     List.iter (fun action -> print_endline (string_of_action action)) script
 
   let pp_edit_script fmt script =
-    List.iter (fun action -> H.F.fprintf fmt "%a\n" pp_action action) script
+    List.iter
+      (fun action ->
+        print_endline "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$";
+        H.F.fprintf fmt "%a\n" pp_action action)
+      script
 
-  let rec make_diff_exp code parent prev next (exp_lst : Cil.exp list) =
+  let rec make_diff_exp code parent prev tree_depth next
+      (exp_lst : Cil.exp list) =
     match exp_lst with
     | [] -> []
     | hd :: tl ->
         let context =
           {
+            depth = tree_depth;
             parent;
             left_sibling = prev;
             right_sibling = next;
@@ -182,8 +244,11 @@ module Diff = struct
           }
         in
         if code = 0 then
-          InsertExp (context, hd) :: make_diff_exp code parent prev next tl
-        else DeleteExp (context, hd) :: make_diff_exp code parent prev next tl
+          InsertExp (context, hd)
+          :: make_diff_exp code parent prev tree_depth next tl
+        else
+          DeleteExp (context, hd)
+          :: make_diff_exp code parent prev tree_depth next tl
 
   let rec find_continue_point_exp exp1 param =
     match param with
@@ -191,22 +256,23 @@ module Diff = struct
     | hd :: tl ->
         if H.eq_exp hd exp1 then tl else find_continue_point_exp exp1 tl
 
-  let rec find_eq_exp_in_tl exp1 expl acc =
+  let rec find_eq_exp_in_tl tree_depth exp1 expl acc =
     match expl with
     | [] -> []
     | hd :: tl ->
         if H.eq_exp hd exp1 then hd :: acc
         else
-          let result = find_eq_exp_in_tl exp1 tl [ hd ] in
+          let result = find_eq_exp_in_tl tree_depth exp1 tl [ hd ] in
           if result <> [] then result @ acc else []
 
-  let extract_exp code parent prev exp1 exp2 expl1 expl2 =
+  let extract_exp code parent prev tree_depth exp1 exp2 expl1 expl2 =
     if code = update_code then (
-      let _ = L.debug "exp update detected" in
+      let _ = print_endline "exp update detected" in
       print_endline "exp update detected";
       [
         UpdateExp
           ( {
+              depth = tree_depth;
               parent;
               left_sibling = Null;
               right_sibling = Null;
@@ -216,21 +282,21 @@ module Diff = struct
             exp2 );
       ])
     else
-      let insertion = find_eq_exp_in_tl exp1 expl2 [] in
+      let insertion = find_eq_exp_in_tl tree_depth exp1 expl2 [] in
       if insertion <> [] then
-        let _ = L.debug "exp insertion detected" in
+        let _ = print_endline "exp insertion detected" in
         let next = CilElement.exp_to_elem (Some (List.hd insertion)) in
         let insertion = exp2 :: List.tl insertion in
-        make_diff_exp insertion_code parent prev next insertion
+        make_diff_exp insertion_code parent prev tree_depth next insertion
       else
-        let deletion = find_eq_exp_in_tl exp2 expl1 [] in
+        let deletion = find_eq_exp_in_tl tree_depth exp2 expl1 [] in
         if deletion <> [] then
-          let _ = L.debug "exp deletion detected" in
+          let _ = print_endline "exp deletion detected" in
           let next = CilElement.exp_to_elem (Some (List.hd deletion)) in
           let deletion = exp1 :: List.tl deletion in
-          make_diff_exp deletion_code parent prev next deletion
+          make_diff_exp deletion_code parent prev tree_depth next deletion
         else
-          let _ = L.debug "exp update detected" in
+          let _ = print_endline "exp update detected" in
           let next =
             if expl1 <> [] then CilElement.exp_to_elem (Some (List.hd expl2))
             else Null
@@ -238,6 +304,7 @@ module Diff = struct
           [
             UpdateExp
               ( {
+                  depth = tree_depth;
                   parent;
                   left_sibling = prev;
                   right_sibling = next;
@@ -247,60 +314,66 @@ module Diff = struct
                 exp2 );
           ]
 
-  let rec fold_continue_point_param parent h1 h2 tl1 tl2 es =
+  let rec fold_continue_point_param parent tree_depth h1 h2 tl1 tl2 es =
     match es with
     | [] -> failwith "fold_continue_point_stmt: unexpected empty list"
     | hd :: _ -> (
         match hd with
         | InsertExp (_, s) ->
-            fold_param2 parent (Some s) tl1 (find_continue_point_exp h1 tl2)
+            fold_param2 parent (Some s) tree_depth tl1
+              (find_continue_point_exp h1 tl2)
         | DeleteExp (_, s) ->
-            fold_param2 parent (Some s) (find_continue_point_exp h2 tl1) tl2
-        | _ -> fold_param2 parent None tl1 tl2)
+            fold_param2 parent (Some s) tree_depth
+              (find_continue_point_exp h2 tl1)
+              tl2
+        | _ -> fold_param2 parent None tree_depth tl1 tl2)
 
-  and get_diff_param parent prev exp1 exp2 expl1 expl2 =
+  and get_diff_param parent prev tree_depth exp1 exp2 expl1 expl2 =
     if H.eq_exp exp1 exp2 then []
-    else extract_exp insertion_code parent prev exp1 exp2 expl1 expl2
+    else extract_exp insertion_code parent prev tree_depth exp1 exp2 expl1 expl2
 
-  and fold_param2 parent prev el1 el2 =
+  and fold_param2 parent prev (tree_depth : int) el1 el2 =
     let prev_node = CilElement.exp_to_elem prev in
     match (el1, el2) with
     | [], [] -> []
     | hd1 :: tl1, hd2 :: tl2 ->
-        let es = get_diff_param parent prev_node hd1 hd2 tl1 tl2 in
+        let es = get_diff_param parent prev_node tree_depth hd1 hd2 tl1 tl2 in
         if es <> [] then
-          es @ fold_continue_point_param parent hd1 hd2 tl1 tl2 es
-        else es @ fold_param2 parent (Some hd1) tl1 tl2
+          es @ fold_continue_point_param parent tree_depth hd1 hd2 tl1 tl2 es
+        else es @ fold_param2 parent (Some hd1) tree_depth tl1 tl2
     | [], hd :: tl ->
         let context =
           {
+            depth = tree_depth;
             parent;
             left_sibling = prev_node;
             right_sibling = Null;
             snk = CilElement.Null;
           }
         in
-        let _ = L.debug "exp insertion detected" in
-        InsertExp (context, hd) :: fold_param2 parent prev [] tl
+        let _ = print_endline "exp insertion detected" in
+        InsertExp (context, hd) :: fold_param2 parent prev tree_depth [] tl
     | hd :: tl, [] ->
         let context =
           {
+            depth = tree_depth;
             parent;
             left_sibling = prev_node;
             right_sibling = Null;
             snk = CilElement.Null;
           }
         in
-        DeleteExp (context, hd) :: fold_param2 parent prev tl []
+        DeleteExp (context, hd) :: fold_param2 parent prev tree_depth tl []
 
-  let extract_call parent lv1 e1 el1 lv2 e2 el2 =
+  let extract_call parent tree_depth lv1 e1 el1 lv2 e2 el2 =
     let lval_diff =
       match (lv1, lv2) with
       | None, Some lv ->
-          let _ = L.debug "lval insertion detected" in
+          let _ = print_endline "lval insertion detected" in
           [
             InsertLval
               ( {
+                  depth = tree_depth;
                   parent;
                   left_sibling = Null;
                   right_sibling = Null;
@@ -309,10 +382,11 @@ module Diff = struct
                 lv );
           ]
       | Some lv, None ->
-          let _ = L.debug "lval deletion detected" in
+          let _ = print_endline "lval deletion detected" in
           [
             DeleteLval
               ( {
+                  depth = tree_depth;
                   parent;
                   left_sibling = Null;
                   right_sibling = Null;
@@ -323,10 +397,11 @@ module Diff = struct
       | Some l1, Some l2 ->
           if H.string_of_lval l1 = H.string_of_lval l2 then []
           else
-            let _ = L.debug "lval update detected" in
+            let _ = print_endline "lval update detected" in
             [
               UpdateLval
                 ( {
+                    depth = tree_depth;
                     parent;
                     left_sibling = Null;
                     right_sibling = Null;
@@ -340,10 +415,11 @@ module Diff = struct
     let exp_diff =
       if H.string_of_exp e1 = H.string_of_exp e2 then []
       else
-        let _ = L.debug "exp update detected" in
+        let _ = print_endline "exp update detected" in
         [
           UpdateExp
             ( {
+                depth = tree_depth;
                 parent;
                 left_sibling = Null;
                 right_sibling = Null;
@@ -353,12 +429,13 @@ module Diff = struct
               e2 );
         ]
     in
-    let param_diff = fold_param2 parent Option.None el1 el2 in
+    let param_diff = fold_param2 parent Option.None 0 el1 el2 in
     lval_diff @ exp_diff @ param_diff
 
-  let extract_set parent lv1 e1 lv2 e2 =
+  let extract_set parent tree_depth lv1 e1 lv2 e2 =
     let context =
       {
+        depth = tree_depth;
         parent;
         left_sibling = Null;
         right_sibling = Null;
@@ -368,48 +445,48 @@ module Diff = struct
     let lval_diff =
       if H.string_of_lval lv1 = H.string_of_lval lv2 then []
       else
-        let _ = L.debug "lval update detected" in
+        let _ = print_endline "lval update detected" in
         [ UpdateLval (context, lv1, lv2) ]
     in
     let exp_diff =
       if H.string_of_exp e1 = H.string_of_exp e2 then []
       else
-        let _ = L.debug "exp update detected" in
+        let _ = print_endline "exp update detected" in
         [ UpdateExp (context, e1, e2) ]
     in
     lval_diff @ exp_diff
 
   (* This is where stmt/instr ends *)
-  let extract_instr parent instr1 instr2 =
+  let extract_instr parent tree_depth instr1 instr2 =
     match (instr1, instr2) with
     | Cil.Set (lv1, e1, _), Cil.Set (lv2, e2, _) ->
-        extract_set parent lv1 e1 lv2 e2
+        extract_set parent tree_depth lv1 e1 lv2 e2
     | Cil.Call (lv1, e1, el1, _), Cil.Call (lv2, e2, el2, _) ->
-        extract_call parent lv1 e1 el1 lv2 e2 el2
+        extract_call parent tree_depth lv1 e1 el1 lv2 e2 el2
     | _ -> []
 
   let rec find_continue_point_stmt stmt1 stmts =
     match stmts with
     | [] -> []
     | hd :: tl ->
-        if H.eq_stmt stmt1.Cil.skind hd.Cil.skind then tl
+        if H.eq_stmt stmt1.Cil.skind hd.Cil.skind then stmts
         else find_continue_point_stmt stmt1 tl
 
-  let rec find_eq_stmt_in_tl stmt1 stmts acc =
+  let rec find_eq_stmt_in_tl tree_depth stmt1 stmts acc =
     match stmts with
     | [] -> []
     | hd :: tl ->
         if H.eq_stmt stmt1.Cil.skind hd.Cil.skind then hd :: acc
-        else
-          let result = find_eq_stmt_in_tl stmt1 tl (hd :: acc) in
-          if result <> [] then result @ acc else []
+        else find_eq_stmt_in_tl tree_depth stmt1 tl (hd :: acc)
 
-  let rec make_diff_stmt code parent prev next (stmt_lst : Cil.stmt list) =
+  let rec make_diff_stmt code parent prev tree_depth next
+      (stmt_lst : Cil.stmt list) =
     match stmt_lst with
     | [] -> []
     | hd :: tl ->
         let context =
           {
+            depth = tree_depth;
             parent;
             left_sibling = prev;
             right_sibling = next;
@@ -417,116 +494,158 @@ module Diff = struct
           }
         in
         if code = 0 then
-          InsertStmt (context, hd) :: make_diff_stmt code parent prev next tl
-        else DeleteStmt (context, hd) :: make_diff_stmt code parent prev next tl
+          let _ = print_endline "stmt insertion detected" in
+          InsertStmt (context, hd)
+          :: make_diff_stmt code parent prev tree_depth next tl
+        else
+          let _ = print_endline "stmt deletion detected" in
+          DeleteStmt (context, hd)
+          :: make_diff_stmt code parent prev tree_depth next tl
 
-  and fold_continue_point_stmt parent h1 h2 tl1 tl2 es =
-    match es with
+  and fold_continue_point_stmt parent tree_depth h1 h2 tl1 tl2 es =
+    match List.rev es with
     | [] -> failwith "fold_continue_point_stmt: unexpected empty list"
     | hd :: _ -> (
         match hd with
-        | InsertStmt (_, s) ->
-            fold_stmts2 parent (Some s) tl1 (find_continue_point_stmt h1 tl2)
-        | DeleteStmt (_, s) ->
-            fold_stmts2 parent (Some s) (find_continue_point_stmt h2 tl1) tl2
-        | _ -> fold_stmts2 parent (Some h1) tl1 tl2)
+        | InsertStmt (c, s) ->
+            if c.depth = tree_depth then
+              fold_stmts2 parent (Some s) tree_depth (h1 :: tl1)
+                (find_continue_point_stmt h1 tl2)
+            else []
+        | DeleteStmt (c, s) ->
+            if c.depth = tree_depth then
+              fold_stmts2 parent (Some s) tree_depth
+                (find_continue_point_stmt h2 tl1)
+                (h2 :: tl2)
+            else []
+        | _ -> fold_stmts2 parent (Some h1) tree_depth tl1 tl2)
 
-  and extract_stmt parent prev stmt1 stmt2 tl1 tl2 =
-    let insertion = find_eq_stmt_in_tl stmt1 tl2 [] in
+  and extract_stmt parent prev tree_depth stmt1 stmt2 tl1 tl2 =
+    let insertion = find_eq_stmt_in_tl tree_depth stmt1 tl2 [] in
     if insertion <> [] then
-      let _ = L.debug "stmt insertion detected" in
       let next = CilElement.stmt_to_elem (Some (List.hd insertion)) in
-      let insertion = stmt2 :: List.tl insertion in
-      make_diff_stmt insertion_code parent prev next insertion
+      let insertion = stmt2 :: List.rev (List.tl insertion) in
+      make_diff_stmt insertion_code parent prev tree_depth next insertion
     else
-      let deletion = find_eq_stmt_in_tl stmt2 tl1 [] in
+      let deletion = find_eq_stmt_in_tl tree_depth stmt2 tl1 [] in
       if deletion <> [] then
-        let _ = L.debug "stmt deletion detected" in
         let next = CilElement.stmt_to_elem (Some (List.hd deletion)) in
-        let deletion = stmt1 :: List.tl deletion in
-        make_diff_stmt deletion_code parent prev next deletion
+        let deletion = stmt1 :: List.rev (List.tl deletion) in
+        make_diff_stmt deletion_code parent prev tree_depth next deletion
       else
-        let _ = L.debug "stmt insertion detected\nstmt deletion detected" in
+        let _ =
+          print_endline "stmt insertion detected\nstmt deletion detected"
+        in
         let context =
           {
+            depth = tree_depth;
             parent;
             left_sibling = prev;
-            right_sibling = CilElement.stmt_to_elem (Some (List.hd tl1));
+            right_sibling =
+              CilElement.stmt_to_elem
+                (if tl1 = [] then None else Some (List.hd tl1));
             snk = CilElement.Null;
           }
         in
         [ InsertStmt (context, stmt2); DeleteStmt (context, stmt1) ]
 
-  and get_diff_stmt parent prev stmt1 stmt2 stmts1 stmts2 =
+  and get_diff_stmt parent prev tree_depth stmt1 stmt2 stmts1 stmts2 =
     match (stmt1.Cil.skind, stmt2.Cil.skind) with
     | Cil.Instr i1, Cil.Instr i2 ->
-        let instr1 = List.hd i1 in
-        let instr2 = List.hd i2 in
-        if H.eq_instr instr1 instr2 then
-          extract_instr (CilElement.stmt_to_elem (Some stmt1)) instr1 instr2
-        else extract_stmt parent prev stmt1 stmt2 stmts1 stmts2
+        if H.eq_instr i1 i2 then
+          let instr1, instr2 = (List.hd i1, List.hd i2) in
+          extract_instr
+            (CilElement.stmt_to_elem (Some stmt1))
+            tree_depth instr1 instr2
+        else extract_stmt parent prev tree_depth stmt1 stmt2 stmts1 stmts2
     | Cil.If (c1, t_blck1, eblck1, _), Cil.If (c2, t_blck2, eblck2, _) ->
         if H.eq_stmt stmt1.Cil.skind stmt2.Cil.skind then
           let exp_diff =
             if H.eq_exp c1 c2 then []
-            else extract_exp update_code parent CilElement.Null c1 c2 [] []
+            else extract_exp update_code parent CilElement.Null 0 c1 c2 [] []
           in
           exp_diff
-          @ extract_block parent t_blck1 t_blck2
-          @ extract_block parent eblck1 eblck2
-        else extract_stmt parent prev stmt1 stmt2 stmts1 stmts2
-    | Cil.Loop _, Cil.Loop _ ->
-        let _ = L.debug "loop detected. loop cannot be analyzed" in
-        []
+          @ extract_block parent (tree_depth + 1) t_blck1 t_blck2
+          @ extract_block parent (tree_depth + 1) eblck1 eblck2
+        else extract_stmt parent prev tree_depth stmt1 stmt2 stmts1 stmts2
+    | Cil.Loop (blk1, _, _, _), Cil.Loop (blk2, _, _, _) ->
+        if H.eq_stmt stmt1.Cil.skind stmt2.Cil.skind then
+          extract_block parent (tree_depth + 1) blk1 blk2
+        else extract_stmt parent prev tree_depth stmt1 stmt2 stmts1 stmts2
     | Cil.Return (Some e1, _), Cil.Return (Some e2, _) ->
         if H.eq_stmt stmt1.skind stmt2.skind then []
-        else extract_exp update_code parent CilElement.Null e1 e2 [] []
+        else extract_exp update_code parent CilElement.Null 0 e1 e2 [] []
     | Cil.Return (None, _), Cil.Return (None, _) -> []
-    | Cil.Block _, Cil.Block _ -> []
-    | Cil.TryExcept _, Cil.TryExcept _ -> []
-    | Cil.TryFinally _, Cil.TryFinally _ -> []
-    | _ -> extract_stmt parent prev stmt1 stmt2 stmts1 stmts2
+    | Cil.Block b1, Cil.Block b2 ->
+        if H.eq_stmt stmt1.Cil.skind stmt2.Cil.skind then
+          extract_block parent (tree_depth + 1) b1 b2
+        else extract_stmt parent prev tree_depth stmt1 stmt2 stmts1 stmts2
+    | Cil.Goto (dest1, _), Cil.Goto (dest2, _) ->
+        if H.eq_stmt !dest1.Cil.skind !dest2.Cil.skind then []
+        else extract_stmt parent prev tree_depth stmt1 stmt2 stmts1 stmts2
+    | Cil.TryExcept _, Cil.TryExcept _ | Cil.TryFinally _, Cil.TryFinally _ ->
+        []
+    | _ -> extract_stmt parent prev tree_depth stmt1 stmt2 stmts1 stmts2
 
-  and fold_stmts2 parent prev stmts1 stmts2 =
+  and fold_stmts2 parent prev tree_depth stmts1 stmts2 =
     let prev_node = CilElement.stmt_to_elem prev in
     match (stmts1, stmts2) with
     | [], [] -> []
     | s1 :: ss1, s2 :: ss2 -> (
-        let es = get_diff_stmt parent prev_node s1 s2 ss1 ss2 in
+        let es = get_diff_stmt parent prev_node tree_depth s1 s2 ss1 ss2 in
         match es with
-        | [] -> fold_stmts2 parent (Some s1) ss1 ss2
+        | [] -> fold_stmts2 parent (Some s1) tree_depth ss1 ss2
         | h :: t ->
             if t <> [] then
               match (h, List.hd t) with
-              | InsertStmt _, DeleteStmt _ ->
-                  es @ fold_stmts2 parent (Some s1) ss1 ss2
-              | _ -> es @ fold_continue_point_stmt parent s1 s2 ss1 ss2 es
-            else es @ fold_continue_point_stmt parent s1 s2 ss1 ss2 es)
+              | InsertStmt (_, a1), DeleteStmt (_, a2)
+                when H.eq_stmt a1.skind a2.skind ->
+                  es @ fold_stmts2 parent (Some s1) tree_depth ss1 ss2
+              | _ ->
+                  es
+                  @ fold_continue_point_stmt parent tree_depth s1 s2 ss1 ss2 es
+            else
+              es @ fold_continue_point_stmt parent tree_depth s1 s2 ss1 ss2 es)
     | [], s2 :: ss2 ->
         let context =
           {
+            depth = tree_depth;
             parent;
             left_sibling = prev_node;
             right_sibling = Null;
             snk = CilElement.Null;
           }
         in
-        let _ = L.debug "stmt insertion detected" in
-        InsertStmt (context, s2) :: fold_stmts2 parent prev [] ss2
+        let _ = print_endline "stmt insertion detected" in
+        InsertStmt (context, s2) :: fold_stmts2 parent prev tree_depth [] ss2
     | s1 :: ss1, [] ->
         let context =
           {
+            depth = tree_depth;
             parent;
             left_sibling = prev_node;
             right_sibling = Null;
             snk = CilElement.Null;
           }
         in
-        let _ = L.debug "stmt deletion detected" in
-        DeleteStmt (context, s1) :: fold_stmts2 parent (Some s1) ss1 []
+        let _ = print_endline "stmt deletion detected" in
+        DeleteStmt (context, s1)
+        :: fold_stmts2 parent (Some s1) tree_depth ss1 []
 
-  and extract_block parent block1 block2 =
-    fold_stmts2 parent Option.none block1.Cil.bstmts block2.Cil.bstmts
+  and extract_block parent tree_depth block1 block2 =
+    let stmts1 =
+      List.rev
+        (List.fold_left
+           (fun acc x -> if H.is_empty_instr x then acc else x :: acc)
+           [] block1.Cil.bstmts)
+    in
+    let stmts2 =
+      List.rev
+        (List.fold_left
+           (fun acc x -> if H.is_empty_instr x then acc else x :: acc)
+           [] block2.Cil.bstmts)
+    in
+    fold_stmts2 parent Option.none tree_depth stmts1 stmts2
 
   (* this is where global ends *)
   let rec find_eq_glob_in_tl glob1 globals acc =
@@ -544,12 +663,13 @@ module Diff = struct
     | hd :: tl ->
         if H.eq_global glob1 hd then tl else find_continue_point_glob glob1 tl
 
-  let rec make_diff_glob code prev next glob_lst =
+  let rec make_diff_glob code tree_depth prev next glob_lst =
     match glob_lst with
     | [] -> []
     | hd :: tl ->
         let context =
           {
+            depth = tree_depth;
             parent = Null;
             left_sibling = prev;
             right_sibling = next;
@@ -557,38 +677,48 @@ module Diff = struct
           }
         in
         if code = 0 then
-          InsertGlobal (context, hd) :: make_diff_glob code prev next tl
-        else DeleteGlobal (context, hd) :: make_diff_glob code prev next tl
+          InsertGlobal (context, hd)
+          :: make_diff_glob code tree_depth prev next tl
+        else
+          DeleteGlobal (context, hd)
+          :: make_diff_glob code tree_depth prev next tl
 
-  and fold_continue_point_glob glob1 glob2 es tl1 tl2 =
+  (* TODO: check depth *)
+  and fold_continue_point_glob tree_depth glob1 glob2 es tl1 tl2 =
     match es with
     | [] -> failwith "fold_continue_point_glob: unexpected empty list"
     | hd :: _ -> (
         match hd with
         | InsertGlobal (_, g) ->
-            fold_globals2 (Some g) tl1 (find_continue_point_glob glob1 tl2)
+            fold_globals2 (Some g) tree_depth tl1
+              (find_continue_point_glob glob1 tl2)
         | DeleteGlobal (_, g) ->
-            fold_globals2 (Some g) (find_continue_point_glob glob2 tl1) tl2
-        | _ -> fold_globals2 (Some glob1) tl1 tl2)
+            fold_globals2 (Some g) tree_depth
+              (find_continue_point_glob glob2 tl1)
+              tl2
+        | _ -> fold_globals2 (Some glob1) tree_depth tl1 tl2)
 
-  and extract_global prev glob1 glob2 tl1 tl2 =
+  and extract_global prev tree_depth glob1 glob2 tl1 tl2 =
     let insertion = find_eq_glob_in_tl glob1 tl2 [] in
     if insertion <> [] then
-      let _ = L.debug "global insertion detected" in
+      let _ = print_endline "global insertion detected" in
       let next = CilElement.glob_to_elem (Some (List.hd insertion)) in
       let insertion = glob2 :: List.tl insertion in
-      make_diff_glob insertion_code prev next insertion
+      make_diff_glob insertion_code tree_depth prev next insertion
     else
       let deletion = find_eq_glob_in_tl glob2 tl1 [] in
       if deletion <> [] then
-        let _ = L.debug "global deletion detected" in
+        let _ = print_endline "global deletion detected" in
         let next = CilElement.glob_to_elem (Some (List.hd deletion)) in
         let deletion = glob1 :: List.tl deletion in
-        make_diff_glob deletion_code prev next deletion
+        make_diff_glob deletion_code tree_depth prev next deletion
       else
-        let _ = L.debug "global insertion detected\nglobal deletion detected" in
+        let _ =
+          print_endline "global insertion detected\nglobal deletion detected"
+        in
         let context =
           {
+            depth = tree_depth;
             parent = Null;
             left_sibling = prev;
             right_sibling = CilElement.glob_to_elem (Some (List.hd tl1));
@@ -597,56 +727,69 @@ module Diff = struct
         in
         [ InsertGlobal (context, glob2); DeleteGlobal (context, glob1) ]
 
-  and get_diff_glob prev glob1 glob2 tl1 tl2 =
+  and get_diff_glob prev tree_depth glob1 glob2 tl1 tl2 =
     match (glob1, glob2) with
     | Cil.GFun (func_info1, _), Cil.GFun (func_info2, _) ->
         if H.eq_global glob1 glob2 then
           extract_block
             (CilElement.glob_to_elem (Some glob1))
-            func_info1.sbody func_info2.sbody
-        else extract_global prev glob1 glob2 tl1 tl2
+            (tree_depth + 1) func_info1.sbody func_info2.sbody
+        else extract_global prev tree_depth glob1 glob2 tl1 tl2
     | Cil.GVarDecl _, Cil.GVarDecl _ ->
         if H.eq_global glob1 glob2 then []
-        else extract_global prev glob1 glob2 tl1 tl2
-    | _ -> extract_global prev glob1 glob2 tl1 tl2
+        else extract_global prev tree_depth glob1 glob2 tl1 tl2
+    | Cil.GType _, Cil.GType _ ->
+        if H.eq_global glob1 glob2 then []
+        else extract_global prev tree_depth glob1 glob2 tl1 tl2
+    | Cil.GCompTag _, Cil.GCompTag _ -> []
+    | Cil.GCompTagDecl _, Cil.GCompTagDecl _ -> []
+    | Cil.GEnumTag _, Cil.GEnumTag _ -> []
+    | Cil.GEnumTagDecl _, Cil.GEnumTagDecl _ -> []
+    | Cil.GVar _, Cil.GVar _ -> []
+    | Cil.GAsm _, Cil.GAsm _ -> []
+    | Cil.GPragma _, Cil.GPragma _ -> []
+    | Cil.GText _, Cil.GText _ -> []
+    | _ -> extract_global prev tree_depth glob1 glob2 tl1 tl2
 
-  and fold_globals2 prev doner_gobals patch_globals =
+  and fold_globals2 prev tree_depth doner_gobals patch_globals =
     let prev_node = CilElement.glob_to_elem prev in
     match (doner_gobals, patch_globals) with
     | [], [] -> []
     | hd1 :: tl1, hd2 :: tl2 -> (
-        let es = get_diff_glob prev_node hd1 hd2 tl1 tl2 in
+        let es = get_diff_glob prev_node tree_depth hd1 hd2 tl1 tl2 in
         match es with
-        | [] -> fold_globals2 (Some hd1) tl1 tl2
+        | [] -> fold_globals2 (Some hd1) tree_depth tl1 tl2
         | h :: t ->
             if t <> [] then
               match (h, List.hd t) with
               | InsertGlobal _, DeleteGlobal _ ->
-                  es @ fold_globals2 (Some hd1) tl1 tl2
-              | _ -> es @ fold_continue_point_glob hd1 hd2 es tl1 tl2
-            else es @ fold_continue_point_glob hd1 hd2 es tl1 tl2)
+                  es @ fold_globals2 (Some hd1) tree_depth tl1 tl2
+              | _ -> es @ fold_continue_point_glob tree_depth hd1 hd2 es tl1 tl2
+            else es @ fold_continue_point_glob tree_depth hd1 hd2 es tl1 tl2)
     | [], hd2 :: tl2 ->
         let context =
           {
+            depth = tree_depth;
             parent = Null;
             left_sibling = prev_node;
             right_sibling = Null;
             snk = Null;
           }
         in
-        let _ = L.debug "global insertion detected" in
-        InsertGlobal (context, hd2) :: fold_globals2 prev [] tl2
+        let _ = print_endline "global insertion detected" in
+        InsertGlobal (context, hd2) :: fold_globals2 prev tree_depth [] tl2
     | hd1 :: tl1, [] ->
         let context =
           {
+            depth = tree_depth;
             parent = Null;
             left_sibling = prev_node;
             right_sibling = Null;
             snk = Null;
           }
         in
-        let _ = L.debug "global deletion detected" in
-        DeleteGlobal (context, hd1) :: fold_globals2 prev tl1 []
+        let _ = print_endline "global deletion detected" in
+        DeleteGlobal (context, hd1) :: fold_globals2 prev tree_depth tl1 []
 
   let compare = compare
 end
@@ -672,11 +815,15 @@ class blockVisitor =
   end
 
 let parse_file fname =
-  if !Cilutil.printStages then ignore (Logger.info "Parsing %s\n" fname);
+  if !Cilutil.printStages then ignore ();
   let cil = Frontc.parse fname () in
   Rmtmps.removeUnusedTemps cil;
   Cil.visitCilFile (new blockVisitor) cil;
   cil
 
 let define_diff donor_file patch_file =
-  Diff.fold_globals2 Option.None donor_file.Cil.globals patch_file.Cil.globals
+  let globs1, globs2 =
+    ( H.remove_comments donor_file.Cil.globals,
+      H.remove_comments patch_file.Cil.globals )
+  in
+  Diff.fold_globals2 Option.None 0 globs1 globs2
