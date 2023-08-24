@@ -1,5 +1,6 @@
 module H = TransformerHelper
 module J = Yojson.Basic
+module L = Logger
 module StrMap = Map.Make (String)
 
 module CilElement = struct
@@ -76,9 +77,9 @@ module Diff = struct
            %s\n\n\
            =================================="
           (H.string_of_global g2)
-          (Str.first_chars (CilElement.string_of_element c.parent) 20)
-          (CilElement.string_of_element c.left_sibling)
-          (CilElement.string_of_element c.right_sibling)
+          (CilElement.string_of_element c.parent |> H.summarize_pp)
+          (CilElement.string_of_element c.left_sibling |> H.summarize_pp)
+          (CilElement.string_of_element c.right_sibling |> H.summarize_pp)
     | DeleteGlobal (c, g2) ->
         H.F.fprintf fmt
           "DeleteGlobal: \n\
@@ -94,9 +95,9 @@ module Diff = struct
            %s\n\n\
            =================================="
           (H.string_of_global g2)
-          (Str.first_chars (CilElement.string_of_element c.parent) 20)
-          (CilElement.string_of_element c.left_sibling)
-          (CilElement.string_of_element c.right_sibling)
+          (CilElement.string_of_element c.parent |> H.summarize_pp)
+          (CilElement.string_of_element c.left_sibling |> H.summarize_pp)
+          (CilElement.string_of_element c.right_sibling |> H.summarize_pp)
     | InsertStmt (c, s1) ->
         H.F.fprintf fmt
           "InsertStmt: \n\
@@ -112,9 +113,9 @@ module Diff = struct
            %s\n\n\
            =================================="
           (H.string_of_stmt s1)
-          (Str.first_chars (CilElement.string_of_element c.parent) 20)
-          (CilElement.string_of_element c.left_sibling)
-          (CilElement.string_of_element c.right_sibling)
+          (CilElement.string_of_element c.parent |> H.summarize_pp)
+          (CilElement.string_of_element c.left_sibling |> H.summarize_pp)
+          (CilElement.string_of_element c.right_sibling |> H.summarize_pp)
     | DeleteStmt (c, s1) ->
         H.F.fprintf fmt
           "DeleteStmt: \n\
@@ -130,9 +131,9 @@ module Diff = struct
            %s\n\n\
            =================================="
           (H.string_of_stmt s1)
-          (Str.first_chars (CilElement.string_of_element c.parent) 20)
-          (CilElement.string_of_element c.left_sibling)
-          (CilElement.string_of_element c.right_sibling)
+          (CilElement.string_of_element c.parent |> H.summarize_pp)
+          (CilElement.string_of_element c.left_sibling |> H.summarize_pp)
+          (CilElement.string_of_element c.right_sibling |> H.summarize_pp)
     | InsertExp (c, e1) ->
         H.F.fprintf fmt
           "InsertExp: \n\
@@ -148,9 +149,9 @@ module Diff = struct
            %s\n\n\
            =================================="
           (H.string_of_exp e1)
-          (CilElement.string_of_element c.parent)
-          (CilElement.string_of_element c.left_sibling)
-          (CilElement.string_of_element c.right_sibling)
+          (CilElement.string_of_element c.parent |> H.summarize_pp)
+          (CilElement.string_of_element c.left_sibling |> H.summarize_pp)
+          (CilElement.string_of_element c.right_sibling |> H.summarize_pp)
     | DeleteExp (c, e1) ->
         H.F.fprintf fmt
           "DeleteExp: \n\
@@ -166,9 +167,9 @@ module Diff = struct
            %s\n\n\
            =================================="
           (H.string_of_exp e1)
-          (CilElement.string_of_element c.parent)
-          (CilElement.string_of_element c.left_sibling)
-          (CilElement.string_of_element c.right_sibling)
+          (CilElement.string_of_element c.parent |> H.summarize_pp)
+          (CilElement.string_of_element c.left_sibling |> H.summarize_pp)
+          (CilElement.string_of_element c.right_sibling |> H.summarize_pp)
     | UpdateExp (c, e1, e2) ->
         H.F.fprintf fmt
           "UpdateExp: \n\
@@ -185,9 +186,9 @@ module Diff = struct
            %s\n\n\
            =================================="
           (H.string_of_exp e1) (H.string_of_exp e2)
-          (CilElement.string_of_element c.parent)
-          (CilElement.string_of_element c.left_sibling)
-          (CilElement.string_of_element c.right_sibling)
+          (CilElement.string_of_element c.parent |> H.summarize_pp)
+          (CilElement.string_of_element c.left_sibling |> H.summarize_pp)
+          (CilElement.string_of_element c.right_sibling |> H.summarize_pp)
     | InsertLval (_, l1) ->
         H.F.fprintf fmt "InsertLval: %s" (H.string_of_lval l1)
     | DeleteLval (_, l1) ->
@@ -208,9 +209,9 @@ module Diff = struct
            %s\n\n\
            =================================="
           (H.string_of_lval l1) (H.string_of_lval l2)
-          (CilElement.string_of_element c.parent)
-          (CilElement.string_of_element c.left_sibling)
-          (CilElement.string_of_element c.right_sibling)
+          (CilElement.string_of_element c.parent |> H.summarize_pp)
+          (CilElement.string_of_element c.left_sibling |> H.summarize_pp)
+          (CilElement.string_of_element c.right_sibling |> H.summarize_pp)
 
   let string_of_action action =
     let buf = Buffer.create 16 in
@@ -266,9 +267,8 @@ module Diff = struct
           if result <> [] then result @ acc else []
 
   let extract_exp code parent prev tree_depth exp1 exp2 expl1 expl2 =
-    if code = update_code then (
+    if code = update_code then
       let _ = print_endline "exp update detected" in
-      print_endline "exp update detected";
       [
         UpdateExp
           ( {
@@ -280,7 +280,7 @@ module Diff = struct
             },
             exp1,
             exp2 );
-      ])
+      ]
     else
       let insertion = find_eq_exp_in_tl tree_depth exp1 expl2 [] in
       if insertion <> [] then
@@ -319,13 +319,17 @@ module Diff = struct
     | [] -> failwith "fold_continue_point_stmt: unexpected empty list"
     | hd :: _ -> (
         match hd with
-        | InsertExp (_, s) ->
-            fold_param2 parent (Some s) tree_depth tl1
-              (find_continue_point_exp h1 tl2)
-        | DeleteExp (_, s) ->
-            fold_param2 parent (Some s) tree_depth
-              (find_continue_point_exp h2 tl1)
-              tl2
+        | InsertExp (c, s) ->
+            if c.depth = tree_depth then
+              fold_param2 parent (Some s) tree_depth tl1
+                (find_continue_point_exp h1 tl2)
+            else []
+        | DeleteExp (c, s) ->
+            if c.depth = tree_depth then
+              fold_param2 parent (Some s) tree_depth
+                (find_continue_point_exp h2 tl1)
+                tl2
+            else []
         | _ -> fold_param2 parent None tree_depth tl1 tl2)
 
   and get_diff_param parent prev tree_depth exp1 exp2 expl1 expl2 =
@@ -449,7 +453,7 @@ module Diff = struct
         [ UpdateLval (context, lv1, lv2) ]
     in
     let exp_diff =
-      if H.string_of_exp e1 = H.string_of_exp e2 then []
+      if H.eq_exp e1 e2 then []
       else
         let _ = print_endline "exp update detected" in
         [ UpdateExp (context, e1, e2) ]
@@ -534,7 +538,7 @@ module Diff = struct
         make_diff_stmt deletion_code parent prev tree_depth next deletion
       else
         let _ =
-          print_endline "stmt insertion detected\nstmt deletion detected"
+          print_endline "stmt insertion detected\n&*&*&*stmt deletion detected"
         in
         let context =
           {
@@ -598,8 +602,7 @@ module Diff = struct
         | h :: t ->
             if t <> [] then
               match (h, List.hd t) with
-              | InsertStmt (_, a1), DeleteStmt (_, a2)
-                when H.eq_stmt a1.skind a2.skind ->
+              | InsertStmt (_, a1), DeleteStmt (_, a2) ->
                   es @ fold_stmts2 parent (Some s1) tree_depth ss1 ss2
               | _ ->
                   es
