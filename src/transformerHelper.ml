@@ -281,45 +281,6 @@ let print_ekind exp =
   | Cil.AddrOfLabel _ -> print_endline "AddrOfLabel"
   | Cil.StartOf _ -> print_endline "StartOf"
 
-let print_skind skind =
-  match skind with
-  | Cil.Instr ins ->
-      (match List.hd ins with
-      | Cil.Call (_, _, _, loc)
-      | Cil.Set (_, _, loc)
-      | Cil.Asm (_, _, _, _, _, loc) ->
-          print_endline (List.hd ins |> string_of_instr));
-      print_endline "Instr"
-  | Cil.Return (_, loc) ->
-      print_int loc.Cil.line;
-      print_endline "Return"
-  | Cil.Goto (_, loc) ->
-      print_int loc.Cil.line;
-      print_endline "Goto"
-  | Cil.Break loc ->
-      print_int loc.Cil.line;
-      print_endline "Break"
-  | Cil.Continue loc ->
-      print_int loc.Cil.line;
-      print_endline "Continue"
-  | Cil.If (c, _, _, loc) ->
-      string_of_exp c |> print_endline;
-      print_endline "If"
-  | Cil.Switch (_, _, _, loc) ->
-      print_int loc.Cil.line;
-      print_endline "Switch"
-  | Cil.Loop (_, loc, _, _) ->
-      print_int loc.Cil.line;
-      print_endline "Loop"
-  | Cil.Block _ -> print_endline "Block"
-  | Cil.TryFinally (_, _, loc) ->
-      print_int loc.Cil.line;
-      print_endline "TryFinally"
-  | Cil.TryExcept (_, _, _, loc) ->
-      print_int loc.Cil.line;
-      print_endline "TryExcept"
-  | _ -> print_endline "?"
-
 let rec parse_strmap file map =
   match file with
   | [] -> map
@@ -731,6 +692,9 @@ let extract_snk path =
   let donee_srcsnk = List.nth lst 1 in
   let donee_srcsnk = Str.split (Str.regexp " ") donee_srcsnk in
   List.nth donee_srcsnk 1
+
+let compare_files (file1 : Cil.file) (file2 : Cil.file) =
+  string_of_file file1 = string_of_file file2
 
 let get_first_nth_lines n str =
   let rec aux acc n str =

@@ -7,8 +7,16 @@ module L = Logger
 module H = TransformerHelper
 
 let extract_edit_function doner_dir patch_dir db_dir =
-  let doner_file = Filename.concat doner_dir "main.c" in
-  let patch_file = Filename.concat patch_dir "main.c" in
+  let doner_file =
+    Sys.readdir doner_dir |> Array.to_list
+    |> List.filter (fun x -> Filename.check_suffix x ".c")
+    |> List.hd |> Filename.concat doner_dir
+  in
+  let patch_file =
+    Sys.readdir patch_dir |> Array.to_list
+    |> List.filter (fun x -> Filename.check_suffix x ".c")
+    |> List.hd |> Filename.concat patch_dir
+  in
   let doner_sparrow_dir = Filename.concat doner_dir "sparrow-out" in
   let donor, patch = (D.parse_file doner_file, D.parse_file patch_file) in
   let ast_diff = D.define_diff donor patch in

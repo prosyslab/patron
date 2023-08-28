@@ -1,6 +1,5 @@
 module H = TransformerHelper
 module J = Yojson.Basic
-module L = Logger
 module StrMap = Map.Make (String)
 
 module CilElement = struct
@@ -602,7 +601,7 @@ module Diff = struct
         | h :: t ->
             if t <> [] then
               match (h, List.hd t) with
-              | InsertStmt (_, a1), DeleteStmt (_, a2) ->
+              | InsertStmt _, DeleteStmt _ ->
                   es @ fold_stmts2 parent (Some s1) tree_depth ss1 ss2
               | _ ->
                   es
