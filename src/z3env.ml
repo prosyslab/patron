@@ -53,6 +53,7 @@ type t = {
   eval : Z3.FuncDecl.func_decl;
   memory : Z3.FuncDecl.func_decl;
   arrval : Z3.FuncDecl.func_decl;
+  strval : Z3.FuncDecl.func_decl;
   conststr : Z3.FuncDecl.func_decl;
   sizeof : Z3.FuncDecl.func_decl;
   strlen : Z3.FuncDecl.func_decl;
@@ -60,6 +61,7 @@ type t = {
   alarm : Z3.FuncDecl.func_decl;
   reach : Z3.FuncDecl.func_decl;
   ioerror : Z3.FuncDecl.func_decl;
+  dzerror : Z3.FuncDecl.func_decl;
   errtrace : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
   fact_files : String.t list;
@@ -107,6 +109,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.eval;
   Z3.Fixedpoint.register_relation solver env.memory;
   Z3.Fixedpoint.register_relation solver env.arrval;
+  Z3.Fixedpoint.register_relation solver env.strval;
   Z3.Fixedpoint.register_relation solver env.conststr;
   Z3.Fixedpoint.register_relation solver env.strlen;
   Z3.Fixedpoint.register_relation solver env.sizeof;
@@ -114,6 +117,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.alarm;
   Z3.Fixedpoint.register_relation solver env.reach;
   Z3.Fixedpoint.register_relation solver env.ioerror;
+  Z3.Fixedpoint.register_relation solver env.dzerror;
   Z3.Fixedpoint.register_relation solver env.errtrace;
   Z3.Fixedpoint.register_relation solver env.bug
 
@@ -217,6 +221,9 @@ let mk_env () =
   let arrval =
     Z3.FuncDecl.mk_func_decl_s z3ctx "ArrVal" [ value; bv_sort ] boolean_sort
   in
+  let strval =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "StrVal" [ value; bv_sort ] boolean_sort
+  in
   let conststr =
     Z3.FuncDecl.mk_func_decl_s z3ctx "ConstStr" [ value; const ] boolean_sort
   in
@@ -237,6 +244,9 @@ let mk_env () =
   let ioerror =
     Z3.FuncDecl.mk_func_decl_s z3ctx "IOError" [ node; bv_sort ] boolean_sort
   in
+  let dzerror =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "DZError" [ node; bv_sort ] boolean_sort
+  in
   let errtrace =
     Z3.FuncDecl.mk_func_decl_s z3ctx "ErrTrace" [ node; node ] boolean_sort
   in
@@ -256,7 +266,7 @@ let mk_env () =
       (* "LocalVar.facts"; *)
       "LvalExp.facts";
       "Return.facts";
-      "SAllocExp.facts";
+      (* "SAllocExp.facts"; *)
       "Skip.facts";
       "UnOpExp.facts";
     ]
@@ -301,6 +311,7 @@ let mk_env () =
       ("", eval, [ node; expr; value ]);
       ("", memory, [ node; loc; value ]);
       ("", arrval, [ value; bv_sort ]);
+      ("", strval, [ value; bv_sort ]);
       ("", conststr, [ value; const ]);
       ("", val_rel, [ value; bv_sort ]);
       ("", sizeof, [ value; bv_sort ]);
@@ -308,6 +319,7 @@ let mk_env () =
       ("", reach, [ node ]);
       ("", errtrace, [ node; node ]);
       ("", ioerror, [ node; bv_sort ]);
+      ("", dzerror, [ node; bv_sort ]);
     ]
   in
   let rels =
@@ -383,6 +395,7 @@ let mk_env () =
       eval;
       memory;
       arrval;
+      strval;
       conststr;
       sizeof;
       strlen;
@@ -390,6 +403,7 @@ let mk_env () =
       alarm;
       reach;
       ioerror;
+      dzerror;
       errtrace;
       bug;
       fact_files;

@@ -28,9 +28,11 @@ let match_func = function
   | "SizeOf" -> z3env.sizeof
   | "StrLen" -> z3env.strlen
   | "Val" -> z3env.val_rel
+  | "StrVal" -> z3env.strval
   | "Alarm" -> z3env.alarm
   | "Reach" -> z3env.reach
   | "IOError" -> z3env.ioerror
+  | "DZError" -> z3env.dzerror
   | "ErrTrace" -> z3env.errtrace
   | "Bug" -> z3env.bug
   | s -> L.error "match_func: invalid function - %s" s
@@ -114,6 +116,7 @@ let match_sort s =
     else if is_unop name then z3env.unop_sort
     else if String.equal "l" s then z3env.loc
     else if String.is_prefix ~prefix:"v" s then z3env.value
+    else if String.is_prefix ~prefix:"s" s then z3env.str_literal
     else z3env.bv_sort
   else
     match name with
