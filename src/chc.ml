@@ -175,7 +175,7 @@ module Elt = struct
     | Not e -> Z3.Boolean.mk_not z3env.z3ctx (to_z3 maps e)
     | CLt (e1, e2) ->
         Z3.Boolean.mk_ite z3env.z3ctx
-          (Z3.Arithmetic.mk_lt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+          (Z3.BitVector.mk_slt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
           (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
           (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
     | CGt (e1, e2) ->
@@ -498,7 +498,9 @@ let add_all maps solver =
 let pattern_match out_dir maps chc pattern query =
   let solver = mk_fixedpoint z3env.z3ctx in
   reg_rel_to_solver z3env solver;
+  L.info "Start making Z3 instance from facts and rels";
   add_all maps solver (union chc pattern);
+  L.info "Complete making Z3 instance from facts and rels";
   let status = Z3.Fixedpoint.query_r solver query in
   Z3utils.dump_solver_to_smt "test" solver out_dir;
   match status with

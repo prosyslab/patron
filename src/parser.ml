@@ -81,7 +81,8 @@ let rec sexp2chc = function
 
 let parse_chc chc_file =
   In_channel.read_lines chc_file
-  |> List.map ~f:(fun rule -> Sexp.of_string rule |> sexp2chc)
+  |> List.fold_left ~init:[] ~f:(fun chc_list rule ->
+         try (Sexp.of_string rule |> sexp2chc) :: chc_list with _ -> chc_list)
   |> Chc.of_list
 
 module AlarmMap = Map.Make (struct
@@ -95,7 +96,7 @@ end)
 
 let mk_alarm_map work_dir =
   let io_err_cons_file =
-    Filename.concat work_dir "sparrow-out/taint/datalog/IOErrorConstraint.rules"
+    Filename.concat work_dir "sparrow-out/taint/datalog/Alarm.rules"
   in
   try
     let alarms =
