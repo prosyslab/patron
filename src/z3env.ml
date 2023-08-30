@@ -134,17 +134,21 @@ let mk_env () =
   let one = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 1 in
   let two = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 2 in
   let three = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 3 in
-  let node = Z3.FiniteDomain.mk_sort_s z3ctx "node" 65536L in
-  let lval = Z3.FiniteDomain.mk_sort_s z3ctx "lval" 65536L in
-  let expr = Z3.FiniteDomain.mk_sort_s z3ctx "expr" 65536L in
-  let binop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "binop" 65536L in
-  let unop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "unop" 65536L in
-  let identifier = Z3.FiniteDomain.mk_sort_s z3ctx "identifier" 65536L in
-  let arg_list = Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" 65536L in
-  let str_literal = Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" 65536L in
-  let loc = Z3.FiniteDomain.mk_sort_s z3ctx "loc" 65536L in
-  let value = Z3.FiniteDomain.mk_sort_s z3ctx "value" 65536L in
-  let const = Z3.FiniteDomain.mk_sort_s z3ctx "const" 65536L in
+  let node = Z3.FiniteDomain.mk_sort_s z3ctx "node" Int64.max_value in
+  let lval = Z3.FiniteDomain.mk_sort_s z3ctx "lval" Int64.max_value in
+  let expr = Z3.FiniteDomain.mk_sort_s z3ctx "expr" Int64.max_value in
+  let binop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "binop" Int64.max_value in
+  let unop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "unop" Int64.max_value in
+  let identifier =
+    Z3.FiniteDomain.mk_sort_s z3ctx "identifier" Int64.max_value
+  in
+  let arg_list = Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" Int64.max_value in
+  let str_literal =
+    Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" Int64.max_value
+  in
+  let loc = Z3.FiniteDomain.mk_sort_s z3ctx "loc" Int64.max_value in
+  let value = Z3.FiniteDomain.mk_sort_s z3ctx "value" Int64.max_value in
+  let const = Z3.FiniteDomain.mk_sort_s z3ctx "const" Int64.max_value in
   let src = Z3.FuncDecl.mk_func_decl_s z3ctx "Src" [ node ] boolean_sort in
   let snk = Z3.FuncDecl.mk_func_decl_s z3ctx "Snk" [ node ] boolean_sort in
   let skip = Z3.FuncDecl.mk_func_decl_s z3ctx "Skip" [ node ] boolean_sort in
