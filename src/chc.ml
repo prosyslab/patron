@@ -14,6 +14,8 @@ module Elt = struct
     | Ge of t * t
     | Eq of t * t
     | Ne of t * t
+    | And of t * t
+    | Or of t * t
     | Not of t
     | CLt of t * t
     | CGt of t * t
@@ -59,6 +61,8 @@ module Elt = struct
     | Ge (t1, t2) -> Sexp.List [ Sexp.Atom ">="; chc2sexp t1; chc2sexp t2 ]
     | Eq (t1, t2) -> Sexp.List [ Sexp.Atom "="; chc2sexp t1; chc2sexp t2 ]
     | Ne (t1, t2) -> Sexp.List [ Sexp.Atom "!="; chc2sexp t1; chc2sexp t2 ]
+    | And (t1, t2) -> Sexp.List [ Sexp.Atom "and"; chc2sexp t1; chc2sexp t2 ]
+    | Or (t1, t2) -> Sexp.List [ Sexp.Atom "or"; chc2sexp t1; chc2sexp t2 ]
     | Not t -> Sexp.List [ Sexp.Atom "not"; chc2sexp t ]
     | CLt (t1, t2) -> Sexp.List [ Sexp.Atom "Lt"; chc2sexp t1; chc2sexp t2 ]
     | CGt (t1, t2) -> Sexp.List [ Sexp.Atom "Gt"; chc2sexp t1; chc2sexp t2 ]
@@ -129,6 +133,8 @@ module Elt = struct
     | Ge (t1, t2) -> Ge (numer2var t1, numer2var t2)
     | Eq (t1, t2) -> Eq (numer2var t1, numer2var t2)
     | Ne (t1, t2) -> Ne (numer2var t1, numer2var t2)
+    | And (t1, t2) -> And (numer2var t1, numer2var t2)
+    | Or (t1, t2) -> Or (numer2var t1, numer2var t2)
     | CLt (t1, t2) -> CLt (numer2var t1, numer2var t2)
     | CGt (t1, t2) -> CGt (numer2var t1, numer2var t2)
     | CLe (t1, t2) -> CLe (numer2var t1, numer2var t2)
@@ -172,6 +178,24 @@ module Elt = struct
     | Ne (e1, e2) ->
         Z3.Boolean.mk_not z3env.z3ctx
           (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+    | And (e1, e2) ->
+        let zero = Z3.BitVector.mk_numeral z3env.z3ctx "0" 64 in
+        Z3.Boolean.mk_and z3env.z3ctx
+          [
+            Z3.Boolean.mk_not z3env.z3ctx
+              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) zero);
+            Z3.Boolean.mk_not z3env.z3ctx
+              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e2) zero);
+          ]
+    | Or (e1, e2) ->
+        let zero = Z3.BitVector.mk_numeral z3env.z3ctx "0" 64 in
+        Z3.Boolean.mk_or z3env.z3ctx
+          [
+            Z3.Boolean.mk_not z3env.z3ctx
+              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) zero);
+            Z3.Boolean.mk_not z3env.z3ctx
+              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e2) zero);
+          ]
     | Not e -> Z3.Boolean.mk_not z3env.z3ctx (to_z3 maps e)
     | CLt (e1, e2) ->
         Z3.Boolean.mk_ite z3env.z3ctx
@@ -262,6 +286,8 @@ let rec collect_vars = function
   | Ge (t1, t2)
   | Eq (t1, t2)
   | Ne (t1, t2)
+  | And (t1, t2)
+  | Or (t1, t2)
   | CLt (t1, t2)
   | CGt (t1, t2)
   | CLe (t1, t2)
@@ -299,6 +325,8 @@ let rec pp_chc fmt = function
   | Ge (t1, t2) -> F.fprintf fmt "(%a >= %a)" pp_chc t1 pp_chc t2
   | Eq (t1, t2) -> F.fprintf fmt "(%a = %a)" pp_chc t1 pp_chc t2
   | Ne (t1, t2) -> F.fprintf fmt "(%a != %a)" pp_chc t1 pp_chc t2
+  | And (t1, t2) -> F.fprintf fmt "(%a /\\ %a)" pp_chc t1 pp_chc t2
+  | Or (t1, t2) -> F.fprintf fmt "(%a \\/ %a)" pp_chc t1 pp_chc t2
   | Not t -> F.fprintf fmt "(not %a)" pp_chc t
   | CLt (t1, t2) -> F.fprintf fmt "(Lt %a %a)" pp_chc t1 pp_chc t2
   | CGt (t1, t2) -> F.fprintf fmt "(Gt %a %a)" pp_chc t1 pp_chc t2

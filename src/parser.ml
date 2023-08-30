@@ -74,6 +74,8 @@ let rec sexp2chc = function
   | Sexp.List [ Sexp.Atom "Mult"; e1; e2 ] -> Mul (sexp2chc e1, sexp2chc e2)
   | Sexp.List [ Sexp.Atom "Div"; e1; e2 ] -> Div (sexp2chc e1, sexp2chc e2)
   | Sexp.List [ Sexp.Atom "Mod"; e1; e2 ] -> Mod (sexp2chc e1, sexp2chc e2)
+  | Sexp.List [ Sexp.Atom "and"; e1; e2 ] -> And (sexp2chc e1, sexp2chc e2)
+  | Sexp.List [ Sexp.Atom "or"; e1; e2 ] -> Or (sexp2chc e1, sexp2chc e2)
   | Sexp.List [ Sexp.Atom "BNot"; e ] -> CBNot (sexp2chc e)
   | Sexp.List [ Sexp.Atom "LNot"; e ] -> CLNot (sexp2chc e)
   | Sexp.List [ Sexp.Atom "Neg"; e ] -> CNeg (sexp2chc e)
