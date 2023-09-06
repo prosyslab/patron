@@ -20,5 +20,17 @@
   translator
   symDiff
   diff
-  transplanter)
- (libraries patronlib yojson core core_unix.sys_unix z3 cil))
+  transplanter
+  inline)
+ (libraries
+  patronlib
+  yojson
+  core
+  core_unix.sys_unix
+  z3
+  cil
+  cil.all-features
+  ocamlgraph
+  batteries)
+ (preprocess
+  (pps ppx_compare)))

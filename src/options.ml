@@ -8,6 +8,8 @@ module L = Logger
 
 type command = DB | Patch
 
+let verbose = ref 0
+
 type t = {
   (* common options *)
   command : command;
@@ -18,6 +20,7 @@ type t = {
   db_dir : string; (* Patch options *)
   donee_dir : string;
   patron_out_dir : string;
+  inline : string list;
 }
 
 let empty =
@@ -32,12 +35,13 @@ let empty =
     (* Patch options *)
     donee_dir = "";
     patron_out_dir = "";
+    inline = [];
   }
 
-let init debug db_dir =
+let init debug db_dir inline =
   if debug then L.set_level L.DEBUG else L.set_level L.INFO;
   (try Unix.mkdir db_dir 0o775 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
-  { empty with debug; db_dir }
+  { empty with debug; db_dir; inline }
 
 let common_opt =
   let docs = Manpage.s_common_options in
@@ -53,7 +57,13 @@ let common_opt =
     Arg.(
       value & opt string default & info [ "db" ] ~docv:"DIR" ~doc:"DB directory")
   in
-  Term.(const init $ debug $ db_dir)
+  let inline_opt =
+    Arg.(
+      value & opt_all string []
+      & info [ "i"; "inline" ] ~docv:"INLINE"
+          ~doc:"Inline functions in the given list")
+  in
+  Term.(const init $ debug $ db_dir $ inline_opt)
 
 let db_opt copt donor_dir patch_dir =
   let out_dir = Filename.basename donor_dir |> Filename.concat copt.db_dir in
