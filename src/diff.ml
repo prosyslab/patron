@@ -223,11 +223,7 @@ module Diff = struct
     List.iter (fun action -> print_endline (string_of_action action)) script
 
   let pp_edit_script fmt script =
-    List.iter
-      (fun action ->
-        print_endline "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$";
-        H.F.fprintf fmt "%a\n" pp_action action)
-      script
+    List.iter (fun action -> H.F.fprintf fmt "%a\n" pp_action action) script
 
   let rec make_diff_exp code parent prev tree_depth next
       (exp_lst : Cil.exp list) =

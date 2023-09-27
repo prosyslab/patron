@@ -15,9 +15,9 @@ type t = {
   command : command;
   debug : bool;
   (* bug pattern DB options *)
-  donor_dir : string;
-  patch_dir : string;
-  db_dir : string; (* Patch options *)
+  db_dir : string;
+  memtrace : bool;
+  target_dir : string;
   donee_dir : string;
   patron_out_dir : string;
   inline : string list;
@@ -29,19 +29,19 @@ let empty =
     command = DB;
     debug = false;
     db_dir = "";
+    memtrace = false;
     (* bug pattern DB options *)
-    donor_dir = "";
-    patch_dir = "";
+    target_dir = "";
     (* Patch options *)
     donee_dir = "";
     patron_out_dir = "";
     inline = [];
   }
 
-let init debug db_dir inline =
+let init debug db_dir inline memtrace =
   if debug then L.set_level L.DEBUG else L.set_level L.INFO;
   (try Unix.mkdir db_dir 0o775 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
-  { empty with debug; db_dir; inline }
+  { empty with debug; db_dir; inline; memtrace }
 
 let common_opt =
   let docs = Manpage.s_common_options in
@@ -63,13 +63,16 @@ let common_opt =
       & info [ "i"; "inline" ] ~docv:"INLINE"
           ~doc:"Inline functions in the given list")
   in
-  Term.(const init $ debug $ db_dir $ inline_opt)
+    let memtrace =
+    Arg.(value & flag & info [ "memtrace" ] ~docv:"BOOL" ~doc:"do memtrace")
+  in
+  Term.(const init $ debug $ db_dir $ inline_opt $ memtrace)
 
-let db_opt copt donor_dir patch_dir =
-  let out_dir = Filename.basename donor_dir |> Filename.concat copt.db_dir in
+let db_opt copt target_dir =
+  let out_dir = Filename.basename target_dir |> Filename.concat copt.db_dir in
   (try Unix.mkdir out_dir 0o775 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
   Filename.concat out_dir "log.txt" |> L.from_file;
-  { copt with command = DB; donor_dir; patch_dir }
+  { copt with command = DB; target_dir }
 
 let db_cmd =
   let name = "db" in
@@ -79,19 +82,13 @@ let db_cmd =
   in
   let man = [ `S Manpage.s_description ] in
   let info = Cmd.info name ~doc ~man in
-  let donor_dir =
+  let target_dir =
     Arg.(
       required
       & pos 0 (some file) None
-      & info [] ~docv:"DONOR" ~doc:"The buggy version of donor directory")
+      & info [] ~docv:"TARGET_DIR" ~doc:"The target directory that has bug and patch directories")
   in
-  let patch_dir =
-    Arg.(
-      required
-      & pos 1 (some file) None
-      & info [] ~docv:"PATCH" ~doc:"The patched version of donor directory")
-  in
-  Cmd.v info Term.(const db_opt $ common_opt $ donor_dir $ patch_dir)
+  Cmd.v info Term.(const db_opt $ common_opt $ target_dir)
 
 let patch_opt copt donee_dir patron_out_dir =
   (try Unix.mkdir patron_out_dir 0o775

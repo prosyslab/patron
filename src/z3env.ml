@@ -255,18 +255,20 @@ let mk_env () =
     [
       "AllocExp.facts";
       "Arg.facts";
-      "Set.facts";
       "BinOpExp.facts";
       "CallExp.facts";
       "CFPath.facts";
       "DetailedDUEdge.facts";
       "DUPath.facts";
+      (* "Eval.facts";
+         "EvalLv.facts"; *)
       (* "GlobalVar.facts"; *)
       "LibCallExp.facts";
       (* "LocalVar.facts"; *)
       "LvalExp.facts";
       "Return.facts";
       (* "SAllocExp.facts"; *)
+      "Set.facts";
       "Skip.facts";
       "UnOpExp.facts";
     ]

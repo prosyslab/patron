@@ -2,7 +2,7 @@
  (name patronlib)
  (modules options)
  (wrapped false)
- (libraries cmdliner logger))
+ (libraries cmdliner logger memtrace))
 
 (executable
  (name main)

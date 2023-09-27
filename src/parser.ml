@@ -28,7 +28,8 @@ let file2func = function
   | "Return.facts" -> "Return"
   | "SAllocExp.facts" -> "SAlloc"
   | "Skip.facts" -> "Skip"
-  | _ -> L.error "file2func: wrong filename"
+  | "EvalLv.facts" -> "EvalLv"
+  | f -> L.error "file2func - wrong filename: %s" f
 
 let parse_facts datalog_dir fact_file =
   let func_name = file2func fact_file in
@@ -124,4 +125,5 @@ let mk_alarm_map work_dir =
 let make_rules work_dir =
   parse_chc (Filename.concat work_dir "sparrow-out/taint/datalog/Sem.rules")
 
-let make work_dir = Chc.union (make_facts work_dir) (make_rules work_dir)
+let make work_dir = make_facts work_dir
+(* Chc.union (make_facts work_dir) (make_rules work_dir) *)

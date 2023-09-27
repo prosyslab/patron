@@ -39,7 +39,9 @@ let abstract_bug_pattern donor src snk alarm =
   let alarm_rels = Chc.filter_func_app alarm in
   let init_terms =
     Chc.fold
-      (fun rel terms -> Chc.add_args_to_terms terms rel)
+      (fun rel terms ->
+        Chc.pp F.std_formatter terms;
+        Chc.add_args_to_terms terms rel)
       alarm_rels Chc.empty
   in
   let deps = collect_deps src snk init_terms donor |> Chc.to_list in
@@ -54,9 +56,9 @@ let abstract_bug_pattern donor src snk alarm =
   in
   Chc.of_list [ errtrace_rule; error_cons; bug_rule ]
 
-let run donor_dir patch_dir db_dir =
+let run target_dir donor_dir patch_dir db_dir =
   L.info "Add Bug Pattern to DB...";
-  let out_dir = Filename.basename donor_dir |> Filename.concat db_dir in
+  let out_dir = Filename.basename target_dir |> Filename.concat db_dir in
   let donor_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
   Maps.reset_maps donor_maps;
   Maps.reset_maps patch_maps;
@@ -79,5 +81,6 @@ let run donor_dir patch_dir db_dir =
      Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]; *)
   Maps.dump "donor" donor_maps out_dir;
   Maps.dump "patch" patch_maps out_dir;
-  TF.extract_edit_function donor_dir patch_dir out_dir;
+  (* TODO: work on symdiff after encoding work is done *)
+  (* TF.extract_edit_function donor_dir patch_dir out_dir; *)
   L.info "Done."
