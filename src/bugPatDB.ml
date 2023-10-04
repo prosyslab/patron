@@ -58,7 +58,12 @@ let abstract_bug_pattern donor src snk alarm =
 
 let run target_dir donor_dir patch_dir db_dir =
   L.info "Add Bug Pattern to DB...";
-  let out_dir = Filename.basename target_dir |> Filename.concat db_dir in
+  let out_dir =
+    (Filename.dirname target_dir |> Filename.basename)
+    ^ "-"
+    ^ Filename.basename target_dir
+    |> Filename.concat db_dir
+  in
   let donor_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
   Maps.reset_maps donor_maps;
   Maps.reset_maps patch_maps;
