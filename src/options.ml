@@ -63,13 +63,18 @@ let common_opt =
       & info [ "i"; "inline" ] ~docv:"INLINE"
           ~doc:"Inline functions in the given list")
   in
-    let memtrace =
+  let memtrace =
     Arg.(value & flag & info [ "memtrace" ] ~docv:"BOOL" ~doc:"do memtrace")
   in
   Term.(const init $ debug $ db_dir $ inline_opt $ memtrace)
 
 let db_opt copt target_dir =
-  let out_dir = Filename.basename target_dir |> Filename.concat copt.db_dir in
+  let out_dir =
+    (Filename.dirname target_dir |> Filename.basename)
+    ^ "-"
+    ^ Filename.basename target_dir
+    |> Filename.concat copt.db_dir
+  in
   (try Unix.mkdir out_dir 0o775 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
   Filename.concat out_dir "log.txt" |> L.from_file;
   { copt with command = DB; target_dir }
@@ -86,7 +91,8 @@ let db_cmd =
     Arg.(
       required
       & pos 0 (some file) None
-      & info [] ~docv:"TARGET_DIR" ~doc:"The target directory that has bug and patch directories")
+      & info [] ~docv:"TARGET_DIR"
+          ~doc:"The target directory that has bug and patch directories")
   in
   Cmd.v info Term.(const db_opt $ common_opt $ target_dir)
 
