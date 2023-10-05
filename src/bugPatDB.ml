@@ -39,9 +39,7 @@ let abstract_bug_pattern donor src snk alarm =
   let alarm_rels = Chc.filter_func_app alarm in
   let init_terms =
     Chc.fold
-      (fun rel terms ->
-        Chc.pp F.std_formatter terms;
-        Chc.add_args_to_terms terms rel)
+      (fun rel terms -> Chc.add_args_to_terms terms rel)
       alarm_rels Chc.empty
   in
   let deps = collect_deps src snk init_terms donor |> Chc.to_list in

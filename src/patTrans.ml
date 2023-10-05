@@ -24,7 +24,7 @@ let fold_db f db_dir =
 
 let match_bug out_dir donee donee_maps pattern =
   let status =
-    Chc.pattern_match out_dir donee_maps donee pattern [ z3env.bug ]
+    Chc.pattern_match out_dir "donee" donee_maps donee pattern [ z3env.bug ]
   in
   if Option.is_some status then (
     Option.iter

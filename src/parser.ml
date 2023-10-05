@@ -103,12 +103,12 @@ end)
 (* (src node id, snk node id) -> error constraint *)
 
 let mk_alarm_map work_dir =
-  let io_err_cons_file =
+  let err_cons_file =
     Filename.concat work_dir "sparrow-out/taint/datalog/Alarm.rules"
   in
   try
     let alarms =
-      In_channel.read_lines io_err_cons_file
+      In_channel.read_lines err_cons_file
       |> List.map ~f:(fun alarm ->
              match String.split ~on:'\t' alarm with
              | [ src; snk; err_rule ] -> (src, snk, err_rule)
