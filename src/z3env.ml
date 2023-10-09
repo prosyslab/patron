@@ -145,6 +145,17 @@ let fact_files =
     "UnOpExp.facts";
   ]
 
+let pos_numer_cnt = ref 2
+let node_numer_cnt = ref 1
+let lval_numer_cnt = ref 1
+let expr_numer_cnt = ref 1
+let identifier_numer_cnt = ref 1
+let arg_list_numer_cnt = ref 1
+let str_literal_numer_cnt = ref 1
+let loc_numer_cnt = ref 1
+let value_numer_cnt = ref 1
+let const_numer_cnt = ref 1
+
 let mk_env () =
   let z3ctx =
     Z3.mk_context
@@ -155,30 +166,46 @@ let mk_env () =
   let donee_solver = mk_fixedpoint z3ctx in
   let pattern_solver = mk_fixedpoint z3ctx in
   let boolean_sort = Z3.Boolean.mk_sort z3ctx in
-  let int_sort = Z3.FiniteDomain.mk_sort_s z3ctx "int" (Int64.of_int 3218) in
+  let int_sort =
+    Z3.FiniteDomain.mk_sort_s z3ctx "int" (Int64.of_int !pos_numer_cnt)
+  in
   let bv_sort = Z3.BitVector.mk_sort z3ctx 64 (* NOTE: hard coded *) in
   let str_sort = Z3.Seq.mk_string_sort z3ctx in
   let zero = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 0 in
   let one = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 1 in
   let two = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 2 in
   let three = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 3 in
-  let node = Z3.FiniteDomain.mk_sort_s z3ctx "node" (Int64.of_int 24875) in
-  let lval = Z3.FiniteDomain.mk_sort_s z3ctx "lval" (Int64.of_int 23828) in
-  let expr = Z3.FiniteDomain.mk_sort_s z3ctx "expr" (Int64.of_int 25850) in
+  let node =
+    Z3.FiniteDomain.mk_sort_s z3ctx "node" (Int64.of_int !node_numer_cnt)
+  in
+  let lval =
+    Z3.FiniteDomain.mk_sort_s z3ctx "lval" (Int64.of_int !lval_numer_cnt)
+  in
+  let expr =
+    Z3.FiniteDomain.mk_sort_s z3ctx "expr" (Int64.of_int !expr_numer_cnt)
+  in
   let binop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "binop" (Int64.of_int 25) in
   let unop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "unop" (Int64.of_int 25) in
   let identifier =
     Z3.FiniteDomain.mk_sort_s z3ctx "identifier" (Int64.of_int 1)
   in
   let arg_list =
-    Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" (Int64.of_int 8664)
+    Z3.FiniteDomain.mk_sort_s z3ctx "arg_list"
+      (Int64.of_int !arg_list_numer_cnt)
   in
   let str_literal =
-    Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" (Int64.of_int 1)
+    Z3.FiniteDomain.mk_sort_s z3ctx "str_literal"
+      (Int64.of_int !str_literal_numer_cnt)
   in
-  let loc = Z3.FiniteDomain.mk_sort_s z3ctx "loc" (Int64.of_int 1) in
-  let value = Z3.FiniteDomain.mk_sort_s z3ctx "value" (Int64.of_int 1) in
-  let const = Z3.FiniteDomain.mk_sort_s z3ctx "const" (Int64.of_int 1) in
+  let loc =
+    Z3.FiniteDomain.mk_sort_s z3ctx "loc" (Int64.of_int !loc_numer_cnt)
+  in
+  let value =
+    Z3.FiniteDomain.mk_sort_s z3ctx "value" (Int64.of_int !value_numer_cnt)
+  in
+  let const =
+    Z3.FiniteDomain.mk_sort_s z3ctx "const" (Int64.of_int !const_numer_cnt)
+  in
   let src = Z3.FuncDecl.mk_func_decl_s z3ctx "Src" [ node ] boolean_sort in
   let snk = Z3.FuncDecl.mk_func_decl_s z3ctx "Snk" [ node ] boolean_sort in
   let skip = Z3.FuncDecl.mk_func_decl_s z3ctx "Skip" [ node ] boolean_sort in

@@ -132,10 +132,30 @@ let match_sort s =
     | _ -> z3env.node
 
 let numer_cnt = ref 24 (* for binop, unop *)
+let node_cnt = ref 1
+let pos_cnt = ref 1
+let loc_cnt = ref 1
+let value_cnt = ref 1
+let expr_cnt = ref 1
+let lval_cnt = ref 1
+let arg_list_cnt = ref 1
+let str_literal_cnt = ref 1
 
-let new_numer () =
-  incr numer_cnt;
-  !numer_cnt
+let new_numer cnt =
+  incr cnt;
+  !cnt
+
+let get_cnt env sort =
+  match sort with
+  | s when Z3.Sort.equal s env.node -> node_cnt
+  | s when Z3.Sort.equal s env.int_sort -> pos_cnt
+  | s when Z3.Sort.equal s env.loc -> loc_cnt
+  | s when Z3.Sort.equal s env.value -> value_cnt
+  | s when Z3.Sort.equal s env.expr -> expr_cnt
+  | s when Z3.Sort.equal s env.lval -> lval_cnt
+  | s when Z3.Sort.equal s env.arg_list -> arg_list_cnt
+  | s when Z3.Sort.equal s env.str_literal -> str_literal_cnt
+  | _ -> L.error "get_cnt: invalid sort"
 
 let mk_numer maps sym sort =
   let z3env = get_env () in
@@ -146,7 +166,7 @@ let mk_numer maps sym sort =
   else if Hashtbl.mem maps.Maps.sym_map sym then
     Hashtbl.find maps.Maps.sym_map sym
   else
-    let i = new_numer () in
+    let i = get_cnt z3env sort |> new_numer in
     let numer_i = Z3.Expr.mk_numeral_int z3env.z3ctx i sort in
     Hashtbl.add maps.Maps.sym_map sym numer_i;
     Hashtbl.add maps.Maps.numeral_map i sym;

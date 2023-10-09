@@ -4,13 +4,30 @@ module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module L = Logger
 
+let update_numer name idx =
+  (* let idx = Z.of_string idx in *)
+  match name with
+  | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" ->
+      incr expr_numer_cnt
+  | "Lval" -> incr lval_numer_cnt
+  | "Val" -> incr value_numer_cnt
+  | "ArgList" -> incr arg_list_numer_cnt
+  | "Loc" -> incr loc_numer_cnt
+  | "Pos" -> incr pos_numer_cnt
+  | _ -> incr node_numer_cnt
+
 let mk_term s =
   if Z3utils.is_binop s || Z3utils.is_unop s then Chc.Elt.FDNumeral s
   else
     try Chc.Elt.Const (Z.of_string s)
     with _ ->
       let splitted = String.split ~on:'-' s in
-      if List.length splitted = 1 then Chc.Elt.Var s else Chc.Elt.FDNumeral s
+      if List.length splitted = 1 then Chc.Elt.Var s
+      else
+        let name = List.hd_exn splitted in
+        let idx = List.nth_exn splitted 1 in
+        update_numer name idx;
+        Chc.Elt.FDNumeral s
 
 let file2func = function
   | "AllocExp.facts" -> "Alloc"
