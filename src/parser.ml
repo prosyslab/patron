@@ -4,17 +4,18 @@ module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module L = Logger
 
-let update_numer name idx =
-  (* let idx = Z.of_string idx in *)
+let numer_cnt = ref 25
+
+let update_numer name =
   match name with
   | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" ->
-      incr expr_numer_cnt
-  | "Lval" -> incr lval_numer_cnt
-  | "Val" -> incr value_numer_cnt
-  | "ArgList" -> incr arg_list_numer_cnt
-  | "Loc" -> incr loc_numer_cnt
-  | "Pos" -> incr pos_numer_cnt
-  | _ -> incr node_numer_cnt
+      expr_numer_cnt := !numer_cnt
+  | "Lval" -> lval_numer_cnt := !numer_cnt
+  | "Val" -> value_numer_cnt := !numer_cnt
+  | "ArgList" -> arg_list_numer_cnt := !numer_cnt
+  | "Loc" -> loc_numer_cnt := !numer_cnt
+  | "Pos" -> pos_numer_cnt := !numer_cnt
+  | _ -> node_numer_cnt := !numer_cnt
 
 let mk_term s =
   if Z3utils.is_binop s || Z3utils.is_unop s then Chc.Elt.FDNumeral s
@@ -23,11 +24,11 @@ let mk_term s =
     with _ ->
       let splitted = String.split ~on:'-' s in
       if List.length splitted = 1 then Chc.Elt.Var s
-      else
+      else (
+        incr numer_cnt;
         let name = List.hd_exn splitted in
-        let idx = List.nth_exn splitted 1 in
-        update_numer name idx;
-        Chc.Elt.FDNumeral s
+        update_numer name;
+        Chc.Elt.FDNumeral s)
 
 let file2func = function
   | "AllocExp.facts" -> "Alloc"
