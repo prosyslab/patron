@@ -159,7 +159,11 @@ module Elt = struct
         FuncApply (fn, List.map ~f:(fun arg -> numer2var arg) args)
     | Var _ as v -> v
     | FDNumeral s ->
-        if Z3utils.is_binop s || Z3utils.is_unop s then FDNumeral s else Var s
+        if
+          Z3utils.is_binop s || Z3utils.is_unop s || String.equal s !src
+          || String.equal s !snk
+        then FDNumeral s
+        else Var s
     | Const _ as c -> c
     | Implies (cons, hd) ->
         Implies (List.map ~f:(fun c -> numer2var c) cons, numer2var hd)

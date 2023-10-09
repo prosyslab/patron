@@ -44,8 +44,11 @@ let abstract_bug_pattern donor src snk alarm =
   in
   let deps = collect_deps src snk init_terms donor |> Chc.to_list in
   let errtrace =
-    Chc.Elt.FuncApply ("ErrTrace", [ Chc.Elt.Var src; Chc.Elt.Var snk ])
+    Chc.Elt.FuncApply
+      ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
+  Z3env.src := src;
+  Z3env.snk := snk;
   let errtrace_rule = Chc.Elt.Implies (deps, errtrace) |> Chc.Elt.numer2var in
   let error_cons = Chc.Elt.numer2var alarm in
   let err_rel = Chc.Elt.get_head error_cons in

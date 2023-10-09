@@ -69,6 +69,9 @@ type t = {
   rels : string list;
 }
 
+let src = ref ""
+let snk = ref ""
+
 let mk_fixedpoint z3ctx =
   let mk_string_symbol s = Z3.Symbol.mk_string z3ctx s in
   let s = Z3.Fixedpoint.mk_fixedpoint z3ctx in
