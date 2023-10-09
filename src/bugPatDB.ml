@@ -50,9 +50,9 @@ let abstract_bug_pattern donor src snk alarm =
   let error_cons = Chc.Elt.numer2var alarm in
   let err_rel = Chc.Elt.get_head error_cons in
   let bug_rule =
-    Chc.Elt.Implies ([ errtrace; err_rel ], Chc.Elt.FuncApply ("Bug", []))
+    Chc.Elt.Implies ([ errtrace (*; err_rel*) ], Chc.Elt.FuncApply ("Bug", []))
   in
-  Chc.of_list [ errtrace_rule; error_cons; bug_rule ]
+  Chc.of_list [ errtrace_rule; (*error_cons;*) bug_rule ]
 
 let run target_dir donor_dir patch_dir db_dir =
   L.info "Add Bug Pattern to DB...";
@@ -79,6 +79,8 @@ let run target_dir donor_dir patch_dir db_dir =
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   L.info "Try matching with Donor...";
+  reset_env ();
+  let z3env = get_env () in
   Chc.match_and_log out_dir "donor" donor_maps donor pattern [ z3env.bug ];
   (* L.info "Try matching with Patch...";
      Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]; *)

@@ -44,7 +44,7 @@ let make_facts work_dir =
   let datalog_dir = Filename.concat work_dir "sparrow-out/taint/datalog" in
   List.fold_left ~init:Chc.empty
     ~f:(fun facts file -> parse_facts datalog_dir file |> Chc.union facts)
-    z3env.fact_files
+    fact_files
 
 let rec sexp2chc = function
   | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->

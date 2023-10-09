@@ -23,6 +23,7 @@ let fold_db f db_dir =
     db_dir
 
 let match_bug out_dir donee donee_maps pattern =
+  let z3env = get_env () in
   let status =
     Chc.pattern_match out_dir "donee" donee_maps donee pattern [ z3env.bug ]
   in

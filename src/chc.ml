@@ -164,7 +164,9 @@ module Elt = struct
     | Implies (cons, hd) ->
         Implies (List.map ~f:(fun c -> numer2var c) cons, numer2var hd)
 
-  let rec to_z3 maps = function
+  let rec to_z3 maps t =
+    let z3env = Z3env.get_env () in
+    match t with
     | Lt (e1, e2) ->
         Z3.BitVector.mk_slt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
     | Gt (e1, e2) ->
@@ -507,6 +509,7 @@ let add_fact maps solver f =
     Z3.Fixedpoint.add_rule solver fact None
 
 let add_rule maps solver r =
+  let z3env = Z3env.get_env () in
   if Elt.is_duedge r |> not then
     let vars = collect_vars r |> to_list |> List.map ~f:(Elt.to_z3 maps) in
     let impl = Elt.to_z3 maps r in
@@ -524,12 +527,14 @@ let add_all maps solver =
       else add_rule maps solver chc)
 
 let pattern_match out_dir ver_name maps chc pattern query =
+  let z3env = Z3env.get_env () in
   let solver = mk_fixedpoint z3env.z3ctx in
   reg_rel_to_solver z3env solver;
   L.info "Start making Z3 instance from facts and rels";
   add_all maps solver (union chc pattern);
   L.info "Complete making Z3 instance from facts and rels";
   Z3utils.dump_solver_to_smt ver_name solver out_dir;
+  Z3utils.dump_formula ver_name solver query out_dir;
   let status = Z3.Fixedpoint.query_r solver query in
   match status with
   | Z3.Solver.UNSATISFIABLE -> None

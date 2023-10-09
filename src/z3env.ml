@@ -121,6 +121,30 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.errtrace;
   Z3.Fixedpoint.register_relation solver env.bug
 
+let init_env () = None
+
+let fact_files =
+  [
+    "AllocExp.facts";
+    "Arg.facts";
+    "BinOpExp.facts";
+    "CallExp.facts";
+    "CFPath.facts";
+    "DetailedDUEdge.facts";
+    "DUPath.facts";
+    (* "Eval.facts";
+       "EvalLv.facts"; *)
+    (* "GlobalVar.facts"; *)
+    "LibCallExp.facts";
+    (* "LocalVar.facts"; *)
+    "LvalExp.facts";
+    "Return.facts";
+    (* "SAllocExp.facts"; *)
+    "Set.facts";
+    "Skip.facts";
+    "UnOpExp.facts";
+  ]
+
 let mk_env () =
   let z3ctx =
     Z3.mk_context
@@ -131,28 +155,30 @@ let mk_env () =
   let donee_solver = mk_fixedpoint z3ctx in
   let pattern_solver = mk_fixedpoint z3ctx in
   let boolean_sort = Z3.Boolean.mk_sort z3ctx in
-  let int_sort = Z3.Arithmetic.Integer.mk_sort z3ctx in
+  let int_sort = Z3.FiniteDomain.mk_sort_s z3ctx "int" (Int64.of_int 3218) in
   let bv_sort = Z3.BitVector.mk_sort z3ctx 64 (* NOTE: hard coded *) in
   let str_sort = Z3.Seq.mk_string_sort z3ctx in
   let zero = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 0 in
   let one = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 1 in
   let two = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 2 in
   let three = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 3 in
-  let node = Z3.FiniteDomain.mk_sort_s z3ctx "node" Int64.max_value in
-  let lval = Z3.FiniteDomain.mk_sort_s z3ctx "lval" Int64.max_value in
-  let expr = Z3.FiniteDomain.mk_sort_s z3ctx "expr" Int64.max_value in
-  let binop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "binop" Int64.max_value in
-  let unop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "unop" Int64.max_value in
+  let node = Z3.FiniteDomain.mk_sort_s z3ctx "node" (Int64.of_int 24875) in
+  let lval = Z3.FiniteDomain.mk_sort_s z3ctx "lval" (Int64.of_int 23828) in
+  let expr = Z3.FiniteDomain.mk_sort_s z3ctx "expr" (Int64.of_int 25850) in
+  let binop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "binop" (Int64.of_int 25) in
+  let unop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "unop" (Int64.of_int 25) in
   let identifier =
-    Z3.FiniteDomain.mk_sort_s z3ctx "identifier" Int64.max_value
+    Z3.FiniteDomain.mk_sort_s z3ctx "identifier" (Int64.of_int 1)
   in
-  let arg_list = Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" Int64.max_value in
+  let arg_list =
+    Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" (Int64.of_int 8664)
+  in
   let str_literal =
-    Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" Int64.max_value
+    Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" (Int64.of_int 1)
   in
-  let loc = Z3.FiniteDomain.mk_sort_s z3ctx "loc" Int64.max_value in
-  let value = Z3.FiniteDomain.mk_sort_s z3ctx "value" Int64.max_value in
-  let const = Z3.FiniteDomain.mk_sort_s z3ctx "const" Int64.max_value in
+  let loc = Z3.FiniteDomain.mk_sort_s z3ctx "loc" (Int64.of_int 1) in
+  let value = Z3.FiniteDomain.mk_sort_s z3ctx "value" (Int64.of_int 1) in
+  let const = Z3.FiniteDomain.mk_sort_s z3ctx "const" (Int64.of_int 1) in
   let src = Z3.FuncDecl.mk_func_decl_s z3ctx "Src" [ node ] boolean_sort in
   let snk = Z3.FuncDecl.mk_func_decl_s z3ctx "Snk" [ node ] boolean_sort in
   let skip = Z3.FuncDecl.mk_func_decl_s z3ctx "Skip" [ node ] boolean_sort in
@@ -417,10 +443,15 @@ let mk_env () =
   reg_rel_to_solver env env.patch_solver;
   reg_rel_to_solver env env.donee_solver;
   reg_rel_to_solver env env.pattern_solver;
-  env
+  Some env
 
-let reset () =
+let z3env = init_env () |> ref
+
+let reset_env () =
   Z3.Memory.reset ();
-  mk_env ()
+  z3env := mk_env ()
 
-let z3env = mk_env ()
+let get_env () =
+  match !z3env with
+  | Some env -> env
+  | None -> failwith "get_env: Z3 environment is not set up yet"

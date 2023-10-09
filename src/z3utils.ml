@@ -2,7 +2,9 @@ open Core
 module L = Logger
 include Z3env
 
-let match_func = function
+let match_func f =
+  let z3env = get_env () in
+  match f with
   | "Src" -> z3env.src
   | "Snk" -> z3env.snk
   | "Skip" -> z3env.skip
@@ -109,6 +111,7 @@ let unop_of_int = function
   | _ -> L.error "unop_of_int: invalid symbol"
 
 let match_sort s =
+  let z3env = get_env () in
   let sort_id = String.split ~on:'-' s in
   let name = List.hd_exn sort_id in
   if List.length sort_id = 1 then
@@ -135,6 +138,7 @@ let new_numer () =
   !numer_cnt
 
 let mk_numer maps sym sort =
+  let z3env = get_env () in
   if Z3.Sort.equal sort z3env.binop_sort then
     Z3.Expr.mk_numeral_int z3env.z3ctx (int_of_binop sym) sort
   else if Z3.Sort.equal sort z3env.unop_sort then
@@ -159,3 +163,21 @@ let dump_expr_to_smt ver_name expr out_dir =
   let expr_oc = Out_channel.create expr_file in
   Z3.Expr.to_string expr |> Out_channel.output_string expr_oc;
   Out_channel.close expr_oc
+
+let dump_formula ver_name solver query out_dir =
+  let file = ver_name ^ "_formula.smt2" |> Filename.concat out_dir in
+  let oc = Out_channel.create file in
+  Z3.Fixedpoint.to_string solver |> Printf.fprintf oc "%s\n";
+  List.iter
+    ~f:(fun q ->
+      Printf.fprintf oc "(query %s)\n"
+        (Z3.FuncDecl.get_name q |> Z3.Symbol.to_string))
+    query;
+  Out_channel.close oc;
+  let file = ver_name ^ "_debug.smt2" |> Filename.concat out_dir in
+  let oc = Out_channel.create file in
+  Z3.Fixedpoint.get_rules solver
+  |> List.iter ~f:(fun r -> Z3.Expr.to_string r |> Printf.fprintf oc "%s\n");
+  Z3.Fixedpoint.get_assertions solver
+  |> List.iter ~f:(fun r -> Z3.Expr.to_string r |> Printf.fprintf oc "%s\n");
+  Out_channel.close oc
