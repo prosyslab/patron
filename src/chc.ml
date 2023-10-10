@@ -539,7 +539,14 @@ let pattern_match out_dir ver_name maps chc pattern query =
   L.info "Complete making Z3 instance from facts and rels";
   Z3utils.dump_solver_to_smt ver_name solver out_dir;
   Z3utils.dump_formula ver_name solver query out_dir;
-  let status = Z3.Fixedpoint.query_r solver query in
+  let status =
+    Z3.Fixedpoint.query solver
+      (Z3.FuncDecl.apply z3env.errtrace
+         [
+           Hashtbl.find maps.sym_map !Z3env.src;
+           Hashtbl.find maps.sym_map !Z3env.snk;
+         ])
+  in
   match status with
   | Z3.Solver.UNSATISFIABLE -> None
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver

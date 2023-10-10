@@ -78,7 +78,7 @@ let mk_fixedpoint z3ctx =
   let param = Z3.Params.mk_params z3ctx in
   Z3.Params.add_symbol param
     (mk_string_symbol "engine")
-    (mk_string_symbol "spacer");
+    (mk_string_symbol "datalog");
   Z3.Params.add_bool param
     (mk_string_symbol "datalog.generate_explanations")
     true;
