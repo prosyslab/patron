@@ -167,17 +167,18 @@ let dump_expr_to_smt ver_name expr out_dir =
 let dump_formula ver_name solver query out_dir =
   let file = ver_name ^ "_formula.smt2" |> Filename.concat out_dir in
   let oc = Out_channel.create file in
+  Printf.fprintf oc
+    "(define-sort arg_list () Int)\n\
+     (define-sort node () Int)\n\
+     (define-sort expr () Int)\n\
+     (define-sort unop () Int)\n\
+     (define-sort binop () Int)\n\
+     (define-sort lval () Int)\n\
+     (define-sort int () Int)\n";
   Z3.Fixedpoint.to_string solver |> Printf.fprintf oc "%s\n";
   List.iter
     ~f:(fun q ->
       Printf.fprintf oc "(query %s)\n"
         (Z3.FuncDecl.get_name q |> Z3.Symbol.to_string))
     query;
-  Out_channel.close oc;
-  let file = ver_name ^ "_debug.smt2" |> Filename.concat out_dir in
-  let oc = Out_channel.create file in
-  Z3.Fixedpoint.get_rules solver
-  |> List.iter ~f:(fun r -> Z3.Expr.to_string r |> Printf.fprintf oc "%s\n");
-  Z3.Fixedpoint.get_assertions solver
-  |> List.iter ~f:(fun r -> Z3.Expr.to_string r |> Printf.fprintf oc "%s\n");
   Out_channel.close oc
