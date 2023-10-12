@@ -530,7 +530,7 @@ let add_all maps solver =
       if Elt.is_rel chc then add_fact maps solver chc
       else add_rule maps solver chc)
 
-let pattern_match out_dir ver_name maps chc pattern query =
+let pattern_match out_dir ver_name maps chc pattern =
   let z3env = Z3env.get_env () in
   let solver = mk_fixedpoint z3env.z3ctx in
   reg_rel_to_solver z3env solver;
@@ -538,7 +538,6 @@ let pattern_match out_dir ver_name maps chc pattern query =
   add_all maps solver (union chc pattern);
   L.info "Complete making Z3 instance from facts and rels";
   Z3utils.dump_solver_to_smt ver_name solver out_dir;
-  Z3utils.dump_formula ver_name solver query out_dir;
   let status =
     Z3.Fixedpoint.query solver
       (Z3.FuncDecl.apply z3env.errtrace
@@ -547,13 +546,20 @@ let pattern_match out_dir ver_name maps chc pattern query =
            Hashtbl.find maps.sym_map !Z3env.snk;
          ])
   in
+  Z3utils.dump_formula ver_name solver
+    (Z3.FuncDecl.apply z3env.errtrace
+       [
+         Hashtbl.find maps.sym_map !Z3env.src;
+         Hashtbl.find maps.sym_map !Z3env.snk;
+       ])
+    out_dir;
   match status with
   | Z3.Solver.UNSATISFIABLE -> None
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
   | Z3.Solver.UNKNOWN -> None
 
-let match_and_log out_dir ver_name maps chc pattern query =
-  let status = pattern_match out_dir ver_name maps chc pattern query in
+let match_and_log out_dir ver_name maps chc pattern =
+  let status = pattern_match out_dir ver_name maps chc pattern in
   Option.iter
     ~f:(fun ans ->
       L.info "Matched";

@@ -135,14 +135,9 @@ let fact_files =
     "CFPath.facts";
     "DetailedDUEdge.facts";
     "DUPath.facts";
-    (* "Eval.facts";
-       "EvalLv.facts"; *)
-    (* "GlobalVar.facts"; *)
     "LibCallExp.facts";
-    (* "LocalVar.facts"; *)
     "LvalExp.facts";
     "Return.facts";
-    (* "SAllocExp.facts"; *)
     "Set.facts";
     "Skip.facts";
     "UnOpExp.facts";
@@ -316,14 +311,9 @@ let mk_env () =
       "CFPath.facts";
       "DetailedDUEdge.facts";
       "DUPath.facts";
-      (* "Eval.facts";
-         "EvalLv.facts"; *)
-      (* "GlobalVar.facts"; *)
       "LibCallExp.facts";
-      (* "LocalVar.facts"; *)
       "LvalExp.facts";
       "Return.facts";
-      (* "SAllocExp.facts"; *)
       "Set.facts";
       "Skip.facts";
       "UnOpExp.facts";
@@ -334,36 +324,17 @@ let mk_env () =
       ("AllocExp.facts", alloc, [ expr; expr ]);
       ("Arg.facts", arg, [ arg_list; int_sort; expr ]);
       ("Set.facts", set, [ node; lval; expr ]);
-      (* "Assume.facts" *)
-      (* ("CastExp.facts", cast, [ expr; expr ]); *)
       ("BinOpExp.facts", binop, [ expr; binop_sort; expr; expr ]);
       ("CallExp.facts", call, [ expr; expr; arg_list ]);
-      (* "Cxp.facts" *)
-      (* "Cmd.facts" *)
-      (* "ConstExp.facts" *)
-      (* "Div.facts" *)
       ("CFPath.facts", cfpath, [ node; node ]);
       ("DUPath.facts", dupath, [ node; node ]);
-      (* "Entry.facts" *)
-      (* "Exit.facts" *)
-      (* "FalseBranch.facts" *)
-      (* "FalseCond.facts" *)
-      (* "Field.facts" *)
-      (* "Func.facts" *)
       ("GlobalVar.facts", var, [ lval; identifier ]);
-      (* "Join.facts" *)
       ("LibCallExp.facts", libcall, [ expr; expr; arg_list ]);
       ("LocalVar.facts", var, [ lval; identifier ]);
-      (* "LoopHead.facts" *)
       ("LvalExp.facts", lval_exp, [ expr; lval ]);
-      (* "Lval.facts" *)
-      (* "Mem.facts" *)
-      (* "OtherExp.facts" *)
       ("Return.facts", ret, [ node; expr ]);
       ("SAllocExp.facts", salloc, [ expr; str_literal ]);
       ("Skip.facts", skip, [ node ]);
-      (* "TrueBranch.facts" *)
-      (* "TrueCond.facts" *)
       ("UnOpExp.facts", unop, [ expr; unop_sort; expr ]);
       ("", evallv, [ node; lval; loc ]);
       ("", eval, [ node; expr; value ]);

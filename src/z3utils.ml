@@ -176,9 +176,5 @@ let dump_formula ver_name solver query out_dir =
      (define-sort lval () Int)\n\
      (define-sort int () Int)\n";
   Z3.Fixedpoint.to_string solver |> Printf.fprintf oc "%s\n";
-  List.iter
-    ~f:(fun q ->
-      Printf.fprintf oc "(query %s)\n"
-        (Z3.FuncDecl.get_name q |> Z3.Symbol.to_string))
-    query;
+  Z3.Expr.to_string query |> Printf.fprintf oc "%s\n";
   Out_channel.close oc
