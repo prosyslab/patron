@@ -35,6 +35,67 @@ let collect_deps src snk terms chc =
   |> Chc.filter (fun dep -> Chc.Elt.is_duedge dep |> not)
   |> Chc.inter chc
 
+let sort_rule_optimize ref deps =
+  let get_args = function
+    | Chc.Elt.FuncApply (s, args) -> (s, args)
+    | _ -> failwith "not implemented"
+  in
+  let hv_common_elt rel1 rel2 =
+    let name1, args1 = get_args rel1 in
+    let _, args2 = get_args rel2 in
+    let eq_elt arg1 arg2 =
+      Chc.Elt.equal arg1 arg2
+      && (not (String.equal name1 "BinOP"))
+      && not (String.equal name1 "UnOP")
+    in
+    List.exists
+      ~f:(fun arg1 -> List.exists ~f:(fun arg2 -> eq_elt arg1 arg2) args2)
+      args1
+  in
+  let init =
+    List.filter ~f:(fun dep -> hv_common_elt ref dep) deps |> List.hd_exn
+  in
+  let deps = List.filter ~f:(fun dep -> not (Chc.Elt.equal init dep)) deps in
+  let rec mk_lcs_list record1 lst record2 acc cand out =
+    match lst with
+    | [] ->
+        if List.length record2 = 0 then out
+        else
+          let prev = List.hd_exn cand in
+          let cand' = List.tl_exn cand in
+          let prev_rec = List.hd_exn record2 in
+          let record = List.tl_exn record2 in
+          let snapshot = List.tl_exn record1 in
+          mk_lcs_list snapshot prev_rec record prev cand' (acc :: out)
+    | hd :: tl ->
+        let last = List.hd_exn acc in
+        if hv_common_elt hd last then
+          let new_deps = List.hd_exn record1 in
+          let new_lst =
+            List.filter ~f:(fun dep -> not (Chc.Elt.equal dep hd)) new_deps
+          in
+          let record1 =
+            if List.hd_exn record1 |> List.length = List.length new_lst then
+              record1
+            else new_lst :: record1
+          in
+          mk_lcs_list record1 new_lst (tl :: record2) (hd :: acc) (acc :: cand)
+            out
+        else mk_lcs_list record1 tl record2 acc cand out
+  in
+  let _, lcs =
+    mk_lcs_list [ deps ] deps [] [ init ] [] []
+    |> List.fold_left ~init:(0, []) ~f:(fun (len, acc) lst ->
+           if List.length lst > len then (List.length lst, lst) else (len, acc))
+  in
+  let unsorted =
+    List.filter
+      ~f:(fun dep ->
+        not (List.mem lcs ~equal:(fun x y -> Chc.Elt.equal x y) dep))
+      deps
+  in
+  (lcs |> List.rev) @ (unsorted |> List.rev)
+
 let abstract_bug_pattern donor src snk alarm =
   let alarm_rels = Chc.filter_func_app alarm in
   let init_terms =
@@ -49,6 +110,7 @@ let abstract_bug_pattern donor src snk alarm =
   in
   Z3env.src := src;
   Z3env.snk := snk;
+  let deps = sort_rule_optimize errtrace deps in
   let errtrace_rule = Chc.Elt.Implies (deps, errtrace) |> Chc.Elt.numer2var in
   let error_cons = Chc.Elt.numer2var alarm in
   let err_rel = Chc.Elt.get_head error_cons in
@@ -83,8 +145,8 @@ let run target_dir donor_dir patch_dir db_dir =
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   L.info "Try matching with Donor...";
   reset_env ();
-  let z3env = get_env () in
-  Chc.match_and_log out_dir "donor" donor_maps donor pattern [ z3env.bug ];
+  (* let z3env = get_env () in *)
+  Chc.match_and_log out_dir "donor" donor_maps donor pattern;
   (* L.info "Try matching with Patch...";
      Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]; *)
   Maps.dump "donor" donor_maps out_dir;
