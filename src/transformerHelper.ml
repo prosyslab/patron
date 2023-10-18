@@ -32,7 +32,52 @@ module InfoMap = Map.Make (struct
   let compare = compare
 end)
 
+let eq_tmpvar str1 str2 =
+  let type1 = Str.regexp "in[0-9]+" in
+  let type2 = Str.regexp "tmp___[0-9]+" in
+  let type3 = Str.regexp "c[0-9]+" in
+  let type4 = Str.regexp "v[0-9]+" in
+  let type5 = Str.regexp "ret_.*[0-9]+" in
+  let type6 = Str.regexp "val[0-9]+" in
+  let type7 = Str.regexp "ptr[0-9]+" in
+  let type8 = Str.regexp "__cil_tmp[0-9]+" in
+  let type9 = Str.regexp "tmp[0-9]+" in
+  let regex_lst =
+    [ type1; type2; type3; type4; type5; type6; type7; type8; type9 ]
+  in
+  let rec aux regex_lst =
+    match regex_lst with
+    | [] -> false
+    | hd :: tl ->
+        if Str.string_match hd str1 0 && Str.string_match hd str2 0 then true
+        else aux tl
+  in
+  aux regex_lst
+
+let print_ekind exp =
+  match exp with
+  | Cil.Const _ -> print_endline "Const"
+  | Cil.Lval _ -> print_endline "Lval"
+  | Cil.SizeOf _ -> print_endline "SizeOf"
+  | Cil.SizeOfE _ -> print_endline "SizeOfE"
+  | Cil.SizeOfStr _ -> print_endline "SizeOfStr"
+  | Cil.AlignOf _ -> print_endline "AlignOf"
+  | Cil.AlignOfE _ -> print_endline "AlignOfE"
+  | Cil.UnOp _ -> print_endline "UnOp"
+  | Cil.BinOp _ -> print_endline "BinOp"
+  | Cil.Question _ -> print_endline "Question"
+  | Cil.CastE _ -> print_endline "CastE"
+  | Cil.AddrOf _ -> print_endline "AddrOf"
+  | Cil.AddrOfLabel _ -> print_endline "AddrOfLabel"
+  | Cil.StartOf _ -> print_endline "StartOf"
+
 (* pp functions *)
+
+let summarize_pp str =
+  let sp = Str.split (Str.regexp "\n") str in
+  let line_num = sp |> List.length in
+  if line_num = 1 then List.nth sp 0 else List.nth sp 0 ^ "\n" ^ List.nth sp 1
+
 let string_of_file file = Cil.dumpFile !Cil.printerForMaincil stdout "" file
 
 let string_of_global global =
@@ -52,6 +97,8 @@ let string_of_constant const = Cil.d_const () const |> Pretty.sprint ~width:80
 let print_bool b =
   if b = true then print_endline "true" else print_endline "false"
 
+let eq_var s1 s2 = if not (eq_tmpvar s1 s2) then s1 = s2 else true
+
 let eq_stmt_conc s1 s2 =
   let s1_str = string_of_stmt s1 in
   let s2_str = string_of_stmt s2 in
@@ -60,29 +107,12 @@ let eq_stmt_conc s1 s2 =
 let eq_exp_conc e1 e2 =
   let e1_str = string_of_exp e1 in
   let e2_str = string_of_exp e2 in
-  e1_str = e2_str
+  eq_var e1_str e2_str
 
 let eq_lval_conc l1 l2 =
   let l1_str = string_of_lval l1 in
   let l2_str = string_of_lval l2 in
-  l1_str = l2_str
-
-let eq_instr i1 i2 =
-  if i1 = [] && i2 = [] then true
-  else if i1 = [] || i2 = [] then false
-  else
-    let instr1 = List.hd i1 in
-    let instr2 = List.hd i2 in
-    match (instr1, instr2) with
-    | Cil.Set (lv1, _, _), Cil.Set (lv2, _, _) ->
-        string_of_lval lv1 = string_of_lval lv2
-    | Cil.Call (lv1, _, _, _), Cil.Call (lv2, _, _, _) -> (
-        match (lv1, lv2) with
-        | None, None -> true
-        | Some lv1, Some lv2 -> string_of_lval lv1 = string_of_lval lv2
-        | _ -> false)
-    | Cil.Asm _, Cil.Asm _ -> true
-    | _ -> false
+  eq_var l1_str l2_str
 
 let eq_typ typ_info1 typ_info2 =
   match (typ_info1, typ_info2) with
@@ -100,29 +130,54 @@ let eq_typ typ_info1 typ_info2 =
 
 let rec eq_exp (a : Cil.exp) (b : Cil.exp) =
   match (a, b) with
-  | Lval (Var a, NoOffset), Lval (Var b, NoOffset) -> a.vname = b.vname
+  | Lval (Var a, NoOffset), Lval (Var b, NoOffset) -> eq_var a.vname b.vname
   | Lval (Mem a, NoOffset), Lval (Mem b, NoOffset) -> eq_exp a b
   | BinOp (a, b, c, _), BinOp (d, e, f, _) -> a = d && eq_exp b e && eq_exp c f
   | UnOp (a, b, _), UnOp (c, d, _) -> a = c && eq_exp b d
   | CastE (a, b), CastE (c, d) -> eq_typ a c && eq_exp b d
-  | AddrOf (Var a, NoOffset), AddrOf (Var b, NoOffset) -> a.vname = b.vname
+  | AddrOf (Var a, NoOffset), AddrOf (Var b, NoOffset) -> eq_var a.vname b.vname
   | AddrOf (Mem a, NoOffset), AddrOf (Mem b, NoOffset) -> eq_exp a b
-  | StartOf (Var a, NoOffset), StartOf (Var b, NoOffset) -> a.vname = b.vname
+  | StartOf (Var a, NoOffset), StartOf (Var b, NoOffset) ->
+      eq_var a.vname b.vname
   | StartOf (Mem a, NoOffset), StartOf (Mem b, NoOffset) -> eq_exp a b
   | Cil.SizeOfE a, Cil.SizeOfE b -> eq_exp a b
   | Const a, Const b -> a = b
   | Lval (Var a, NoOffset), StartOf (Var b, NoOffset)
   | StartOf (Var a, NoOffset), Lval (Var b, NoOffset) ->
-      a.vname = b.vname
+      eq_var a.vname b.vname
   | Question (a, b, c, _), Question (d, e, f, _) ->
       eq_exp a d && eq_exp b e && eq_exp c f
-  | _ -> string_of_exp a = string_of_exp b
+  | _ -> eq_exp_conc a b
+
+let eq_lval (l1 : Cil.lval) (l2 : Cil.lval) =
+  match (l1, l2) with
+  | (host1, _), (host2, _) -> (
+      match (host1, host2) with
+      | Var vinfo1, Var vinfo2 ->
+          eq_var vinfo1.vname vinfo2.vname && eq_typ vinfo1.vtype vinfo2.vtype
+      | Mem mem1, Mem mem2 -> eq_exp mem1 mem2
+      | _ -> false)
+
+let eq_instr i1 i2 =
+  if i1 = [] && i2 = [] then true
+  else if i1 = [] || i2 = [] then false
+  else
+    let instr1 = List.hd i1 in
+    let instr2 = List.hd i2 in
+    match (instr1, instr2) with
+    | Cil.Set (lv1, _, _), Cil.Set (lv2, _, _) -> eq_lval lv1 lv2
+    | Cil.Call (lv1, _, _, _), Cil.Call (lv2, _, _, _) -> (
+        match (lv1, lv2) with
+        | None, None -> true
+        | Some lv1, Some lv2 -> eq_lval_conc lv1 lv2
+        | _ -> false)
+    | Cil.Asm _, Cil.Asm _ -> true
+    | _ -> false
 
 let rec eq_stmt skind1 skind2 =
   match (skind1, skind2) with
   | Cil.Instr i1, Cil.Instr i2 -> eq_instr i1 i2
-  | Cil.Return (Some e1, _), Cil.Return (Some e2, _) ->
-      string_of_exp e1 = string_of_exp e2
+  | Cil.Return (Some e1, _), Cil.Return (Some e2, _) -> eq_exp_conc e1 e2
   | Cil.Return (None, _), Cil.Return (None, _) -> true
   | Cil.Goto (dest1, _), Cil.Goto (dest2, _) ->
       if eq_stmt !dest1.skind !dest2.skind then true else false
@@ -225,6 +280,50 @@ let print_global_type glob =
   | Cil.GPragma _ -> print_endline "GPragma"
   | _ -> print_endline "Other"
 
+module CmdAST = struct
+  type node_typ = G of Cil.global | Stmt of Cil.stmt
+  type subtree = string ExpMap.t * string LvalMap.t
+
+  module NodeMap = Map.Make (struct
+    type t = node_typ
+
+    let compare a b =
+      match (a, b) with
+      | G g1, G g2 -> if eq_global g1 g2 then 0 else -1
+      | Stmt s1, Stmt s2 -> if eq_stmt s1.Cil.skind s2.Cil.skind then 0 else -1
+      | _ -> -1
+  end)
+
+  type t = { node : string list NodeMap.t; subtree : subtree StrMap.t }
+
+  let init globals stmts =
+    let global_init =
+      List.fold_left
+        (fun map g -> NodeMap.add (G g) [] map)
+        NodeMap.empty globals
+    in
+    let stmt_init =
+      List.fold_left
+        (fun map s -> NodeMap.add (Stmt s) [] map)
+        global_init stmts
+    in
+    { node = stmt_init; subtree = StrMap.empty }
+
+  let print_mapping_result ast =
+    NodeMap.iter
+      (fun k v ->
+        match k with
+        | G g ->
+            (string_of_global g |> summarize_pp) ^ "\n......\n" |> print_endline;
+            print_endline "-->";
+            List.iter (fun s -> print_endline ("\t" ^ s)) v
+        | Stmt s ->
+            string_of_stmt s |> summarize_pp |> print_endline;
+            print_endline "-->";
+            List.iter (fun s -> print_endline ("\t" ^ s)) v)
+      ast.node
+end
+
 let trim_node_str str =
   Str.global_replace (Str.regexp " ") ""
     (Str.global_replace (Str.regexp "?") "\\\\"
@@ -263,23 +362,6 @@ let print_ikind instr =
   | Cil.Call _ -> print_endline "Call"
   | Cil.Set _ -> print_endline "Set"
   | Cil.Asm _ -> print_endline "Asm"
-
-let print_ekind exp =
-  match exp with
-  | Cil.Const _ -> print_endline "Const"
-  | Cil.Lval _ -> print_endline "Lval"
-  | Cil.SizeOf _ -> print_endline "SizeOf"
-  | Cil.SizeOfE _ -> print_endline "SizeOfE"
-  | Cil.SizeOfStr _ -> print_endline "SizeOfStr"
-  | Cil.AlignOf _ -> print_endline "AlignOf"
-  | Cil.AlignOfE _ -> print_endline "AlignOfE"
-  | Cil.UnOp _ -> print_endline "UnOp"
-  | Cil.BinOp _ -> print_endline "BinOp"
-  | Cil.Question _ -> print_endline "Question"
-  | Cil.CastE _ -> print_endline "CastE"
-  | Cil.AddrOf _ -> print_endline "AddrOf"
-  | Cil.AddrOfLabel _ -> print_endline "AddrOfLabel"
-  | Cil.StartOf _ -> print_endline "StartOf"
 
 let rec parse_strmap file map =
   match file with
@@ -482,63 +564,63 @@ let delete_after_elt_exp elt lst =
 
 type loc = { file : string; line : int }
 
-type cmd =
-  | Cnone
-  | Cset of string * string * loc (* (lv, e, loc) *)
-  | Cexternal of string * loc (*(lv, loc)*)
-  | Calloc of string * string * loc (*(lv, Array e, _, loc) *)
-  | Csalloc of string * string * loc (*(lv, s, loc) *)
-  | Cfalloc of string * string * loc (*(lv, f, loc) *)
-  | Ccall of string * cmd * loc (*(Some lv, CcallExp(fexp, params, loc))*)
-  | CcallExp of string * string list * loc (*(None, fexp, params, loc)*)
-  | Creturn1 of string * loc (*(Some e, loc) *)
-  | Creturn2 of loc (*(None, loc) *)
-  | Cif of loc (*(_, _, _, loc) *)
-  | Cassume of string * loc (*(e, _, loc) *)
+type cfg_node =
+  | CNone
+  | CSet of string * string * loc (* (lv, e, loc) *)
+  | CExternal of string * loc (*(lv, loc)*)
+  | CAlloc of string * string * loc (*(lv, Array e, _, loc) *)
+  | CSalloc of string * string * loc (*(lv, s, loc) *)
+  | CFalloc of string * string * loc (*(lv, f, loc) *)
+  | CCall of string * cfg_node * loc (*(Some lv, CcallExp(fexp, params, loc))*)
+  | CCallExp of string * string list * loc (*(None, fexp, params, loc)*)
+  | CReturn1 of string * loc (*(Some e, loc) *)
+  | CReturn2 of loc (*(None, loc) *)
+  | CIf of loc (*(_, _, _, loc) *)
+  | CAssume of string * loc (*(e, _, loc) *)
   | CLoop of loc (*loc *)
-  | Casm of loc (*(_, _, _, _, _, loc) *)
-  | Cskip of loc (*(_, loc)*)
+  | CAsm of loc (*(_, _, _, _, _, loc) *)
+  | CSkip of loc (*(_, loc)*)
 
-let print_cmd cmd =
-  match cmd with
-  | Cset (lv, e, loc) ->
+let print_cfg_node cfg_node =
+  match cfg_node with
+  | CSet (lv, e, loc) ->
       print_endline
         ("set\t" ^ lv ^ "\t" ^ e ^ "\t" ^ loc.file ^ ":"
        ^ string_of_int loc.line)
-  | Cexternal (lv, loc) ->
+  | CExternal (lv, loc) ->
       print_endline
         ("external\t" ^ lv ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | Calloc (lv, e, loc) ->
+  | CAlloc (lv, e, loc) ->
       print_endline
         ("alloc\t" ^ lv ^ "\t" ^ e ^ "\t" ^ loc.file ^ ":"
        ^ string_of_int loc.line)
-  | Csalloc (lv, s, loc) ->
+  | CSalloc (lv, s, loc) ->
       print_endline
         ("salloc\t" ^ lv ^ "\t" ^ s ^ "\t" ^ loc.file ^ ":"
        ^ string_of_int loc.line)
-  | Cfalloc (lv, f, loc) ->
+  | CFalloc (lv, f, loc) ->
       print_endline
         ("falloc\t" ^ lv ^ "\t" ^ f ^ "\t" ^ loc.file ^ ":"
        ^ string_of_int loc.line)
-  | Creturn1 (e, loc) ->
+  | CReturn1 (e, loc) ->
       print_endline
         ("return\t" ^ e ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | Creturn2 loc ->
+  | CReturn2 loc ->
       print_endline
         ("return\t" ^ "null" ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | Cif loc -> print_endline ("if\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | Cassume (e, loc) ->
+  | CIf loc -> print_endline ("if\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | CAssume (e, loc) ->
       print_endline
         ("assume\t" ^ e ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
   | CLoop loc ->
       print_endline ("loop\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | Casm loc -> print_endline ("asm\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | Cskip loc ->
+  | CAsm loc -> print_endline ("asm\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
+  | CSkip loc ->
       print_endline ("skip\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
   | _ -> ()
 
-module CmdMap = Map.Make (struct
-  type t = cmd
+module CfgMap = Map.Make (struct
+  type t = cfg_node
 
   let compare = compare
 end)
@@ -602,57 +684,65 @@ let parse_sparrow sparrow_dir =
       let loc = J.member "loc" cont in
       let cmd =
         match J.to_string (List.hd cmd) with
-        | "skip" -> Cskip (parse_loc (J.to_string loc))
+        | "skip" -> CSkip (parse_loc (J.to_string loc))
         | "return" ->
-            let arg = StrMap.find k return_facts in
-            if arg <> [] then Creturn1 (List.hd arg, parse_loc (J.to_string loc))
-            else Creturn2 (parse_loc (J.to_string loc))
+            let arg_opt = StrMap.find_opt k return_facts in
+            if arg_opt = None then CNone
+            else
+              let arg = Option.get arg_opt in
+              if arg <> [] then
+                CReturn1 (List.hd arg, parse_loc (J.to_string loc))
+              else CReturn2 (parse_loc (J.to_string loc))
         | "call" ->
             let arg = StrMap.find k call_facts in
             let call_exp = List.nth arg 1 in
             let lval = List.nth arg 0 in
             let arg_lst = StrMap.find_opt call_exp args_facts in
             let arg_lst = if arg_lst = None then [] else Option.get arg_lst in
-            Ccall
+            CCall
               ( List.hd arg,
-                CcallExp (lval, arg_lst, parse_loc (J.to_string loc)),
+                CCallExp (lval, arg_lst, parse_loc (J.to_string loc)),
                 parse_loc (J.to_string loc) )
         | "assume" ->
             let arg = StrMap.find k assume_facts in
-            Cassume (List.hd arg, parse_loc (J.to_string loc))
+            CAssume (List.hd arg, parse_loc (J.to_string loc))
         | "set" ->
             let arg = StrMap.find k set_facts in
-            Cset (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
+            CSet (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
         | "alloc" -> (
             let arg = StrMap.find_opt k alloc_exp_facts in
             match arg with
-            | None -> Cnone
+            | None -> CNone
             | Some arg ->
-                Calloc (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
+                CAlloc (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
             )
-        | "falloc" -> Cnone
-        | _ -> failwith "Unknown Command"
+        | "falloc" -> CNone
+        | "salloc" -> CNone
+        | _ ->
+            print_endline "----------";
+            print_endline (J.to_string (List.hd cmd));
+            print_endline "----------";
+            failwith "Unknown Command"
       in
-      match cmd with Cnone -> acc | _ -> CmdMap.add cmd k acc)
-    CmdMap.empty key_list
+      match cmd with CNone -> acc | _ -> CfgMap.add cmd k acc)
+    CfgMap.empty key_list
 
-let extract_stmt_lst file =
-  let extract_stmt stmt =
-    match stmt.Cil.skind with
-    | Cil.If (_, t_b, e_b, _) -> t_b.bstmts @ e_b.bstmts
-    | Cil.Loop (b, _, _, _) -> b.bstmts
-    | Cil.Block b -> b.bstmts
-    | _ -> []
-  in
-  let fold_glob glob =
-    match glob with
-    | Cil.GFun (fdec, _) ->
-        List.fold_left
-          (fun acc stmt -> acc @ [ stmt ] @ extract_stmt stmt)
-          [] fdec.Cil.sbody.Cil.bstmts
-    | _ -> []
-  in
-  List.fold_left (fun acc g -> acc @ fold_glob g) [] file.Cil.globals
+let cil_stmts = ref []
+
+class copyStmtVisitor =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vstmt stmt =
+      cil_stmts := stmt :: !cil_stmts;
+      DoChildren
+  end
+
+let extract_node file =
+  cil_stmts := [];
+  let vis = new copyStmtVisitor in
+  ignore (Cil.visitCilFile vis file);
+  (file.globals, !cil_stmts)
 
 let is_empty_instr stmt =
   match stmt.Cil.skind with Cil.Instr [] -> true | _ -> false
@@ -707,7 +797,37 @@ let get_first_nth_lines n str =
   in
   aux [] n str
 
-let summarize_pp str =
-  let sp = Str.split (Str.regexp "\n") str in
-  let line_num = sp |> List.length in
-  if line_num = 1 then List.nth sp 0 else List.nth sp 0 ^ "\n" ^ List.nth sp 1
+let flip f y x = f x y
+let list_fold f list init = List.fold_left (flip f) init list
+let link_by_sep sep s acc = if acc = "" then s else acc ^ sep ^ s
+
+let string_of_list ?(first = "[") ?(last = "]") ?(sep = ";") string_of_v list =
+  let add_string_of_v v acc = link_by_sep sep (string_of_v v) acc in
+  first ^ list_fold add_string_of_v list "" ^ last
+
+let get_loc_filename (loc : Cil.location) =
+  try
+    let idx = String.rindex loc.file '/' in
+    let len = String.length loc.file in
+    String.sub loc.file (idx + 1) (len - idx - 1)
+  with _ -> loc.file
+
+let get_loc_line (loc : Cil.location) = loc.line
+
+let get_global_loc glob =
+  match glob with
+  | Cil.GFun (_, loc)
+  | Cil.GVar (_, _, loc)
+  | Cil.GType (_, loc)
+  | Cil.GCompTag (_, loc)
+  | Cil.GCompTagDecl (_, loc)
+  | Cil.GEnumTag (_, loc)
+  | Cil.GEnumTagDecl (_, loc)
+  | Cil.GVarDecl (_, loc)
+  | Cil.GAsm (_, loc)
+  | Cil.GPragma (_, loc) ->
+      loc
+  | _ -> failwith "get_global_loc error"
+
+let s_location (loc : Cil.location) =
+  get_loc_filename loc ^ ":" ^ string_of_int loc.line

@@ -2130,8 +2130,7 @@ let do_inline (opt : string list) (file : Cil.file) =
   in
   let vis = new blockRemoveVisitor in
   ignore (Cil.visitCilFile vis file);
-  TransformerHelper.string_of_file global.file;
-  exit 0
+  global.file
 
 let makeCFGinfo (f : Cil.file) =
   ignore (Partial.calls_end_basic_blocks f);
@@ -2144,5 +2143,28 @@ let makeCFGinfo (f : Cil.file) =
       | _ -> ());
   f
 
+class blockVisitor =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vblock b =
+      let stmts =
+        List.fold_left
+          (fun l stmt ->
+            match stmt.Cil.skind with
+            | Cil.Instr il when List.length il > 1 ->
+                let new_il = List.map Cil.mkStmtOneInstr (List.tl il) in
+                stmt.skind <- Instr [ List.hd il ];
+                l @ (stmt :: new_il)
+            | Cil.Instr il when List.length il = 0 -> l
+            | _ -> l @ [ stmt ])
+          [] b.bstmts
+      in
+      b.bstmts <- stmts;
+      ChangeDoChildrenPost (b, fun x -> x)
+  end
+
 let perform (inline_opt : string list) file =
-  makeCFGinfo file |> do_inline (List.rev inline_opt)
+  let cil = makeCFGinfo file |> do_inline (List.rev inline_opt) in
+  Cil.visitCilFile (new blockVisitor) cil;
+  cil
