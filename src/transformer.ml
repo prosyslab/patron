@@ -17,22 +17,22 @@ let extract_edit_function doner_dir patch_dir db_dir =
     |> List.filter (fun x -> Filename.check_suffix x ".c")
     |> List.hd |> Filename.concat patch_dir
   in
-  let doner_sparrow_dir = Filename.concat doner_dir "sparrow-out" in
-  let donor, patch = (D.parse_file doner_file, D.parse_file patch_file) in
-  let ast_diff = D.define_diff donor patch in
-  L.info "#ast_diff: %d\n%a\n" (List.length ast_diff) D.Diff.pp_edit_script
-    ast_diff;
-  let sym_diff =
-    S.define_sym_diff doner_sparrow_dir
-      (S.map_cil_to_cmd doner_sparrow_dir donor)
-      ast_diff
+  let donor, patch =
+    ( Diff.parse_file doner_file, Diff.parse_file patch_file)
   in
+  L.info "Constructing AST diff...";
+  let ast_diff = D.define_diff donor patch in
+  L.info "AST diff is constructed";
+  D.Diff.pp_edit_script F.std_formatter ast_diff;
+  let sym_diff = S.define_sym_diff doner_dir donor ast_diff in
+  L.info "Mapping CFG Elements to AST nodes...";
   S.to_json sym_diff ast_diff db_dir;
+  L.info "Done";
   L.info
     "Given bug pattern is successfully written into an edit function at %s\n"
     db_dir
 
-let transplant db_dir donee_dir patron_out_dir =
+(* let transplant db_dir donee_dir patron_out_dir =
   let edit_function_path = Filename.concat db_dir "example01/diff.json" in
   let donee_file = Filename.concat donee_dir "main.c" in
   let donee_sparrow_dir = Filename.concat donee_dir "sparrow-out" in
@@ -52,4 +52,4 @@ let write_out out_dir donee =
   let out_file = out_dir ^ "/applied.c" in
   let out_chan = open_out out_file in
   Cil.dumpFile Cil.defaultCilPrinter out_chan "" donee;
-  close_out out_chan
+  close_out out_chan *)

@@ -17,10 +17,11 @@
   patTrans
   transformer
   transformerHelper
-  translator
+  ; translator
   symDiff
   diff
-  transplanter
+  editFunction
+  ; transplanter
   inline)
  (libraries
   patronlib
