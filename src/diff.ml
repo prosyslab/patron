@@ -68,38 +68,29 @@ module Diff = struct
 
   let pp_action fmt = function
     | InsertGlobal (_, g2) ->
-        H.F.fprintf fmt
-          "InsertGlobal: \n%s\n\n=================================="
-          (H.string_of_global g2)
+        H.F.fprintf fmt "InsertGlobal: \n%s\n" (H.string_of_global g2)
     | DeleteGlobal (_, g2) ->
-        H.F.fprintf fmt
-          "DeleteGlobal: \n%s\n\n=================================="
-          (H.string_of_global g2)
+        H.F.fprintf fmt "DeleteGlobal: \n%s\n" (H.string_of_global g2)
     | InsertStmt (c, s1) ->
         H.F.fprintf fmt "InsertStmt: \n";
         pp_diffstmt fmt c s1
     | DeleteStmt (c, s1) ->
-        H.F.fprintf fmt "DeleteStmt: \n%s\n\n=================================="
-          (H.string_of_stmt s1);
+        H.F.fprintf fmt "DeleteStmt: \n";
         pp_diffstmt fmt c s1
     | InsertExp (_, e1) ->
-        H.F.fprintf fmt "InsertExp: \n%s\n\n=================================="
-          (H.string_of_exp e1)
+        H.F.fprintf fmt "InsertExp: \n%s\n" (H.string_of_exp e1)
     | DeleteExp (_, e1) ->
-        H.F.fprintf fmt "DeleteExp: \n%s\n\n=================================="
-          (H.string_of_exp e1)
+        H.F.fprintf fmt "DeleteExp: \n%s\n" (H.string_of_exp e1)
     | UpdateExp (_, e1, e2) ->
-        H.F.fprintf fmt
-          "UpdateExp: \n%s\n\nTo->%s\n\n=================================="
-          (H.string_of_exp e1) (H.string_of_exp e2)
+        H.F.fprintf fmt "UpdateExp: \n%s\n\nTo->%s\n" (H.string_of_exp e1)
+          (H.string_of_exp e2)
     | InsertLval (_, l1) ->
         H.F.fprintf fmt "InsertLval: %s" (H.string_of_lval l1)
     | DeleteLval (_, l1) ->
         H.F.fprintf fmt "DeleteLval: %s" (H.string_of_lval l1)
     | UpdateLval (_, l1, l2) ->
-        H.F.fprintf fmt
-          "UpdateLval: \n%s\n\nTo->%s\n\n=================================="
-          (H.string_of_lval l1) (H.string_of_lval l2)
+        H.F.fprintf fmt "UpdateLval: \n%s\n\nTo->%s\n" (H.string_of_lval l1)
+          (H.string_of_lval l2)
 
   let string_of_action action =
     let buf = Buffer.create 16 in
@@ -112,11 +103,16 @@ module Diff = struct
     List.iter (fun action -> print_endline (string_of_action action)) script
 
   let pp_edit_script fmt script =
-    List.iter
-      (fun action ->
-        print_endline "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$";
-        H.F.fprintf fmt "%a\n" pp_action action)
-      script
+    H.F.fprintf fmt "Edit Script Summary:\n";
+    H.F.fprintf fmt "Size: %d\n" (List.length script);
+    List.fold_left
+      (fun acc action ->
+        print_endline "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$";
+        H.F.fprintf fmt "Script #%d:\n" (acc + 1);
+        H.F.fprintf fmt "%a\n" pp_action action;
+        acc + 1)
+      0 script
+    |> ignore
 
   let process_cil_exp_list lst =
     List.fold_left (fun acc exp -> CilElement.EExp exp :: acc) [] lst
@@ -147,24 +143,18 @@ module Diff = struct
           if result <> [] then result @ acc else []
 
   let extract_exp code parent prev depth exp1 exp2 expl1 expl2 =
-    if code = update_code then
-      let _ = print_endline "exp update detected" in
-      [ UpdateExp ({ depth; parent }, exp1, exp2) ]
+    if code = update_code then [ UpdateExp ({ depth; parent }, exp1, exp2) ]
     else
       let insertion = find_eq_exp_in_tl depth exp1 expl2 [] in
       if insertion <> [] then
-        let _ = print_endline "exp insertion detected" in
         let insertion = exp2 :: List.tl insertion in
         make_diff_exp insertion_code parent prev depth insertion
       else
         let deletion = find_eq_exp_in_tl depth exp2 expl1 [] in
         if deletion <> [] then
-          let _ = print_endline "exp deletion detected" in
           let deletion = exp1 :: List.tl deletion in
           make_diff_exp deletion_code parent prev depth deletion
-        else
-          let _ = print_endline "exp update detected" in
-          [ UpdateExp ({ depth; parent }, exp1, exp2) ]
+        else [ UpdateExp ({ depth; parent }, exp1, exp2) ]
 
   let rec fold_continue_point_param parent depth h1 h2 tl1 tl2 es acc =
     match es with
@@ -199,7 +189,6 @@ module Diff = struct
         else es @ fold_param2 parent (Some hd1) depth tl1 tl2 acc_next
     | [], hd :: tl ->
         let context = { depth; parent } in
-        let _ = print_endline "exp insertion detected" in
         InsertExp (context, hd) :: fold_param2 parent prev depth [] tl acc
     | hd :: tl, [] ->
         let context = { depth; parent } in
@@ -208,24 +197,16 @@ module Diff = struct
   let extract_call parent depth lv1 e1 el1 lv2 e2 el2 =
     let lval_diff =
       match (lv1, lv2) with
-      | None, Some lv ->
-          let _ = print_endline "lval insertion detected" in
-          [ InsertLval ({ depth; parent }, lv) ]
-      | Some lv, None ->
-          let _ = print_endline "lval deletion detected" in
-          [ DeleteLval ({ depth; parent }, lv) ]
+      | None, Some lv -> [ InsertLval ({ depth; parent }, lv) ]
+      | Some lv, None -> [ DeleteLval ({ depth; parent }, lv) ]
       | Some l1, Some l2 ->
           if H.eq_lval l1 l2 then []
-          else
-            let _ = print_endline "lval update detected" in
-            [ UpdateLval ({ depth; parent }, l1, l2) ]
+          else [ UpdateLval ({ depth; parent }, l1, l2) ]
       | _ -> []
     in
     let exp_diff =
       if H.eq_exp_conc e1 e2 then []
-      else
-        let _ = print_endline "exp update detected" in
-        [ UpdateExp ({ depth; parent }, e1, e2) ]
+      else [ UpdateExp ({ depth; parent }, e1, e2) ]
     in
     let param_diff = fold_param2 parent None 0 el1 el2 [] in
     lval_diff @ exp_diff @ param_diff
@@ -233,16 +214,10 @@ module Diff = struct
   let extract_set parent depth lv1 e1 lv2 e2 =
     let context = { depth; parent } in
     let lval_diff =
-      if H.eq_lval lv1 lv2 then []
-      else
-        let _ = print_endline "lval update detected" in
-        [ UpdateLval (context, lv1, lv2) ]
+      if H.eq_lval lv1 lv2 then [] else [ UpdateLval (context, lv1, lv2) ]
     in
     let exp_diff =
-      if H.eq_exp e1 e2 then []
-      else
-        let _ = print_endline "exp update detected" in
-        [ UpdateExp (context, e1, e2) ]
+      if H.eq_exp e1 e2 then [] else [ UpdateExp (context, e1, e2) ]
     in
     lval_diff @ exp_diff
 
@@ -280,12 +255,8 @@ module Diff = struct
     | hd :: tl ->
         let context = { depth; parent } in
         let rest_diff = make_diff_stmt code parent prev depth next tl in
-        if code = insertion_code then
-          let _ = print_endline "stmt insertion detected" in
-          InsertStmt (context, hd) :: rest_diff
-        else
-          let _ = print_endline "stmt deletion detected" in
-          DeleteStmt (context, hd) :: rest_diff
+        if code = insertion_code then InsertStmt (context, hd) :: rest_diff
+        else DeleteStmt (context, hd) :: rest_diff
 
   and fold_continue_point_stmt parent depth h1 h2 tl1 tl2 es acc =
     match List.rev es with
@@ -388,11 +359,11 @@ module Diff = struct
         )
     | [], s2 :: ss2 ->
         let context = { depth; parent } in
-        let _ = print_endline "stmt insertion detected" in
+
         InsertStmt (context, s2) :: fold_stmts2 parent prev depth [] ss2 acc
     | s1 :: ss1, [] ->
         let context = { depth; parent } in
-        let _ = print_endline "stmt deletion detected" in
+
         DeleteStmt (context, s1)
         :: fold_stmts2 parent (Some s1) depth ss1 [] acc
 
@@ -461,14 +432,12 @@ module Diff = struct
   and extract_global prev depth glob1 glob2 tl1 tl2 acc =
     let insertion = find_eq_glob_in_tl glob1 tl2 [] in
     if insertion <> [] then
-      let _ = print_endline "global insertion detected" in
       let next = CilElement.glob_to_elem (Some (List.hd insertion)) in
       let insertion = glob2 :: List.tl insertion in
       make_diff_glob insertion_code depth prev next insertion acc tl1
     else
       let deletion = find_eq_glob_in_tl glob2 tl1 [] in
       if deletion <> [] then
-        let _ = print_endline "global deletion detected" in
         let next = CilElement.glob_to_elem (Some (List.hd deletion)) in
         let deletion = glob1 :: List.tl deletion in
         make_diff_glob deletion_code depth prev next deletion acc tl1
@@ -523,12 +492,10 @@ module Diff = struct
     | [], hd2 :: tl2 ->
         let parent = [ CilElement.Null ] in
         let context = { depth; parent } in
-        let _ = print_endline "global insertion detected" in
         InsertGlobal (context, hd2) :: fold_globals2 prev depth [] tl2 acc
     | hd1 :: tl1, [] ->
         let parent = [ CilElement.Null ] in
         let context = { depth; parent } in
-        let _ = print_endline "global deletion detected" in
         DeleteGlobal (context, hd1) :: fold_globals2 prev depth tl1 [] acc
 
   let compare = compare
