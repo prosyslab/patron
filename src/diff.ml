@@ -66,6 +66,27 @@ module Diff = struct
       context.parent;
     H.F.fprintf fmt "-----------------------------------------\n"
 
+  let rec pp_diffexp fmt context exp_lst code =
+    match code with
+    | 0 | 1 ->
+        H.F.fprintf fmt "%s\n\n===============context=================\n"
+          (List.hd exp_lst |> H.string_of_exp);
+        H.F.fprintf fmt "depth: %d\n" context.depth;
+        H.F.fprintf fmt "parents(bottom_up) -> \n";
+        List.iter
+          (fun x ->
+            H.F.fprintf fmt "%s\n"
+              (CilElement.string_of_element x |> H.summarize_pp);
+            H.F.fprintf fmt "-------\n")
+          context.parent;
+        H.F.fprintf fmt "-----------------------------------------\n"
+    | 2 ->
+        H.F.fprintf fmt
+          "From ->\n%s\nTo ->%s\n\n===============context=================\n"
+          (List.hd exp_lst |> H.string_of_exp)
+          (List.hd (List.tl exp_lst) |> H.string_of_exp)
+    | _ -> failwith "pp_diffexp: unexpected code"
+
   let pp_action fmt = function
     | InsertGlobal (_, g2) ->
         H.F.fprintf fmt "InsertGlobal: \n%s\n" (H.string_of_global g2)
@@ -77,13 +98,15 @@ module Diff = struct
     | DeleteStmt (c, s1) ->
         H.F.fprintf fmt "DeleteStmt: \n";
         pp_diffstmt fmt c s1
-    | InsertExp (_, e1) ->
-        H.F.fprintf fmt "InsertExp: \n%s\n" (H.string_of_exp e1)
-    | DeleteExp (_, e1) ->
-        H.F.fprintf fmt "DeleteExp: \n%s\n" (H.string_of_exp e1)
-    | UpdateExp (_, e1, e2) ->
-        H.F.fprintf fmt "UpdateExp: \n%s\n\nTo->%s\n" (H.string_of_exp e1)
-          (H.string_of_exp e2)
+    | InsertExp (c, e1) ->
+        H.F.fprintf fmt "InsertExp: \n";
+        pp_diffexp fmt c [ e1 ] insertion_code
+    | DeleteExp (c, e1) ->
+        H.F.fprintf fmt "DeleteExp: \n";
+        pp_diffexp fmt c [ e1 ] deletion_code
+    | UpdateExp (c, e1, e2) ->
+        H.F.fprintf fmt "UpdateExp: \n";
+        pp_diffexp fmt c [ e1; e2 ] update_code
     | InsertLval (_, l1) ->
         H.F.fprintf fmt "InsertLval: %s" (H.string_of_lval l1)
     | DeleteLval (_, l1) ->

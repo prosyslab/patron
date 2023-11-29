@@ -94,6 +94,7 @@ module SElement = struct
     | SCall of sym_node option * sym_node * sym_node list
     | SReturn of sym_node option
     | SBlock of sym_node list
+    | SGoto of sym_node
 
   and sym_global =
     | SGNull
@@ -101,7 +102,12 @@ module SElement = struct
     | SGFun of string * string
     | GVar of string * string
 
-  and sym_node = { node : t; id : string; literal : string }
+  and sym_node = {
+    node : t;
+    id : string;
+    literal : string;
+    cil : Diff.CilElement.t;
+  }
 
   let rec pp_node fmt e =
     match e.node with
@@ -133,6 +139,7 @@ module SElement = struct
     | SBlock b ->
         Format.fprintf fmt "SBlock";
         pp_node_lst fmt b
+    | SGoto s -> Format.fprintf fmt "SGoto(%a)" pp_node s
 
   and pp_soptlval fmt l =
     match l with None -> Format.fprintf fmt "None" | Some l -> pp_node fmt l
@@ -239,160 +246,16 @@ module SElement = struct
     | SNeg -> Format.fprintf fmt "SNeg"
 
   let to_null = SNull
-
-  (* let rec to_typ t =
-     match t with
-     | SVoid -> Cil.TVoid []
-     | SInt -> Cil.TInt (Cil.IInt, [])
-     | SFloat -> Cil.TFloat (Cil.FDouble, [])
-     | SPtr t -> Cil.TPtr (to_typ t, [])
-     | SArray t -> Cil.TArray (to_typ t, None, [])
-     | SNamed t -> Cil.TNamed (to_typeinfo t, []) *)
-
-  (* and to_typeinfo t =
-     {
-       sym_tname = t.Cil.tname;
-       sym_ttype = to_typ t.Cil.ttype;} *)
-
-  let rec to_styp t =
-    match t with
-    | Cil.TVoid _ -> SVoid
-    | Cil.TInt _ -> SInt
-    | Cil.TFloat _ -> SFloat
-    | Cil.TPtr (t', _) -> SPtr (to_styp t')
-    | Cil.TArray (t', _, _) -> SArray (to_styp t')
-    | Cil.TNamed (t', _) ->
-        SNamed { sym_tname = t'.Cil.tname; sym_ttype = to_styp t'.ttype }
-    | Cil.TFun _ -> failwith "TFun: not implemented"
-    | Cil.TComp (c, _) ->
-        SComp
-          {
-            cname = c.Cil.cname;
-            cfields = List.map (fun x -> to_sfieldinfo x) c.cfields;
-            cstruct = c.cstruct;
-          }
-    | Cil.TEnum _ -> failwith "TEnum: not implemented"
-    | Cil.TBuiltin_va_list _ -> failwith "not supported"
-
-  and to_scompinfo c =
-    {
-      cname = c.Cil.cname;
-      cfields = List.map to_sfieldinfo c.cfields;
-      cstruct = c.cstruct;
-    }
-
-  and to_sfieldinfo f =
-    { fcomp = to_scompinfo f.fcomp; fname = f.fname; ftype = to_styp f.ftype }
-
-  let to_sbinop op =
-    match op with
-    | Cil.PlusA -> SPlusA
-    | Cil.PlusPI -> SPlusPI
-    | Cil.IndexPI -> SIndexPI
-    | Cil.MinusA -> SMinusA
-    | Cil.MinusPI -> SMinusPI
-    | Cil.MinusPP -> SMinusPP
-    | Cil.Mod -> SMod
-    | Cil.Shiftlt -> SShiftlt
-    | Cil.Shiftrt -> SShiftrt
-    | Cil.BAnd -> SAnd
-    | Cil.BXor -> SXor
-    | Cil.BOr -> SOr
-    | Cil.Mult -> SMult
-    | Cil.Div -> SDiv
-    | Cil.Eq -> SEq
-    | Cil.Ne -> SNe
-    | Cil.Lt -> SLt
-    | Cil.Le -> SLe
-    | Cil.Gt -> SGt
-    | Cil.Ge -> SGe
-    | Cil.LAnd -> SLAnd
-    | Cil.LOr -> SLOr
-
-  let to_binop sop =
-    match sop with
-    | SPlusA -> Cil.PlusA
-    | SPlusPI -> Cil.PlusPI
-    | SIndexPI -> Cil.IndexPI
-    | SMinusA -> Cil.MinusA
-    | SMinusPI -> Cil.MinusPI
-    | SMinusPP -> Cil.MinusPP
-    | SMod -> Cil.Mod
-    | SShiftlt -> Cil.Shiftlt
-    | SShiftrt -> Cil.Shiftrt
-    | SAnd -> Cil.BAnd
-    | SXor -> Cil.BXor
-    | SOr -> Cil.BOr
-    | SMult -> Cil.Mult
-    | SDiv -> Cil.Div
-    | SEq -> Cil.Eq
-    | SNe -> Cil.Ne
-    | SLt -> Cil.Lt
-    | SLe -> Cil.Le
-    | SGt -> Cil.Gt
-    | SGe -> Cil.Ge
-    | SLAnd -> Cil.LAnd
-    | SLOr -> Cil.LOr
-
-  let to_unop sop = match sop with SNot -> Cil.LNot | SNeg -> Cil.Neg
-
-  let to_sunop op =
-    match op with
-    | Cil.LNot -> SNot
-    | Cil.Neg -> SNeg
-    | _ -> failwith "not supported"
-
-  let to_sconst c =
-    match c with
-    | Cil.CInt64 (i, _, _) -> SIntConst (Int64.to_int i)
-    | Cil.CReal (f, _, _) -> SFloatConst f
-    | Cil.CChr c -> SCharConst c
-    | Cil.CStr s -> SStringConst s
-    | _ -> failwith "not supported"
-
-  let sbinop_to_sym op =
-    match op with
-    | SPlusA -> "PlusA"
-    | SMinusA -> "MinusA"
-    | SMult -> "Mult"
-    | SDiv -> "Div"
-    | SMod -> "Mod"
-    | SLt -> "Lt"
-    | SGt -> "Gt"
-    | SLe -> "Le"
-    | SGe -> "Ge"
-    | SEq -> "Eq"
-    | SNe -> "Ne"
-    | SAnd -> "BAnd"
-    | SXor -> "BXor"
-    | SOr -> "BOr"
-    | SLAnd -> "LAnd"
-    | SLOr -> "LOr"
-    | SShiftlt -> "Shiftlt"
-    | SShiftrt -> "Shiftrt"
-    | SPlusPI -> "PlusPI"
-    | SIndexPI -> "IndexPI"
-    | SMinusPI -> "MinusPI"
-    | SMinusPP -> "MinusPP"
-
-  let rec styp_to_sym styp =
-    match styp with
-    | SVoid -> "void"
-    | SInt -> "int"
-    | SFloat -> "float"
-    | SPtr t -> "ptr" ^ styp_to_sym t
-    | SArray t -> "array" ^ styp_to_sym t
-    | SNamed t -> "named" ^ styp_to_sym t.sym_ttype
-    | _ -> failwith "not supported"
-
-  let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
   let compare = compare
 end
 
 module SDiff = struct
   include SElement
 
-  type sym_context = { parent : string list }
+  type sym_context = {
+    parent : (string * Diff.CilElement.t) list;
+    func_name : string;
+  }
 
   type t =
     | SInsertStmt of sym_context * sym_node
@@ -413,6 +276,7 @@ module SDiff = struct
               node = SStmt (match_stmt cfg exp_map s);
               id = match_stmt_id cfg s.Cil.skind;
               literal = H.string_of_stmt s;
+              cil = Diff.CilElement.EStmt s;
             } )
     | D.Diff.DeleteStmt (_, s) ->
         SDeleteStmt
@@ -421,6 +285,7 @@ module SDiff = struct
               node = SStmt (match_stmt cfg exp_map s);
               id = match_stmt_id cfg s.Cil.skind;
               literal = H.string_of_stmt s;
+              cil = Diff.CilElement.EStmt s;
             } )
     | _ -> failwith "mk_sdiff: not implemented"
 
@@ -432,6 +297,7 @@ module SDiff = struct
               node = SExp (match_exp cfg exp_map e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
+              cil = Diff.CilElement.EExp e;
             },
             List.map
               (fun s ->
@@ -439,6 +305,7 @@ module SDiff = struct
                   SElement.node = SStmt (match_stmt cfg exp_map s);
                   id = match_stmt_id cfg s.Cil.skind;
                   literal = H.string_of_stmt s;
+                  cil = Diff.CilElement.EStmt s;
                 })
               s1.Cil.bstmts,
             List.map
@@ -447,6 +314,7 @@ module SDiff = struct
                   SElement.node = SStmt (match_stmt cfg exp_map s);
                   id = match_stmt_id cfg s.Cil.skind;
                   literal = H.string_of_stmt s;
+                  cil = Diff.CilElement.EStmt s;
                 })
               s2.Cil.bstmts )
     | Cil.Instr i -> (
@@ -458,11 +326,13 @@ module SDiff = struct
                   node = SLval (match_lval cfg exp_map l);
                   id = match_lval_id exp_map l;
                   literal = H.string_of_lval l;
+                  cil = Diff.CilElement.ELval l;
                 },
                 {
                   node = SExp (match_exp cfg exp_map e);
                   id = match_exp_id exp_map e;
                   literal = H.string_of_exp e;
+                  cil = Diff.CilElement.EExp e;
                 } )
         | Cil.Call (Some l, e, es, _) ->
             SElement.SCall
@@ -471,11 +341,13 @@ module SDiff = struct
                     node = SLval (match_lval cfg exp_map l);
                     id = match_lval_id exp_map l;
                     literal = H.string_of_lval l;
+                    cil = Diff.CilElement.ELval l;
                   },
                 {
                   node = SExp (match_exp cfg exp_map e);
                   id = match_exp_id exp_map e;
                   literal = H.string_of_exp e;
+                  cil = Diff.CilElement.EExp e;
                 },
                 List.map
                   (fun e ->
@@ -483,6 +355,7 @@ module SDiff = struct
                       SElement.node = SExp (match_exp cfg exp_map e);
                       id = match_exp_id exp_map e;
                       literal = H.string_of_exp e;
+                      cil = Diff.CilElement.EExp e;
                     })
                   es )
         | Cil.Call (None, e, es, _) ->
@@ -492,6 +365,7 @@ module SDiff = struct
                   node = SExp (match_exp cfg exp_map e);
                   id = match_exp_id exp_map e;
                   literal = H.string_of_exp e;
+                  cil = Diff.CilElement.EExp e;
                 },
                 List.map
                   (fun e ->
@@ -499,6 +373,7 @@ module SDiff = struct
                       SElement.node = SExp (match_exp cfg exp_map e);
                       id = match_exp_id exp_map e;
                       literal = H.string_of_exp e;
+                      cil = Diff.CilElement.EExp e;
                     })
                   es )
         | _ -> failwith "match_stmt: not supported")
@@ -510,6 +385,7 @@ module SDiff = struct
                 node = SStmt (match_stmt cfg exp_map s);
                 id = match_stmt_id cfg s.Cil.skind;
                 literal = H.string_of_stmt s;
+                cil = Diff.CilElement.EStmt s;
               }
               :: acc)
             [] b.bstmts
@@ -523,60 +399,74 @@ module SDiff = struct
                node = SExp (match_exp cfg exp_map e);
                id = match_exp_id exp_map e;
                literal = H.string_of_exp e;
+               cil = Diff.CilElement.EExp e;
              })
     | Cil.Return (None, _) -> SElement.SReturn None
-    | Cil.Goto _ -> SElement.SSNull (* TODO *)
+    | Cil.Goto (s, _) ->
+        SElement.SGoto
+          {
+            node = SStmt (match_stmt cfg exp_map !s);
+            id = match_stmt_id cfg !s.Cil.skind;
+            literal = H.string_of_stmt !s;
+            cil = Diff.CilElement.EStmt !s;
+          }
     | _ -> failwith "match_stmt: not implemented"
 
   and match_exp cfg exp_map e =
     match e with
-    | Cil.Const c -> SElement.SConst (SElement.to_sconst c)
+    | Cil.Const c -> SElement.SConst (to_sconst c)
     | Cil.Lval l ->
         SELval
           {
             node = SLval (match_lval cfg exp_map l);
             id = match_lval_id exp_map l;
             literal = H.string_of_lval l;
+            cil = Diff.CilElement.ELval l;
           }
-    | Cil.SizeOf t -> SSizeOf (SElement.to_styp t)
+    | Cil.SizeOf t -> SSizeOf (to_styp t)
     | Cil.SizeOfE e' ->
         SSizeOfE
           {
             node = SExp (match_exp cfg exp_map e');
             id = match_exp_id exp_map e';
             literal = H.string_of_exp e';
+            cil = Diff.CilElement.EExp e';
           }
     | Cil.SizeOfStr s -> SSizeOfStr s
     | Cil.BinOp (op, e1, e2, t) ->
         SBinOp
-          ( SElement.to_sbinop op,
+          ( to_sbinop op,
             {
               node = SExp (match_exp cfg exp_map e1);
               id = match_exp_id exp_map e1;
               literal = H.string_of_exp e1;
+              cil = Diff.CilElement.EExp e1;
             },
             {
               node = SExp (match_exp cfg exp_map e2);
               id = match_exp_id exp_map e2;
               literal = H.string_of_exp e2;
+              cil = Diff.CilElement.EExp e2;
             },
-            SElement.to_styp t )
+            to_styp t )
     | Cil.UnOp (op, e, t) ->
         SUnOp
-          ( SElement.to_sunop op,
+          ( to_sunop op,
             {
               node = SExp (match_exp cfg exp_map e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
+              cil = Diff.CilElement.EExp e;
             },
-            SElement.to_styp t )
+            to_styp t )
     | Cil.CastE (t, e) ->
         SCastE
-          ( SElement.to_styp t,
+          ( to_styp t,
             {
               node = SExp (match_exp cfg exp_map e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
+              cil = Diff.CilElement.EExp e;
             } )
     | Cil.Question (e1, e2, e3, t) ->
         SQuestion
@@ -584,24 +474,28 @@ module SDiff = struct
               node = SExp (match_exp cfg exp_map e1);
               id = match_exp_id exp_map e1;
               literal = H.string_of_exp e1;
+              cil = Diff.CilElement.EExp e1;
             },
             {
               node = SExp (match_exp cfg exp_map e2);
               id = match_exp_id exp_map e2;
               literal = H.string_of_exp e2;
+              cil = Diff.CilElement.EExp e2;
             },
             {
               node = SExp (match_exp cfg exp_map e3);
               id = match_exp_id exp_map e3;
               literal = H.string_of_exp e3;
+              cil = Diff.CilElement.EExp e3;
             },
-            SElement.to_styp t )
+            to_styp t )
     | Cil.AddrOf l ->
         SAddrOf
           {
             node = SLval (match_lval cfg exp_map l);
             id = match_lval_id exp_map l;
             literal = H.string_of_lval l;
+            cil = Diff.CilElement.ELval l;
           }
     | Cil.StartOf l ->
         SStartOf
@@ -609,6 +503,7 @@ module SDiff = struct
             node = SLval (match_lval cfg exp_map l);
             id = match_lval_id exp_map l;
             literal = H.string_of_lval l;
+            cil = Diff.CilElement.ELval l;
           }
     | Cil.AddrOfLabel stmt ->
         SAddrOfLabel
@@ -616,6 +511,7 @@ module SDiff = struct
             node = SStmt (match_stmt cfg exp_map !stmt);
             id = match_stmt_id cfg !stmt.Cil.skind;
             literal = H.string_of_stmt !stmt;
+            cil = Diff.CilElement.EStmt !stmt;
           }
     | _ -> failwith "match_exp: not implemented"
 
@@ -623,14 +519,14 @@ module SDiff = struct
     let lhost, offset = l in
     let slhost =
       match lhost with
-      | Cil.Var v ->
-          SElement.SVar { vname = v.vname; vtype = SElement.to_styp v.vtype }
+      | Cil.Var v -> SElement.SVar { vname = v.vname; vtype = to_styp v.vtype }
       | Cil.Mem e ->
           SElement.SMem
             {
               node = SExp (match_exp cfg exp_map e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
+              cil = Diff.CilElement.EExp e;
             }
     in
     let soffset = match_offset cfg exp_map offset in
@@ -644,7 +540,7 @@ module SDiff = struct
           ( {
               fcomp = { cname = f.fcomp.cname; cfields = []; cstruct = true };
               fname = f.fname;
-              ftype = SElement.to_styp f.ftype;
+              ftype = to_styp f.ftype;
             },
             match_offset cfg exp_map o )
     | Cil.Index (e, o) ->
@@ -653,6 +549,7 @@ module SDiff = struct
               node = SExp (match_exp cfg exp_map e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
+              cil = Diff.CilElement.EExp e;
             },
             match_offset cfg exp_map o )
 
@@ -660,7 +557,7 @@ module SDiff = struct
     {
       SElement.fcomp = match_compinfo f.Cil.fcomp;
       SElement.fname = f.Cil.fname;
-      SElement.ftype = SElement.to_styp f.Cil.ftype;
+      SElement.ftype = to_styp f.Cil.ftype;
     }
 
   and match_compinfo c =
@@ -670,18 +567,24 @@ module SDiff = struct
       SElement.cstruct = c.Cil.cstruct;
     }
 
+  and extract_fun_name g =
+    match g with
+    | Cil.GFun (f, _) -> f.Cil.svar.Cil.vname
+    | _ -> failwith "extract_fun_name: not a function"
+
   and match_context cfg exp_map lst =
     match lst with
     | [] -> []
     | hd :: tl -> (
         match hd with
         | D.CilElement.EStmt s ->
-            match_stmt_id cfg s.Cil.skind :: match_context cfg exp_map tl
+            (match_stmt_id cfg s.Cil.skind, hd) :: match_context cfg exp_map tl
         | D.CilElement.EExp e ->
-            match_exp_id exp_map e :: match_context cfg exp_map tl
+            (match_exp_id exp_map e, hd) :: match_context cfg exp_map tl
         | D.CilElement.ELval l ->
-            match_lval_id exp_map l :: match_context cfg exp_map tl
-        | D.CilElement.EGlobal _ -> match_context cfg exp_map tl
+            (match_lval_id exp_map l, hd) :: match_context cfg exp_map tl
+        | D.CilElement.EGlobal g ->
+            (extract_fun_name g, hd) :: match_context cfg exp_map tl
         | _ -> failwith "match_context: not implemented")
 
   and match_exp_id exp_map e =
@@ -715,7 +618,7 @@ module SDiff = struct
             else acc)
           candidate []
       in
-      if outmap = [] then ("", "") else List.hd outmap
+      if outmap = [] then ("None", "") else List.hd outmap
     in
     id
 
@@ -738,12 +641,16 @@ module SDiff = struct
             else acc)
           candidate []
       in
-      if outmap = [] then ("", "") else List.hd outmap
+      if outmap = [] then ("None", "") else List.hd outmap
     in
     id
 
-  and match_set_id cfg loc =
+  and eq_line loc cloc =
     let file_name = loc.Cil.file |> Filename.basename in
+    if loc.Cil.line = cloc.H.line && file_name = cloc.H.file then true
+    else false
+
+  and match_set_id cfg loc =
     H.CfgMap.fold
       (fun k v acc ->
         match k with
@@ -751,62 +658,58 @@ module SDiff = struct
         | H.CAlloc (_, _, cloc)
         | H.CFalloc (_, _, cloc)
         | H.CSalloc (_, _, cloc) ->
-            if loc.Cil.line = cloc.line && file_name = cloc.file then v :: acc
-            else acc
+            if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
   and match_call_id cfg loc =
-    let file_name = loc.Cil.file |> Filename.basename in
     H.CfgMap.fold
       (fun k v acc ->
         match k with
-        | H.CCall (_, _, cloc) ->
-            if loc.Cil.line = cloc.line && file_name = cloc.file then v :: acc
-            else acc
+        | H.CCall (_, _, cloc) -> if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
   and match_return_id cfg loc =
-    let file_name = loc.Cil.file |> Filename.basename in
     H.CfgMap.fold
       (fun k v acc ->
         match k with
-        | H.CReturn1 (_, cloc) | H.CReturn2 cloc ->
-            if loc.Cil.line = cloc.line && file_name = cloc.file then v :: acc
-            else acc
+        | H.CReturn1 (_, cloc) -> if eq_line loc cloc then v :: acc else acc
+        | H.CReturn2 cloc -> if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
-  and match_assume_id cfg loc =
-    let file_name = loc.Cil.file |> Filename.basename in
+  and match_assume_id cfg loc cond =
     H.CfgMap.fold
       (fun k v acc ->
         match k with
-        | H.CAssume (_, cloc) ->
-            if loc.Cil.line = cloc.line && file_name = cloc.file then v :: acc
+        | H.CAssume (ccond, cloc) ->
+            if eq_line loc cloc && H.string_of_exp cond |> H.subset ccond then
+              v :: acc
             else acc
         | _ -> acc)
       cfg []
 
   and match_stmt_id cfg s =
+    (*TODO: tighten the string match of stmt by subset*)
     match s with
     | Cil.Instr i -> (
         let instr = List.hd i in
         match instr with
         | Cil.Set (_, _, loc) ->
             let matched = match_set_id cfg loc in
-            if List.length matched = 1 then List.hd matched else "None"
+            if List.length matched >= 1 then List.hd matched else "None"
         | Cil.Call (_, _, _, loc) ->
             let matched = match_call_id cfg loc in
-            if List.length matched = 1 then List.hd matched else "None"
+            if List.length matched >= 1 then List.hd matched else "None"
         | _ -> failwith "unexpected")
     | Cil.Return (_, loc) ->
         let matched = match_return_id cfg loc in
-        if List.length matched = 1 then List.hd matched else "None"
-    | Cil.If (_, _, _, loc) | Cil.Loop (_, loc, _, _) ->
-        let matched = match_assume_id cfg loc in
-        if List.length matched = 1 then List.hd matched else "None"
+        if List.length matched >= 1 then List.hd matched else "None"
+    | Cil.If (cond, _, _, loc) ->
+        let matched = match_assume_id cfg loc cond in
+        if List.length matched >= 1 then List.hd matched else "None"
+    | Cil.Loop _ -> "None"
     | _ -> "None"
 
   and match_const c exp_map =
@@ -819,6 +722,103 @@ module SDiff = struct
     | Cil.CReal (f, _, _) ->
         H.StrMap.filter (fun _ v -> string_of_float f |> H.subset v) exp_map
     | _ -> failwith "match_const: not implemented"
+
+  and to_styp t =
+    match t with
+    | Cil.TVoid _ -> SVoid
+    | Cil.TInt _ -> SInt
+    | Cil.TFloat _ -> SFloat
+    | Cil.TPtr (t', _) -> SPtr (to_styp t')
+    | Cil.TArray (t', _, _) -> SArray (to_styp t')
+    | Cil.TNamed (t', _) ->
+        SNamed { sym_tname = t'.Cil.tname; sym_ttype = to_styp t'.ttype }
+    | Cil.TFun _ -> failwith "TFun: not implemented"
+    | Cil.TComp (c, _) ->
+        SComp
+          {
+            cname = c.Cil.cname;
+            cfields = List.map (fun x -> to_sfieldinfo x) c.cfields;
+            cstruct = c.cstruct;
+          }
+    | Cil.TEnum _ -> failwith "TEnum: not implemented"
+    | Cil.TBuiltin_va_list _ -> failwith "not supported"
+
+  and to_scompinfo c =
+    {
+      cname = c.Cil.cname;
+      cfields =
+        List.fold_left (fun acc f -> to_sfieldinfo f :: acc) [] c.cfields;
+      cstruct = c.cstruct;
+    }
+
+  and to_sfieldinfo f =
+    { fcomp = to_scompinfo f.fcomp; fname = f.fname; ftype = to_styp f.ftype }
+
+  and to_sbinop op =
+    match op with
+    | Cil.PlusA -> SPlusA
+    | Cil.PlusPI -> SPlusPI
+    | Cil.IndexPI -> SIndexPI
+    | Cil.MinusA -> SMinusA
+    | Cil.MinusPI -> SMinusPI
+    | Cil.MinusPP -> SMinusPP
+    | Cil.Mod -> SMod
+    | Cil.Shiftlt -> SShiftlt
+    | Cil.Shiftrt -> SShiftrt
+    | Cil.BAnd -> SAnd
+    | Cil.BXor -> SXor
+    | Cil.BOr -> SOr
+    | Cil.Mult -> SMult
+    | Cil.Div -> SDiv
+    | Cil.Eq -> SEq
+    | Cil.Ne -> SNe
+    | Cil.Lt -> SLt
+    | Cil.Le -> SLe
+    | Cil.Gt -> SGt
+    | Cil.Ge -> SGe
+    | Cil.LAnd -> SLAnd
+    | Cil.LOr -> SLOr
+
+  and to_binop sop =
+    match sop with
+    | SPlusA -> Cil.PlusA
+    | SPlusPI -> Cil.PlusPI
+    | SIndexPI -> Cil.IndexPI
+    | SMinusA -> Cil.MinusA
+    | SMinusPI -> Cil.MinusPI
+    | SMinusPP -> Cil.MinusPP
+    | SMod -> Cil.Mod
+    | SShiftlt -> Cil.Shiftlt
+    | SShiftrt -> Cil.Shiftrt
+    | SAnd -> Cil.BAnd
+    | SXor -> Cil.BXor
+    | SOr -> Cil.BOr
+    | SMult -> Cil.Mult
+    | SDiv -> Cil.Div
+    | SEq -> Cil.Eq
+    | SNe -> Cil.Ne
+    | SLt -> Cil.Lt
+    | SLe -> Cil.Le
+    | SGt -> Cil.Gt
+    | SGe -> Cil.Ge
+    | SLAnd -> Cil.LAnd
+    | SLOr -> Cil.LOr
+
+  and to_unop sop = match sop with SNot -> Cil.LNot | SNeg -> Cil.Neg
+
+  and to_sunop op =
+    match op with
+    | Cil.LNot -> SNot
+    | Cil.Neg -> SNeg
+    | _ -> failwith "not supported"
+
+  and to_sconst c =
+    match c with
+    | Cil.CInt64 (i, _, _) -> SIntConst (Int64.to_int i)
+    | Cil.CReal (f, _, _) -> SFloatConst f
+    | Cil.CChr c -> SCharConst c
+    | Cil.CStr s -> SStringConst s
+    | _ -> failwith "not supported"
 end
 
 let get_parent_lst diff =
@@ -887,9 +887,13 @@ let define_sym_diff donor_dir donor diff =
     (fun acc d ->
       let root_path = get_parent_lst d in
       let s_root_path = List.rev root_path |> SDiff.match_context cfg exp_map in
+      let root_func, _ = List.hd s_root_path in
+      let rest_path = List.tl s_root_path in
       let parent_fun = get_parent_fun root_path in
       let cfg_reduced = reduce_cfg cfg parent_fun.vname in
-      let s_context : SDiff.sym_context = { parent = s_root_path } in
+      let s_context : SDiff.sym_context =
+        { parent = rest_path; func_name = root_func }
+      in
       SDiff.mk_sdiff s_context cfg_reduced exp_map d :: acc)
     [] diff
 
@@ -900,12 +904,64 @@ module DiffJson = struct
 
   type t = Yojson.Safe.t
 
+  let sbinop_to_sym op =
+    match op with
+    | SPlusA -> "PlusA"
+    | SMinusA -> "MinusA"
+    | SMult -> "Mult"
+    | SDiv -> "Div"
+    | SMod -> "Mod"
+    | SLt -> "Lt"
+    | SGt -> "Gt"
+    | SLe -> "Le"
+    | SGe -> "Ge"
+    | SEq -> "Eq"
+    | SNe -> "Ne"
+    | SAnd -> "BAnd"
+    | SXor -> "BXor"
+    | SOr -> "BOr"
+    | SLAnd -> "LAnd"
+    | SLOr -> "LOr"
+    | SShiftlt -> "Shiftlt"
+    | SShiftrt -> "Shiftrt"
+    | SPlusPI -> "PlusPI"
+    | SIndexPI -> "IndexPI"
+    | SMinusPI -> "MinusPI"
+    | SMinusPP -> "MinusPP"
+
+  let rec styp_to_sym styp =
+    match styp with
+    | SVoid -> `String "void"
+    | SInt -> `String "int"
+    | SFloat -> `String "float"
+    | SPtr t -> `Assoc [ ("ptr", styp_to_sym t) ]
+    | SArray t -> `Assoc [ ("array", styp_to_sym t) ]
+    | SNamed t ->
+        `Assoc
+          [
+            ( "named",
+              `Assoc
+                [
+                  ("tname", `String t.sym_tname);
+                  ("typ", styp_to_sym t.sym_ttype);
+                ] );
+          ]
+    | _ -> failwith "not supported"
+
+  let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
+
   let rec mk_json_obj (saction : SDiff.t) (caction : D.Diff.t) =
     let context_json (context : SDiff.sym_context) =
       ( "context",
-        `List
-          (List.fold_left (fun acc id -> `String id :: acc) [] context.parent)
-      )
+        `Assoc
+          [
+            ("func_name", `String context.func_name);
+            ( "parent",
+              `List
+                (List.fold_left
+                   (fun acc (id, _) -> `String id :: acc)
+                   [] context.parent) );
+          ] )
     in
     match (saction, caction) with
     | SInsertStmt (context1, snode), InsertStmt _ ->
@@ -922,26 +978,7 @@ module DiffJson = struct
             context_json context1;
             ("change", sstmt_to_json snode);
           ]
-    | _ ->
-        (* (match a with
-           | SInsertStmt _ -> print_endline "SInsertStmt"
-           | SDeleteStmt _ -> print_endline "SDeleteStmt"
-           | SInsertExp _ -> print_endline "SInsertExp"
-           | SDeleteExp _ -> print_endline "SDeleteExp"
-           | SUpdateExp _ -> print_endline "SUpdateExp"
-           | SInsertLval _ -> print_endline "SInsertLval"
-           | SDeleteLval _ -> print_endline "SDeleteLval"
-           | SUpdateLval _ -> print_endline "SUpdateLval");
-           (match b with
-           | InsertStmt _ -> print_endline "InsertStmt"
-           | DeleteStmt _ -> print_endline "DeleteStmt"
-           | InsertExp _ -> print_endline "InsertExp"
-           | DeleteExp _ -> print_endline "DeleteExp"
-           | UpdateExp _ -> print_endline "UpdateExp"
-           | InsertLval _ -> print_endline "InsertLval"
-           | DeleteLval _ -> print_endline "DeleteLval"
-           | UpdateLval _ -> print_endline "UpdateLval"); *)
-        `Null
+    | _ -> failwith "mk_json_obj: not implemented"
 
   and sstmt_to_json (sstmt : sym_node) =
     let node = sstmt.node in
@@ -1058,6 +1095,17 @@ module DiffJson = struct
                   ("literal", `String sstmt.literal);
                 ] );
           ]
+    | SGoto s1 ->
+        `Assoc
+          [
+            ( "goto",
+              `Assoc
+                [
+                  ("node", `Assoc [ ("stmt", sstmt_to_json s1) ]);
+                  ("id", `String sstmt.id);
+                  ("literal", `String sstmt.literal);
+                ] );
+          ]
     | _ ->
         (* SElement.pp_sstmt Format.std_formatter sstmt; *)
         `Null
@@ -1094,8 +1142,8 @@ module DiffJson = struct
                   ( "binop",
                     `Assoc
                       [
-                        ("op", `String (SElement.sbinop_to_sym op1));
-                        ("typ", `String (SElement.styp_to_sym typ1));
+                        ("op", `String (sbinop_to_sym op1));
+                        ("typ", styp_to_sym typ1);
                         ("e1", sexp_to_json e1_1);
                         ("e2", sexp_to_json e2_1);
                       ] );
@@ -1110,11 +1158,8 @@ module DiffJson = struct
               `Assoc
                 [
                   ( "cast",
-                    `Assoc
-                      [
-                        ("typ", `String (SElement.styp_to_sym typ));
-                        ("e", sexp_to_json e1);
-                      ] );
+                    `Assoc [ ("typ", styp_to_sym typ); ("e", sexp_to_json e1) ]
+                  );
                 ] );
             ("id", `String sexp.id);
             ("literal", `String sexp.literal);
@@ -1128,8 +1173,8 @@ module DiffJson = struct
                   ( "unop",
                     `Assoc
                       [
-                        ("op", `String (SElement.sunop_to_sym op1));
-                        ("typ", `String (SElement.styp_to_sym typ1));
+                        ("op", `String (sunop_to_sym op1));
+                        ("typ", styp_to_sym typ1);
                         ("e", sexp_to_json e1_1);
                       ] );
                 ] );
@@ -1170,11 +1215,8 @@ module DiffJson = struct
         `Assoc
           [
             ( "var",
-              `Assoc
-                [
-                  ("name", `String v.vname);
-                  ("typ", `String (SElement.styp_to_sym v.vtype));
-                ] );
+              `Assoc [ ("name", `String v.vname); ("typ", styp_to_sym v.vtype) ]
+            );
           ]
     | SMem e -> `Assoc [ ("mem", `Assoc [ ("exp", sexp_to_json e) ]) ]
 
@@ -1205,7 +1247,7 @@ module DiffJson = struct
             [
               ("comp", scomp_to_json f.fcomp);
               ("name", `String f.fname);
-              ("typ", `String (SElement.styp_to_sym f.ftype));
+              ("typ", styp_to_sym f.ftype);
             ] );
       ]
 
