@@ -203,29 +203,27 @@ let match_ans donee_maps out_dir db_dir donor_name =
   dump_sol_map donor_name donor_maps donee_maps out_dir numeral_pairs
 
 let run db_dir donee_dir out_dir =
-  (* L.info "Finding bug pattern from DB...";
-     let donee_maps = Maps.create_maps () in
-     Maps.reset_maps donee_maps;
-     let donee = Parser.make donee_dir in
-     Chc.pretty_dump (Filename.concat out_dir "donee") donee;
-     Chc.sexp_dump (Filename.concat out_dir "donee") donee;
-     L.info "Make CHC done";
-     let is_matched, matched_donors =
-       fold_db (match_bug_for_one_prj out_dir donee donee_maps) db_dir
-     in
-     if not is_matched then (
-       L.info ~to_console:true "There is no donor to donate patch TT";
-       exit 1);
-     List.iter
-       ~f:(fun donor_name ->
-         match_ans donee_maps out_dir db_dir donor_name;
-         List.iter matched_donors ~f:(fun donor_cand ->
-             let is_patched, patch = TF.transplant donor_cand donee_dir out_dir in
-             if is_patched then (
-               L.info ~to_console:true
-                 "Patch is successfully written at %s/applied.c\n" out_dir;
-               TF.write_out out_dir patch;
-               exit 0)))
-       matched_donors *)
-  let donor_cand = Filename.concat db_dir "test-1" in
-  TF.transplant donor_cand donee_dir out_dir
+  L.info "Finding bug pattern from DB...";
+  let donee_maps = Maps.create_maps () in
+  Maps.reset_maps donee_maps;
+  let donee = Parser.make donee_dir in
+  Chc.pretty_dump (Filename.concat out_dir "donee") donee;
+  Chc.sexp_dump (Filename.concat out_dir "donee") donee;
+  L.info "Make CHC done";
+  let is_matched, matched_donors =
+    fold_db (match_bug_for_one_prj out_dir donee donee_maps) db_dir
+  in
+  if not is_matched then (
+    L.info ~to_console:true "There is no donor to donate patch TT";
+    exit 1);
+  List.iter
+    ~f:(fun donor_name ->
+      match_ans donee_maps out_dir db_dir donor_name;
+      List.iter matched_donors ~f:(fun donor_cand ->
+          let is_patched, patch = TF.transplant donor_cand donee_dir out_dir in
+          if is_patched then (
+            L.info ~to_console:true
+              "Patch is successfully written at %s/applied.c\n" out_dir;
+            TF.write_out out_dir patch;
+            exit 0)))
+    matched_donors

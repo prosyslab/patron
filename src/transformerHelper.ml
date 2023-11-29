@@ -280,6 +280,50 @@ let print_global_type glob =
   | Cil.GPragma _ -> print_endline "GPragma"
   | _ -> print_endline "Other"
 
+module CmdAST = struct
+  type node_typ = G of Cil.global | Stmt of Cil.stmt
+  type subtree = string ExpMap.t * string LvalMap.t
+
+  module NodeMap = Map.Make (struct
+    type t = node_typ
+
+    let compare a b =
+      match (a, b) with
+      | G g1, G g2 -> if eq_global g1 g2 then 0 else -1
+      | Stmt s1, Stmt s2 -> if eq_stmt s1.Cil.skind s2.Cil.skind then 0 else -1
+      | _ -> -1
+  end)
+
+  type t = { node : string list NodeMap.t; subtree : subtree StrMap.t }
+
+  let init globals stmts =
+    let global_init =
+      List.fold_left
+        (fun map g -> NodeMap.add (G g) [] map)
+        NodeMap.empty globals
+    in
+    let stmt_init =
+      List.fold_left
+        (fun map s -> NodeMap.add (Stmt s) [] map)
+        global_init stmts
+    in
+    { node = stmt_init; subtree = StrMap.empty }
+
+  let print_mapping_result ast =
+    NodeMap.iter
+      (fun k v ->
+        match k with
+        | G g ->
+            (string_of_global g |> summarize_pp) ^ "\n......\n" |> print_endline;
+            print_endline "-->";
+            List.iter (fun s -> print_endline ("\t" ^ s)) v
+        | Stmt s ->
+            string_of_stmt s |> summarize_pp |> print_endline;
+            print_endline "-->";
+            List.iter (fun s -> print_endline ("\t" ^ s)) v)
+      ast.node
+end
+
 let trim_node_str str =
   Str.global_replace (Str.regexp " ") ""
     (Str.global_replace (Str.regexp "?") "\\\\"
@@ -309,14 +353,6 @@ let rec search_seq s1 s2 =
 
 (* is s2 in s1? *)
 let subset s1 s2 =
-  let simplify s =
-    Str.global_replace (Str.regexp "->") "" s
-    |> Str.global_replace (Str.regexp " ") ""
-    |> Str.global_replace (Str.regexp "(") ""
-    |> Str.global_replace (Str.regexp ")") ""
-  in
-  let s1 = simplify s1 in
-  let s2 = simplify s2 in
   let set1 = explode s1 in
   let set2 = explode s2 in
   search_seq set1 set2
@@ -326,21 +362,6 @@ let print_ikind instr =
   | Cil.Call _ -> print_endline "Call"
   | Cil.Set _ -> print_endline "Set"
   | Cil.Asm _ -> print_endline "Asm"
-
-let print_skind sk =
-  match sk with
-  | Cil.Instr _ -> print_endline "Instr"
-  | Cil.Return _ -> print_endline "Return"
-  | Cil.Goto _ -> print_endline "Goto"
-  | Cil.ComputedGoto _ -> print_endline "ComputedGoto"
-  | Cil.Break _ -> print_endline "Break"
-  | Cil.Continue _ -> print_endline "Continue"
-  | Cil.If _ -> print_endline "If"
-  | Cil.Loop _ -> print_endline "Loop"
-  | Cil.Block _ -> print_endline "Block"
-  | Cil.TryExcept _ -> print_endline "TryExcept"
-  | Cil.TryFinally _ -> print_endline "TryFinally"
-  | Cil.Switch _ -> print_endline "Switch"
 
 let rec parse_strmap file map =
   match file with
@@ -390,6 +411,16 @@ let read_lines name =
   let lines = read_lines [] in
   close_in file;
   lines
+
+let make_str_map path =
+  let lines = read_lines path in
+  List.fold_left
+    (fun map line ->
+      let splited = Str.split (Str.regexp "\t") line in
+      let key = List.hd splited in
+      let value = List.hd (List.tl splited) in
+      StrMap.add key value map)
+    StrMap.empty lines
 
 let make_str_map_rev path =
   let lines = read_lines path in
@@ -609,16 +640,6 @@ let parse_facts facts_path =
       StrMap.add id elmt map)
     StrMap.empty lines
 
-let parse_map path =
-  let lines = read_lines path in
-  List.fold_left
-    (fun map line ->
-      let splited = Str.split (Str.regexp "\t") line in
-      let key = List.hd splited in
-      let value = List.hd (List.tl splited) in
-      StrMap.add key value map)
-    StrMap.empty lines
-
 let parse_call_facts facts_path =
   let lines = read_lines facts_path in
   List.fold_left
@@ -648,78 +669,63 @@ let parse_args_facts facts_path =
 let parse_sparrow sparrow_dir =
   let node_json = Yojson.Basic.from_file (sparrow_dir ^ "/node.json") in
   let path = Filename.concat sparrow_dir "taint/datalog" in
-  let nodes = J.member "nodes" node_json in
-  let key_list = J.keys nodes in
   let alloc_exp_facts = parse_facts (Filename.concat path "AllocExp.facts") in
   let args_facts = parse_args_facts (Filename.concat path "Arg.facts") in
   let set_facts = parse_facts (Filename.concat path "Set.facts") in
   let call_facts = parse_call_facts (Filename.concat path "Set.facts") in
   let return_facts = parse_facts (Filename.concat path "Return.facts") in
   let assume_facts = parse_facts (Filename.concat path "Assume.facts") in
-  let exp_map = parse_map (Filename.concat path "Exp.map") in
-  let cfg =
-    List.fold_left
-      (fun acc k ->
-        let cont = J.member k nodes in
-        let cmd = J.to_list (J.member "cmd" cont) in
-        let loc = J.member "loc" cont in
-        let cmd =
-          match J.to_string (List.hd cmd) with
-          | "skip" -> CSkip (parse_loc (J.to_string loc))
-          | "return" ->
-              let arg_opt = StrMap.find_opt k return_facts in
-              if arg_opt = None then CNone
-              else
-                let arg = Option.get arg_opt in
-                if arg <> [] then
-                  CReturn1 (List.hd arg, parse_loc (J.to_string loc))
-                else CReturn2 (parse_loc (J.to_string loc))
-          | "call" ->
-              let arg_opt = StrMap.find_opt k call_facts in
-              if arg_opt = None then CNone
-              else
-                let arg = Option.get arg_opt in
-                let call_exp = List.nth arg 1 in
-                let lval = List.nth arg 0 in
-                let arg_lst = StrMap.find_opt call_exp args_facts in
-                let arg_lst =
-                  if arg_lst = None then [] else Option.get arg_lst
-                in
-                CCall
-                  ( List.hd arg,
-                    CCallExp (lval, arg_lst, parse_loc (J.to_string loc)),
-                    parse_loc (J.to_string loc) )
-          | "assume" ->
-              let arg_opt = StrMap.find_opt k assume_facts in
-              if arg_opt = None then CNone
-              else
-                let arg = Option.get arg_opt in
-                CAssume (List.hd arg, parse_loc (J.to_string loc))
-          | "set" ->
-              let arg = StrMap.find_opt k set_facts in
-              if arg = None then CNone
-              else
-                let arg = Option.get arg in
-                CSet (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
-          | "alloc" -> (
-              let arg = StrMap.find_opt k alloc_exp_facts in
-              match arg with
-              | None -> CNone
-              | Some arg ->
-                  CAlloc
-                    (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc)))
-          | "falloc" -> CNone
-          | "salloc" -> CNone
-          | _ ->
-              print_endline "----------";
-              print_endline (J.to_string (List.hd cmd));
-              print_endline "----------";
-              failwith "Unknown Command"
-        in
-        match cmd with CNone | CSkip _ -> acc | _ -> CfgMap.add cmd k acc)
-      CfgMap.empty key_list
-  in
-  (cfg, exp_map)
+  let nodes = J.member "nodes" node_json in
+  let key_list = J.keys nodes in
+  List.fold_left
+    (fun acc k ->
+      let cont = J.member k nodes in
+      let cmd = J.to_list (J.member "cmd" cont) in
+      let loc = J.member "loc" cont in
+      let cmd =
+        match J.to_string (List.hd cmd) with
+        | "skip" -> CSkip (parse_loc (J.to_string loc))
+        | "return" ->
+            let arg_opt = StrMap.find_opt k return_facts in
+            if arg_opt = None then CNone
+            else
+              let arg = Option.get arg_opt in
+              if arg <> [] then
+                CReturn1 (List.hd arg, parse_loc (J.to_string loc))
+              else CReturn2 (parse_loc (J.to_string loc))
+        | "call" ->
+            let arg = StrMap.find k call_facts in
+            let call_exp = List.nth arg 1 in
+            let lval = List.nth arg 0 in
+            let arg_lst = StrMap.find_opt call_exp args_facts in
+            let arg_lst = if arg_lst = None then [] else Option.get arg_lst in
+            CCall
+              ( List.hd arg,
+                CCallExp (lval, arg_lst, parse_loc (J.to_string loc)),
+                parse_loc (J.to_string loc) )
+        | "assume" ->
+            let arg = StrMap.find k assume_facts in
+            CAssume (List.hd arg, parse_loc (J.to_string loc))
+        | "set" ->
+            let arg = StrMap.find k set_facts in
+            CSet (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
+        | "alloc" -> (
+            let arg = StrMap.find_opt k alloc_exp_facts in
+            match arg with
+            | None -> CNone
+            | Some arg ->
+                CAlloc (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
+            )
+        | "falloc" -> CNone
+        | "salloc" -> CNone
+        | _ ->
+            print_endline "----------";
+            print_endline (J.to_string (List.hd cmd));
+            print_endline "----------";
+            failwith "Unknown Command"
+      in
+      match cmd with CNone -> acc | _ -> CfgMap.add cmd k acc)
+    CfgMap.empty key_list
 
 let cil_stmts = ref []
 
@@ -737,12 +743,6 @@ let extract_node file =
   let vis = new copyStmtVisitor in
   ignore (Cil.visitCilFile vis file);
   (file.globals, !cil_stmts)
-
-let extract_stmts file =
-  cil_stmts := [];
-  let vis = new copyStmtVisitor in
-  ignore (Cil.visitCilFile vis file);
-  !cil_stmts
 
 let is_empty_instr stmt =
   match stmt.Cil.skind with Cil.Instr [] -> true | _ -> false

@@ -127,7 +127,7 @@ let run target_dir donor_dir patch_dir db_dir =
     ^ Filename.basename target_dir
     |> Filename.concat db_dir
   in
-  (* let donor_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
+  let donor_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
   Maps.reset_maps donor_maps;
   Maps.reset_maps patch_maps;
   let donor = Parser.make donor_dir in
@@ -150,7 +150,7 @@ let run target_dir donor_dir patch_dir db_dir =
   (* L.info "Try matching with Patch...";
      Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]; *)
   Maps.dump "donor" donor_maps out_dir;
-  Maps.dump "patch" patch_maps out_dir;  *)
+  Maps.dump "patch" patch_maps out_dir;
   (* TODO: work on symdiff after encoding work is done *)
-  TF.extract_edit_function donor_dir patch_dir out_dir;
+  (* TF.extract_edit_function donor_dir patch_dir out_dir; *)
   L.info "Done."
