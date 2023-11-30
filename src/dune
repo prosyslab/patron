@@ -15,12 +15,11 @@
   chc
   bugPatDB
   patTrans
-  transformer
-  transformerHelper
-  translator
+  utils
+  ; translator
   symDiff
   diff
-  transplanter
+  ; transplanter
   inline)
  (libraries
   patronlib

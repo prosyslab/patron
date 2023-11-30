@@ -5,7 +5,7 @@ module L = Logger
 module Hashtbl = Stdlib.Hashtbl
 module Set = Stdlib.Set
 module Map = Stdlib.Map
-module TF = Transformer
+(* module TF = Transformer *)
 
 let rec fixedpoint rels terms deps =
   let deps', terms' =
@@ -119,7 +119,7 @@ let abstract_bug_pattern donor src snk alarm =
   in
   Chc.of_list [ errtrace_rule; (*error_cons;*) bug_rule ]
 
-let run target_dir donor_dir patch_dir db_dir =
+let run (i_opt, w_opt) target_dir donor_dir patch_dir db_dir =
   L.info "Add Bug Pattern to DB...";
   let out_dir =
     (Filename.dirname target_dir |> Filename.basename)
@@ -130,12 +130,26 @@ let run target_dir donor_dir patch_dir db_dir =
   let donor_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
   Maps.reset_maps donor_maps;
   Maps.reset_maps patch_maps;
-  let donor = Parser.make donor_dir in
-  let patch = Parser.make patch_dir in
+  let donor_ast =
+    Parser.parse_ast donor_dir |> fun f ->
+    if List.length i_opt <> 0 then Inline.perform i_opt f else f
+  in
+  let patch_ast =
+    Parser.parse_ast patch_dir |> fun f ->
+    if List.length i_opt <> 0 then Inline.perform i_opt f else f
+  in
+  L.info "Constructing AST diff...";
+  let ast_diff = Diff.define_diff donor_ast patch_ast in
+  L.info "Mapping CFG Elements to AST nodes...";
+  let sym_diff = SymDiff.define_sym_diff donor_dir donor_ast ast_diff in
+  if w_opt then L.info "Writing out the edit script...";
+  SymDiff.to_json sym_diff ast_diff out_dir;
+  let donor = Parser.make donor_dir donor_ast sym_diff in
+  (* let patch = Parser.make patch_dir in *)
   Chc.pretty_dump (Filename.concat out_dir "donor") donor;
   Chc.sexp_dump (Filename.concat out_dir "donor") donor;
-  Chc.pretty_dump (Filename.concat out_dir "patch") patch;
-  Chc.sexp_dump (Filename.concat out_dir "patch") patch;
+  (* Chc.pretty_dump (Filename.concat out_dir "patch") patch; *)
+  (* Chc.sexp_dump (Filename.concat out_dir "patch") patch; *)
   L.info "Make CHC done";
   let alarm_map = Parser.mk_alarm_map donor_dir in
   let (src, snk), one_alarm = Parser.AlarmMap.choose alarm_map in
@@ -150,7 +164,5 @@ let run target_dir donor_dir patch_dir db_dir =
   (* L.info "Try matching with Patch...";
      Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]; *)
   Maps.dump "donor" donor_maps out_dir;
-  Maps.dump "patch" patch_maps out_dir;
-  (* TODO: work on symdiff after encoding work is done *)
-  (* TF.extract_edit_function donor_dir patch_dir out_dir; *)
+  (* Maps.dump "patch" patch_maps out_dir; *)
   L.info "Done."

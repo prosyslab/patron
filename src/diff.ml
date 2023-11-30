@@ -1,4 +1,4 @@
-module H = TransformerHelper
+module H = Utils
 module J = Yojson.Basic
 module StrMap = Map.Make (String)
 
@@ -523,12 +523,6 @@ module Diff = struct
 
   let compare = compare
 end
-
-let parse_file fname =
-  if !Cilutil.printStages then ignore ();
-  let cil = Frontc.parse fname () in
-  if not (Feature.enabled "epicenter") then Rmtmps.removeUnusedTemps cil;
-  cil
 
 let define_diff donor_file patch_file =
   let globs1, globs2 =

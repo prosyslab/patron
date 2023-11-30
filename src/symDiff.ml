@@ -1,5 +1,5 @@
 module J = Yojson.Basic.Util
-module H = TransformerHelper
+module H = Utils
 module D = Diff
 
 module SElement = struct
@@ -69,7 +69,7 @@ module SElement = struct
 
   and sym_fieldinfo = { fcomp : sym_compinfo; fname : string; ftype : sym_typ }
   and sym_varinfo = { vname : string; vtype : sym_typ }
-  
+
   and sym_exp =
     | SENULL
     | SConst of sym_const
@@ -203,8 +203,11 @@ module SElement = struct
     | None -> Format.fprintf fmt "None"
     | Some lst ->
         Format.fprintf fmt "[";
-        List.iter (fun (s, t) -> Format.fprintf fmt "(%s, %a), " s pp_styp t) lst;
+        List.iter
+          (fun (s, t) -> Format.fprintf fmt "(%s, %a), " s pp_styp t)
+          lst;
         Format.fprintf fmt "]"
+
   and pp_senuminfo fmt e =
     Format.fprintf fmt "SEnumInfo(%s, %a)" e.ename pp_senumitem_lst e.eitems
 
@@ -214,8 +217,7 @@ module SElement = struct
     Format.fprintf fmt "]"
 
   and pp_scompinfo fmt c =
-    Format.fprintf fmt "SCompInfo(%s, %b)" c.cname 
-     c.cstruct
+    Format.fprintf fmt "SCompInfo(%s, %b)" c.cname c.cstruct
 
   and pp_sfieldinfo_lst fmt lst =
     Format.fprintf fmt "[";
@@ -699,16 +701,14 @@ module SDiff = struct
             else acc
         | _ -> acc)
       cfg []
-    and match_loop_id cfg loc =
-      H.CfgMap.fold
-        (fun k v acc ->
-          match k with
-          | H.CSkip (cloc) ->
-              if eq_line loc cloc then
-                v :: acc
-              else acc
-          | _ -> acc)
-        cfg []
+
+  and match_loop_id cfg loc =
+    H.CfgMap.fold
+      (fun k v acc ->
+        match k with
+        | H.CSkip cloc -> if eq_line loc cloc then v :: acc else acc
+        | _ -> acc)
+      cfg []
 
   and match_stmt_id cfg s =
     (*TODO: tighten the string match of stmt by subset*)
@@ -729,8 +729,8 @@ module SDiff = struct
     | Cil.If (cond, _, _, loc) ->
         let matched = match_assume_id cfg loc cond in
         if List.length matched >= 1 then List.hd matched else "None"
-    | Cil.Loop (_, loc, _, _) -> 
-      let matched = match_loop_id cfg loc in
+    | Cil.Loop (_, loc, _, _) ->
+        let matched = match_loop_id cfg loc in
         if List.length matched >= 1 then List.hd matched else "None"
     | _ -> "None"
 
@@ -754,14 +754,14 @@ module SDiff = struct
     | Cil.TArray (t', _, _) -> SArray (to_styp t')
     | Cil.TNamed (t', _) ->
         SNamed { sym_tname = t'.Cil.tname; sym_ttype = to_styp t'.ttype }
-    | Cil.TFun (t, lst, b, _) -> 
-      let slist = match lst with
-        | Some lst -> Some (List.map (fun (s, ty, _) -> (s, to_styp ty)) lst)
-        | None -> None
-    in
-      SFun (to_styp t, slist, b)
-    | Cil.TComp (c, _) ->
-        SComp (to_scompinfo c)
+    | Cil.TFun (t, lst, b, _) ->
+        let slist =
+          match lst with
+          | Some lst -> Some (List.map (fun (s, ty, _) -> (s, to_styp ty)) lst)
+          | None -> None
+        in
+        SFun (to_styp t, slist, b)
+    | Cil.TComp (c, _) -> SComp (to_scompinfo c)
     | Cil.TEnum _ -> failwith "TEnum: not implemented"
     | Cil.TBuiltin_va_list _ -> failwith "not supported"
 
@@ -769,12 +769,16 @@ module SDiff = struct
     {
       cname = c.Cil.cname;
       (* cfields =
-        List.fold_left (fun acc f -> to_sfieldinfo f :: acc) [] c.cfields; *)
+         List.fold_left (fun acc f -> to_sfieldinfo f :: acc) [] c.cfields; *)
       cstruct = c.cstruct;
     }
 
   and to_sfieldinfo f =
-    { fcomp = to_scompinfo f.Cil.fcomp; fname = f.fname; ftype = to_styp f.ftype }
+    {
+      fcomp = to_scompinfo f.Cil.fcomp;
+      fname = f.fname;
+      ftype = to_styp f.ftype;
+    }
 
   and to_sbinop op =
     match op with
@@ -969,11 +973,7 @@ module DiffJson = struct
                 ] );
           ]
     | SFun (t, lst, b) ->
-        let slist =
-          match lst with
-          | Some lst -> lst
-          | None -> []
-        in
+        let slist = match lst with Some lst -> lst | None -> [] in
         `Assoc
           [
             ( "fun",
@@ -982,9 +982,10 @@ module DiffJson = struct
                   ("typ", styp_to_sym t);
                   ( "args",
                     `List
-                      ((List.fold_left
+                      (List.fold_left
                          (fun acc (s, ty) -> `String s :: styp_to_sym ty :: acc)
-                         [] slist) |> List.rev) );
+                         [] slist
+                      |> List.rev) );
                   ("body", `Bool b);
                 ] );
           ]
@@ -992,11 +993,8 @@ module DiffJson = struct
         `Assoc
           [
             ( "comp",
-              `Assoc
-                [
-                  ("cname", `String c.cname);
-                  ("struct", `Bool c.cstruct)
-                ] );
+              `Assoc [ ("cname", `String c.cname); ("struct", `Bool c.cstruct) ]
+            );
           ]
     | _ -> failwith "styp_to_sym: not implemented"
 
@@ -1307,11 +1305,7 @@ module DiffJson = struct
     `Assoc
       [
         ( "comp",
-          `Assoc
-            [
-              ("name", `String c.cname);
-              ("struct", `Bool c.cstruct);
-            ] );
+          `Assoc [ ("name", `String c.cname); ("struct", `Bool c.cstruct) ] );
       ]
 
   and sconst_to_json (sconst : SElement.sym_const) =

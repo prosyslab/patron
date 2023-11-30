@@ -16,9 +16,7 @@ let get_loc_filename loc =
     String.sub loc.file (idx + 1) (len - idx - 1)
   with _ -> loc.file
 
-let eq_lval l1 l2 =
-  TransformerHelper.string_of_lval l1 = TransformerHelper.string_of_lval l2
-
+let eq_lval l1 l2 = Utils.string_of_lval l1 = Utils.string_of_lval l2
 let s_location loc = get_loc_filename loc ^ ":" ^ string_of_int loc.line
 
 module AbsDom = struct
@@ -2095,7 +2093,7 @@ let inline opt (global : Global.t) =
   let f = global.file in
   let regexps = List.map (fun str -> Str.regexp (".*" ^ str ^ ".*")) opt in
   let to_inline =
-    TransformerHelper.list_fold
+    Utils.list_fold
       (fun global to_inline ->
         match global with
         | GFun (fd, _)
@@ -2115,9 +2113,9 @@ let inline opt (global : Global.t) =
       to_inline
   in
   let to_exclude = varargs_procs @ recursive_procs in
-  (* L.info "To inline : %s\n" (TransformerHelper.string_of_list id to_inline);
+  (* L.info "To inline : %s\n" (Utils.string_of_list id to_inline);
      L.info "Excluded variable-arguments functions : %s\n"
-       (TransformerHelper.string_of_list id varargs_procs); *)
+       (Utils.string_of_list id varargs_procs); *)
   toinline := List.filter (fun fid -> not (List.mem fid to_exclude)) to_inline;
   (* List.iter (fun fid -> print_endline fid) !toinline; *)
   doit f;
@@ -2164,7 +2162,7 @@ class blockVisitor =
       ChangeDoChildrenPost (b, fun x -> x)
   end
 
-let perform (inline_opt : string list) file =
+let perform inline_opt file =
   let cil = makeCFGinfo file |> do_inline (List.rev inline_opt) in
   Cil.visitCilFile (new blockVisitor) cil;
   cil

@@ -6,42 +6,35 @@ module Term = C.Term
 module F = Format
 module L = Logger
 
-type command = DB | Patch
-
 let verbose = ref 0
 
 type t = {
   (* common options *)
-  command : command;
   debug : bool;
-  (* bug pattern DB options *)
   db_dir : string;
   memtrace : bool;
   target_dir : string;
-  donee_dir : string;
   patron_out_dir : string;
   inline : string list;
+  write_out : bool;
 }
 
 let empty =
   {
     (* common options *)
-    command = DB;
     debug = false;
     db_dir = "";
     memtrace = false;
-    (* bug pattern DB options *)
     target_dir = "";
-    (* Patch options *)
-    donee_dir = "";
     patron_out_dir = "";
     inline = [];
+    write_out = false;
   }
 
-let init debug db_dir inline memtrace =
+let init debug db_dir inline memtrace write_out =
   if debug then L.set_level L.DEBUG else L.set_level L.INFO;
   (try Unix.mkdir db_dir 0o775 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
-  { empty with debug; db_dir; inline; memtrace }
+  { empty with debug; db_dir; inline; memtrace; write_out }
 
 let common_opt =
   let docs = Manpage.s_common_options in
@@ -66,9 +59,15 @@ let common_opt =
   let memtrace =
     Arg.(value & flag & info [ "memtrace" ] ~docv:"BOOL" ~doc:"do memtrace")
   in
-  Term.(const init $ debug $ db_dir $ inline_opt $ memtrace)
+  let write_out =
+    Arg.(
+      value & flag
+      & info [ "w"; "write-out" ]
+          ~doc:"write out the diff.json file containing the detailed diff info")
+  in
+  Term.(const init $ debug $ db_dir $ inline_opt $ memtrace $ write_out)
 
-let db_opt copt target_dir =
+let main_opt copt target_dir =
   let out_dir =
     (Filename.dirname target_dir |> Filename.basename)
     ^ "-"
@@ -77,51 +76,7 @@ let db_opt copt target_dir =
   in
   (try Unix.mkdir out_dir 0o775 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
   Filename.concat out_dir "log.txt" |> L.from_file;
-  { copt with command = DB; target_dir }
-
-let db_cmd =
-  let name = "db" in
-  let doc =
-    "Extract (bug pattern, edit script) pair from donor project and add it to \
-     DB"
-  in
-  let man = [ `S Manpage.s_description ] in
-  let info = Cmd.info name ~doc ~man in
-  let target_dir =
-    Arg.(
-      required
-      & pos 0 (some file) None
-      & info [] ~docv:"TARGET_DIR"
-          ~doc:"The target directory that has bug and patch directories")
-  in
-  Cmd.v info Term.(const db_opt $ common_opt $ target_dir)
-
-let patch_opt copt donee_dir patron_out_dir =
-  (try Unix.mkdir patron_out_dir 0o775
-   with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
-  Filename.concat patron_out_dir "log.txt" |> L.from_file;
-  { copt with command = Patch; donee_dir; patron_out_dir }
-
-let patch_cmd =
-  let name = "patch" in
-  let doc = "Apply patch to donee project using patron DB" in
-  let man = [ `S Manpage.s_description ] in
-  let info = Cmd.info name ~doc ~man in
-  let donee_dir =
-    Arg.(
-      required
-      & pos 0 (some file) None
-      & info [] ~docv:"DONEE" ~doc:"The donee directory")
-  in
-  let patch_out_dir =
-    let default =
-      (Sys.getcwd () |> Unix.realpath |> Filename.concat) "patron-out"
-    in
-    Arg.(
-      value & opt string default
-      & info [ "o"; "out-dir" ] ~docv:"DIR" ~doc:"Output directory")
-  in
-  Cmd.v info Term.(const patch_opt $ common_opt $ donee_dir $ patch_out_dir)
+  { copt with target_dir }
 
 let main_cmd =
   let name = "patron" in
@@ -135,7 +90,14 @@ let main_cmd =
     ]
   in
   let info = Cmd.info name ~version:"0.0.1" ~doc ~man in
-  Cmd.group info [ db_cmd; patch_cmd ]
+  let target_dir =
+    Arg.(
+      required
+      & pos 0 (some file) None
+      & info [] ~docv:"TARGET_DIR"
+          ~doc:"The target directory that has bug and patch directories")
+  in
+  Cmd.v info Term.(const main_opt $ common_opt $ target_dir)
 
 let parse () =
   match Cmd.eval_value main_cmd with

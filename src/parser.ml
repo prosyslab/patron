@@ -4,6 +4,13 @@ module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module L = Logger
 
+let parse_ast target_dir =
+  let file = Utils.get_target_file target_dir in
+  if !Cilutil.printStages then ignore ();
+  let cil = Frontc.parse file () in
+  if not (Feature.enabled "epicenter") then Rmtmps.removeUnusedTemps cil;
+  cil
+
 let numer_cnt = ref 25
 
 let update_numer name =
@@ -49,7 +56,7 @@ let file2func = function
   | "EvalLv.facts" -> "EvalLv"
   | f -> L.error "file2func - wrong filename: %s" f
 
-let parse_facts datalog_dir fact_file =
+let parse_cf_facts datalog_dir fact_file =
   let func_name = file2func fact_file in
   let fact_file_path = Filename.concat datalog_dir fact_file in
   In_channel.read_lines fact_file_path
@@ -58,11 +65,21 @@ let parse_facts datalog_dir fact_file =
          Chc.Elt.FuncApply (func_name, args))
   |> Chc.of_list
 
-let make_facts work_dir =
+let make_cf_facts work_dir =
   let datalog_dir = Filename.concat work_dir "sparrow-out/taint/datalog" in
   List.fold_left ~init:Chc.empty
-    ~f:(fun facts file -> parse_facts datalog_dir file |> Chc.union facts)
+    ~f:(fun facts file -> parse_cf_facts datalog_dir file |> Chc.union facts)
     fact_files
+
+(*TODO: 1. iterate the patch function and make node map
+        2. add nodes as facts
+        3. get the nodes available in cfg that is in the node map
+        3. add parent relation just for the patch's parent .. or maybe all? should think about it*)
+let make_ast_facts work_dir ast diff =
+  failwith "make_ast_facts: not implemented"
+
+let make_facts work_dir ast diff =
+  Chc.union (make_ast_facts work_dir ast diff) (make_cf_facts work_dir)
 
 let rec sexp2chc = function
   | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->
