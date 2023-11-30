@@ -22,6 +22,7 @@ module SElement = struct
     | SNamed of sym_typeinfo
     | SComp of sym_compinfo
     | SEnum of sym_enuminfo
+    | SFun of sym_typ * (string * sym_typ) list option * bool
 
   and sym_binop =
     | SPlusA
@@ -62,13 +63,13 @@ module SElement = struct
 
   and sym_compinfo = {
     cname : string;
-    cfields : sym_fieldinfo list;
+    (* cfields : sym_fieldinfo list; *)
     cstruct : bool;
   }
 
   and sym_fieldinfo = { fcomp : sym_compinfo; fname : string; ftype : sym_typ }
   and sym_varinfo = { vname : string; vtype : sym_typ }
-
+  
   and sym_exp =
     | SENULL
     | SConst of sym_const
@@ -194,7 +195,16 @@ module SElement = struct
     | SNamed t -> Format.fprintf fmt "SNamed(%a)" pp_styp t.sym_ttype
     | SComp c -> Format.fprintf fmt "SComp(%a)" pp_scompinfo c
     | SEnum e -> Format.fprintf fmt "SEnum(%a)" pp_senuminfo e
+    | SFun (t, lst, b) ->
+        Format.fprintf fmt "SFun(%a, %a, %b)" pp_styp t pp_sfunargs lst b
 
+  and pp_sfunargs fmt lst =
+    match lst with
+    | None -> Format.fprintf fmt "None"
+    | Some lst ->
+        Format.fprintf fmt "[";
+        List.iter (fun (s, t) -> Format.fprintf fmt "(%s, %a), " s pp_styp t) lst;
+        Format.fprintf fmt "]"
   and pp_senuminfo fmt e =
     Format.fprintf fmt "SEnumInfo(%s, %a)" e.ename pp_senumitem_lst e.eitems
 
@@ -204,8 +214,8 @@ module SElement = struct
     Format.fprintf fmt "]"
 
   and pp_scompinfo fmt c =
-    Format.fprintf fmt "SCompInfo(%s, %a, %b)" c.cname pp_sfieldinfo_lst
-      c.cfields c.cstruct
+    Format.fprintf fmt "SCompInfo(%s, %b)" c.cname 
+     c.cstruct
 
   and pp_sfieldinfo_lst fmt lst =
     Format.fprintf fmt "[";
@@ -538,7 +548,7 @@ module SDiff = struct
     | Cil.Field (f, o) ->
         SElement.SField
           ( {
-              fcomp = { cname = f.fcomp.cname; cfields = []; cstruct = true };
+              fcomp = { cname = f.fcomp.cname; cstruct = true };
               fname = f.fname;
               ftype = to_styp f.ftype;
             },
@@ -563,7 +573,7 @@ module SDiff = struct
   and match_compinfo c =
     {
       SElement.cname = c.Cil.cname;
-      SElement.cfields = List.map match_fieldinfo c.Cil.cfields;
+      (* SElement.cfields = List.map match_fieldinfo c.Cil.cfields; *)
       SElement.cstruct = c.Cil.cstruct;
     }
 
@@ -689,6 +699,16 @@ module SDiff = struct
             else acc
         | _ -> acc)
       cfg []
+    and match_loop_id cfg loc =
+      H.CfgMap.fold
+        (fun k v acc ->
+          match k with
+          | H.CSkip (cloc) ->
+              if eq_line loc cloc then
+                v :: acc
+              else acc
+          | _ -> acc)
+        cfg []
 
   and match_stmt_id cfg s =
     (*TODO: tighten the string match of stmt by subset*)
@@ -709,7 +729,9 @@ module SDiff = struct
     | Cil.If (cond, _, _, loc) ->
         let matched = match_assume_id cfg loc cond in
         if List.length matched >= 1 then List.hd matched else "None"
-    | Cil.Loop _ -> "None"
+    | Cil.Loop (_, loc, _, _) -> 
+      let matched = match_loop_id cfg loc in
+        if List.length matched >= 1 then List.hd matched else "None"
     | _ -> "None"
 
   and match_const c exp_map =
@@ -732,27 +754,27 @@ module SDiff = struct
     | Cil.TArray (t', _, _) -> SArray (to_styp t')
     | Cil.TNamed (t', _) ->
         SNamed { sym_tname = t'.Cil.tname; sym_ttype = to_styp t'.ttype }
-    | Cil.TFun _ -> failwith "TFun: not implemented"
+    | Cil.TFun (t, lst, b, _) -> 
+      let slist = match lst with
+        | Some lst -> Some (List.map (fun (s, ty, _) -> (s, to_styp ty)) lst)
+        | None -> None
+    in
+      SFun (to_styp t, slist, b)
     | Cil.TComp (c, _) ->
-        SComp
-          {
-            cname = c.Cil.cname;
-            cfields = List.map (fun x -> to_sfieldinfo x) c.cfields;
-            cstruct = c.cstruct;
-          }
+        SComp (to_scompinfo c)
     | Cil.TEnum _ -> failwith "TEnum: not implemented"
     | Cil.TBuiltin_va_list _ -> failwith "not supported"
 
   and to_scompinfo c =
     {
       cname = c.Cil.cname;
-      cfields =
-        List.fold_left (fun acc f -> to_sfieldinfo f :: acc) [] c.cfields;
+      (* cfields =
+        List.fold_left (fun acc f -> to_sfieldinfo f :: acc) [] c.cfields; *)
       cstruct = c.cstruct;
     }
 
   and to_sfieldinfo f =
-    { fcomp = to_scompinfo f.fcomp; fname = f.fname; ftype = to_styp f.ftype }
+    { fcomp = to_scompinfo f.Cil.fcomp; fname = f.fname; ftype = to_styp f.ftype }
 
   and to_sbinop op =
     match op with
@@ -946,7 +968,37 @@ module DiffJson = struct
                   ("typ", styp_to_sym t.sym_ttype);
                 ] );
           ]
-    | _ -> failwith "not supported"
+    | SFun (t, lst, b) ->
+        let slist =
+          match lst with
+          | Some lst -> lst
+          | None -> []
+        in
+        `Assoc
+          [
+            ( "fun",
+              `Assoc
+                [
+                  ("typ", styp_to_sym t);
+                  ( "args",
+                    `List
+                      ((List.fold_left
+                         (fun acc (s, ty) -> `String s :: styp_to_sym ty :: acc)
+                         [] slist) |> List.rev) );
+                  ("body", `Bool b);
+                ] );
+          ]
+    | SComp c ->
+        `Assoc
+          [
+            ( "comp",
+              `Assoc
+                [
+                  ("cname", `String c.cname);
+                  ("struct", `Bool c.cstruct)
+                ] );
+          ]
+    | _ -> failwith "styp_to_sym: not implemented"
 
   let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
 
@@ -1258,12 +1310,6 @@ module DiffJson = struct
           `Assoc
             [
               ("name", `String c.cname);
-              ( "fields",
-                `List
-                  (List.rev
-                     (List.fold_left
-                        (fun acc x -> sfield_to_json x :: acc)
-                        [] c.cfields)) );
               ("struct", `Bool c.cstruct);
             ] );
       ]
