@@ -279,6 +279,14 @@ module SDiff = struct
     | SDeleteLval of sym_context * sym_node
     | SUpdateLval of sym_context * sym_node * sym_node
 
+  let extract_func_name sdiff =
+    match sdiff with
+    | SInsertStmt (ctx, _) | SDeleteStmt (ctx, _) -> ctx.func_name
+    | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) ->
+        ctx.func_name
+    | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) ->
+        ctx.func_name
+
   let rec mk_sdiff ctx cfg exp_map diff =
     match diff with
     | D.Diff.InsertStmt (_, s) ->
@@ -659,43 +667,49 @@ module SDiff = struct
 
   and eq_line loc cloc =
     let file_name = loc.Cil.file |> Filename.basename in
-    if loc.Cil.line = cloc.H.line && file_name = cloc.H.file then true
+    if
+      loc.Cil.line = cloc.H.CfgMap.Key.line
+      && file_name = cloc.H.CfgMap.Key.file
+    then true
     else false
 
   and match_set_id cfg loc =
-    H.CfgMap.fold
+    H.CfgMap.M.fold
       (fun k v acc ->
         match k with
-        | H.CSet (_, _, cloc)
-        | H.CAlloc (_, _, cloc)
-        | H.CFalloc (_, _, cloc)
-        | H.CSalloc (_, _, cloc) ->
+        | H.CfgMap.Key.CSet (_, _, cloc)
+        | H.CfgMap.Key.CAlloc (_, _, cloc)
+        | H.CfgMap.Key.CFalloc (_, _, cloc)
+        | H.CfgMap.Key.CSalloc (_, _, cloc) ->
             if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
   and match_call_id cfg loc =
-    H.CfgMap.fold
+    H.CfgMap.M.fold
       (fun k v acc ->
         match k with
-        | H.CCall (_, _, cloc) -> if eq_line loc cloc then v :: acc else acc
+        | H.CfgMap.Key.CCall (_, _, cloc) ->
+            if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
   and match_return_id cfg loc =
-    H.CfgMap.fold
+    H.CfgMap.M.fold
       (fun k v acc ->
         match k with
-        | H.CReturn1 (_, cloc) -> if eq_line loc cloc then v :: acc else acc
-        | H.CReturn2 cloc -> if eq_line loc cloc then v :: acc else acc
+        | H.CfgMap.Key.CReturn1 (_, cloc) ->
+            if eq_line loc cloc then v :: acc else acc
+        | H.CfgMap.Key.CReturn2 cloc ->
+            if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
   and match_assume_id cfg loc cond =
-    H.CfgMap.fold
+    H.CfgMap.M.fold
       (fun k v acc ->
         match k with
-        | H.CAssume (ccond, cloc) ->
+        | H.CfgMap.Key.CAssume (ccond, cloc) ->
             if eq_line loc cloc && H.string_of_exp cond |> H.subset ccond then
               v :: acc
             else acc
@@ -703,10 +717,10 @@ module SDiff = struct
       cfg []
 
   and match_loop_id cfg loc =
-    H.CfgMap.fold
+    H.CfgMap.M.fold
       (fun k v acc ->
         match k with
-        | H.CSkip cloc -> if eq_line loc cloc then v :: acc else acc
+        | H.CfgMap.Key.CSkip cloc -> if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
@@ -899,11 +913,11 @@ let get_gvars ast =
   Cil.visitCilFile gv ast
 
 let reduce_cfg cfg func_name =
-  H.CfgMap.fold
+  H.CfgMap.M.fold
     (fun k v acc ->
       let vname = Str.split (Str.regexp_string "-") v |> List.hd in
-      if vname = func_name then H.CfgMap.add k v acc else acc)
-    cfg H.CfgMap.empty
+      if vname = func_name then H.CfgMap.M.add k v acc else acc)
+    cfg H.CfgMap.M.empty
 
 let define_sym_diff donor_dir donor diff =
   get_gvars donor;
@@ -916,11 +930,11 @@ let define_sym_diff donor_dir donor diff =
       let root_func, _ = List.hd s_root_path in
       let rest_path = List.tl s_root_path in
       let parent_fun = get_parent_fun root_path in
-      let cfg_reduced = reduce_cfg cfg parent_fun.vname in
+      H.cfg := reduce_cfg cfg parent_fun.vname;
       let s_context : SDiff.sym_context =
         { parent = rest_path; func_name = root_func }
       in
-      SDiff.mk_sdiff s_context cfg_reduced exp_map d :: acc)
+      SDiff.mk_sdiff s_context !H.cfg exp_map d :: acc)
     [] diff
 
 (* json area *)

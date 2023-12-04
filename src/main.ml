@@ -17,6 +17,7 @@ let main () =
       ~filename:(Filename.concat options.Options.db_dir "memtrace")
     |> ignore;
   let opts = (options.Options.inline, options.Options.write_out) in
+  Logger.info "Starting Patron...";
   extract_bug_pattern opts options.Options.target_dir options.Options.db_dir
 
 let _ = main ()

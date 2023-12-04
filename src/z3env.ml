@@ -18,6 +18,7 @@ type t = {
   two : Z3.Expr.expr;
   three : Z3.Expr.expr;
   node : Z3.Sort.sort;
+  ast_node : Z3.Sort.sort;
   lval : Z3.Sort.sort;
   expr : Z3.Sort.sort;
   binop_sort : Z3.Sort.sort;
@@ -29,6 +30,8 @@ type t = {
   value : Z3.Sort.sort;
   const : Z3.Sort.sort;
   (* Functions for specifying source, sink *)
+  ast_parent : Z3.FuncDecl.func_decl;
+  eq_node : Z3.FuncDecl.func_decl;
   src : Z3.FuncDecl.func_decl;
   snk : Z3.FuncDecl.func_decl;
   skip : Z3.FuncDecl.func_decl;
@@ -90,6 +93,8 @@ let mk_fixedpoint z3ctx =
   s
 
 let reg_rel_to_solver env solver =
+  Z3.Fixedpoint.register_relation solver env.eq_node;
+  Z3.Fixedpoint.register_relation solver env.ast_parent;
   Z3.Fixedpoint.register_relation solver env.src;
   Z3.Fixedpoint.register_relation solver env.snk;
   Z3.Fixedpoint.register_relation solver env.skip;
@@ -145,6 +150,7 @@ let fact_files =
 
 let pos_numer_cnt = ref 2
 let node_numer_cnt = ref 1
+let ast_node_numer_cnt = ref 1
 let lval_numer_cnt = ref 1
 let expr_numer_cnt = ref 1
 let identifier_numer_cnt = ref 1
@@ -176,6 +182,10 @@ let mk_env () =
   let node =
     Z3.FiniteDomain.mk_sort_s z3ctx "node" (Int64.of_int !node_numer_cnt)
   in
+  let ast_node =
+    Z3.FiniteDomain.mk_sort_s z3ctx "ast_node"
+      (Int64.of_int !ast_node_numer_cnt)
+  in
   let lval =
     Z3.FiniteDomain.mk_sort_s z3ctx "lval" (Int64.of_int !lval_numer_cnt)
   in
@@ -203,6 +213,13 @@ let mk_env () =
   in
   let const =
     Z3.FiniteDomain.mk_sort_s z3ctx "const" (Int64.of_int !const_numer_cnt)
+  in
+  let ast_parent =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "AstParent" [ ast_node; ast_node ]
+      boolean_sort
+  in
+  let eq_node =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "EqNode" [ node; ast_node ] boolean_sort
   in
   let src = Z3.FuncDecl.mk_func_decl_s z3ctx "Src" [ node ] boolean_sort in
   let snk = Z3.FuncDecl.mk_func_decl_s z3ctx "Snk" [ node ] boolean_sort in
@@ -392,6 +409,7 @@ let mk_env () =
       two;
       three;
       node;
+      ast_node;
       lval;
       expr;
       binop_sort;
@@ -402,6 +420,8 @@ let mk_env () =
       loc;
       value;
       const;
+      ast_parent;
+      eq_node;
       src;
       snk;
       skip;

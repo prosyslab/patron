@@ -531,72 +531,56 @@ let delete_after_elt_exp elt lst =
   if List.length result = List.length lst - 1 then result
   else failwith "exp_list delete error"
 
-type loc = { file : string; line : int }
+module CfgMap = struct
+  module Key = struct
+    type loc = { file : string; line : int }
 
-type cfg_node =
-  | CNone
-  | CSet of string * string * loc (* (lv, e, loc) *)
-  | CExternal of string * loc (*(lv, loc)*)
-  | CAlloc of string * string * loc (*(lv, Array e, _, loc) *)
-  | CSalloc of string * string * loc (*(lv, s, loc) *)
-  | CFalloc of string * string * loc (*(lv, f, loc) *)
-  | CCall of string * cfg_node * loc (*(Some lv, CcallExp(fexp, params, loc))*)
-  | CCallExp of string * string list * loc (*(None, fexp, params, loc)*)
-  | CReturn1 of string * loc (*(Some e, loc) *)
-  | CReturn2 of loc (*(None, loc) *)
-  | CIf of loc (*(_, _, _, loc) *)
-  | CAssume of string * loc (*(e, _, loc) *)
-  | CLoop of loc (*loc *)
-  | CAsm of loc (*(_, _, _, _, _, loc) *)
-  | CSkip of loc (*(_, loc)*)
+    type t =
+      | CNone
+      | CSet of string * string * loc (* (lv, e, loc) *)
+      | CExternal of string * loc (*(lv, loc)*)
+      | CAlloc of string * string * loc (*(lv, Array e, _, loc) *)
+      | CSalloc of string * string * loc (*(lv, s, loc) *)
+      | CFalloc of string * string * loc (*(lv, f, loc) *)
+      | CCall of string * t * loc (*(Some lv, CcallExp(fexp, params, loc))*)
+      | CCallExp of string * string list * loc (*(None, fexp, params, loc)*)
+      | CReturn1 of string * loc (*(Some e, loc) *)
+      | CReturn2 of loc (*(None, loc) *)
+      | CIf of loc (*(_, _, _, loc) *)
+      | CAssume of string * loc (*(e, _, loc) *)
+      | CLoop of loc (*loc *)
+      | CAsm of loc (*(_, _, _, _, _, loc) *)
+      | CSkip of loc (*(_, loc)*)
 
-let print_cfg_node cfg_node =
-  match cfg_node with
-  | CSet (lv, e, loc) ->
-      print_endline
-        ("set\t" ^ lv ^ "\t" ^ e ^ "\t" ^ loc.file ^ ":"
-       ^ string_of_int loc.line)
-  | CExternal (lv, loc) ->
-      print_endline
-        ("external\t" ^ lv ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | CAlloc (lv, e, loc) ->
-      print_endline
-        ("alloc\t" ^ lv ^ "\t" ^ e ^ "\t" ^ loc.file ^ ":"
-       ^ string_of_int loc.line)
-  | CSalloc (lv, s, loc) ->
-      print_endline
-        ("salloc\t" ^ lv ^ "\t" ^ s ^ "\t" ^ loc.file ^ ":"
-       ^ string_of_int loc.line)
-  | CFalloc (lv, f, loc) ->
-      print_endline
-        ("falloc\t" ^ lv ^ "\t" ^ f ^ "\t" ^ loc.file ^ ":"
-       ^ string_of_int loc.line)
-  | CReturn1 (e, loc) ->
-      print_endline
-        ("return\t" ^ e ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | CReturn2 loc ->
-      print_endline
-        ("return\t" ^ "null" ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | CIf loc -> print_endline ("if\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | CAssume (e, loc) ->
-      print_endline
-        ("assume\t" ^ e ^ "\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | CLoop loc ->
-      print_endline ("loop\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | CAsm loc -> print_endline ("asm\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | CSkip loc ->
-      print_endline ("skip\t" ^ loc.file ^ ":" ^ string_of_int loc.line)
-  | _ -> ()
+    let rec size = function
+      | CNone -> 0
+      | CSet _ -> 2
+      | CExternal _ -> 1
+      | CAlloc _ -> 2
+      | CSalloc _ -> 2
+      | CFalloc _ -> 2
+      | CCall (_, cfg, _) -> 1 + size cfg
+      | CCallExp (_, param, _) -> 1 + List.length param
+      | CReturn1 _ | CReturn2 _ -> 1
+      | CIf _ -> 3
+      | CAssume _ -> 1
+      | CLoop _ -> 1
+      | CAsm _ -> 0
+      | CSkip _ -> 0
 
-module CfgMap = Map.Make (struct
-  type t = cfg_node
+    let compare a b = Int.compare (size a) (size b)
+  end
 
-  let compare = compare
-end)
+  module M = Map.Make (Key)
+
+  type t = string M.t
+end
+
+let cfg : CfgMap.t ref = ref CfgMap.M.empty
 
 let parse_loc loc =
   let parsed = Str.split (Str.regexp ":") loc in
-  if List.length parsed <> 2 then { file = ""; line = -1 }
+  if List.length parsed <> 2 then { CfgMap.Key.file = ""; line = -1 }
   else { file = List.nth parsed 0; line = int_of_string (List.nth parsed 1) }
 
 let parse_facts facts_path =
@@ -665,7 +649,7 @@ let parse_sparrow sparrow_dir =
         let loc = J.member "loc" cont in
         let cmd =
           match J.to_string (List.hd cmd) with
-          | "skip" -> CSkip (parse_loc (J.to_string loc))
+          | "skip" -> CfgMap.Key.CSkip (parse_loc (J.to_string loc))
           | "return" ->
               let arg_opt = StrMap.find_opt k return_facts in
               if arg_opt = None then CNone
@@ -716,8 +700,8 @@ let parse_sparrow sparrow_dir =
               print_endline "----------";
               failwith "Unknown Command"
         in
-        match cmd with CNone | CSkip _ -> acc | _ -> CfgMap.add cmd k acc)
-      CfgMap.empty key_list
+        match cmd with CNone | CSkip _ -> acc | _ -> CfgMap.M.add cmd k acc)
+      CfgMap.M.empty key_list
   in
   (cfg, exp_map)
 
@@ -731,6 +715,26 @@ class copyStmtVisitor =
       cil_stmts := stmt :: !cil_stmts;
       DoChildren
   end
+
+let stmt_lst = ref []
+let target_func = ref ""
+
+class functionVisitor =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vfunc func =
+      if func.svar.vname = !target_func then (
+        stmt_lst := func.sbody.bstmts;
+        SkipChildren)
+      else DoChildren
+  end
+
+let extract_target_func_stmt_lst file target =
+  target_func := target;
+  let vis = new functionVisitor in
+  ignore (Cil.visitCilFile vis file);
+  !stmt_lst
 
 let extract_node file =
   cil_stmts := [];
@@ -831,3 +835,8 @@ let get_global_loc glob =
 
 let s_location (loc : Cil.location) =
   get_loc_filename loc ^ ":" ^ string_of_int loc.line
+
+let get_target_file target_dir =
+  Sys.readdir target_dir |> Array.to_list
+  |> List.filter (fun x -> Filename.check_suffix x ".c")
+  |> List.hd |> Filename.concat target_dir

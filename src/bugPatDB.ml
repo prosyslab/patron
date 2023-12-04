@@ -5,7 +5,6 @@ module L = Logger
 module Hashtbl = Stdlib.Hashtbl
 module Set = Stdlib.Set
 module Map = Stdlib.Map
-(* module TF = Transformer *)
 
 let rec fixedpoint rels terms deps =
   let deps', terms' =
@@ -144,12 +143,10 @@ let run (i_opt, w_opt) target_dir donor_dir patch_dir db_dir =
   let sym_diff = SymDiff.define_sym_diff donor_dir donor_ast ast_diff in
   if w_opt then L.info "Writing out the edit script...";
   SymDiff.to_json sym_diff ast_diff out_dir;
+  (* TODO: iter this process so that there will be n Chcs *)
   let donor = Parser.make donor_dir donor_ast sym_diff in
-  (* let patch = Parser.make patch_dir in *)
   Chc.pretty_dump (Filename.concat out_dir "donor") donor;
   Chc.sexp_dump (Filename.concat out_dir "donor") donor;
-  (* Chc.pretty_dump (Filename.concat out_dir "patch") patch; *)
-  (* Chc.sexp_dump (Filename.concat out_dir "patch") patch; *)
   L.info "Make CHC done";
   let alarm_map = Parser.mk_alarm_map donor_dir in
   let (src, snk), one_alarm = Parser.AlarmMap.choose alarm_map in
