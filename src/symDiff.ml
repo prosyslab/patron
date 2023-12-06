@@ -5,10 +5,10 @@ module D = Diff
 module SElement = struct
   type t =
     | SNull
-    | SGlob of sym_global
-    | SStmt of sym_stmt
-    | SExp of sym_exp
-    | SLval of sym_lval
+    | SGlob of sym_global * Cil.global
+    | SStmt of sym_stmt * Cil.stmt
+    | SExp of sym_exp * Cil.exp
+    | SLval of sym_lval * Cil.lval
 
   and sym_typeinfo = { sym_tname : string; sym_ttype : sym_typ }
   and sym_enuminfo = { ename : string; eitems : (string * sym_node) list }
@@ -86,7 +86,7 @@ module SElement = struct
     | SAddrOfLabel of sym_node
 
   and sym_lhost = SVar of sym_varinfo | SMem of sym_node
-  and sym_lval = sym_lhost * sym_offset
+  and sym_lval = SLNull | Lval of sym_lhost * sym_offset
 
   and sym_stmt =
     | SSNull
@@ -103,19 +103,14 @@ module SElement = struct
     | SGFun of string * string
     | GVar of string * string
 
-  and sym_node = {
-    node : t;
-    id : string;
-    literal : string;
-    cil : Diff.CilElement.t;
-  }
+  and sym_node = { node : t; id : string; literal : string }
 
   let rec pp_node fmt e =
     match e.node with
     | SNull -> Format.fprintf fmt "SNull"
-    | SStmt s -> Format.fprintf fmt "SStmt(%a)" pp_sstmt s
-    | SExp e -> Format.fprintf fmt "SExp(%a)" pp_sexp e
-    | SLval l -> Format.fprintf fmt "SLval(%a)" pp_slval l
+    | SStmt (s, _) -> Format.fprintf fmt "SStmt(%a)" pp_sstmt s
+    | SExp (e, _) -> Format.fprintf fmt "SExp(%a)" pp_sexp e
+    | SLval (l, _) -> Format.fprintf fmt "SLval(%a)" pp_slval l
     | _ -> failwith "not implemented"
 
   and pp_node_lst fmt lst =
@@ -149,10 +144,12 @@ module SElement = struct
     Format.fprintf fmt "SVarInfo(%s, %a)" v.vname pp_styp v.vtype
 
   and pp_slval fmt l =
-    let lhost, _ = l in
-    match lhost with
-    | SVar v -> Format.fprintf fmt "LVar(%a)" pp_svarinfo v
-    | SMem e -> Format.fprintf fmt "LMem(%a)" pp_node e
+    match l with
+    | SLNull -> Format.fprintf fmt "SLNull"
+    | Lval (lhost, _) -> (
+        match lhost with
+        | SVar v -> Format.fprintf fmt "LVar(%a)" pp_svarinfo v
+        | SMem e -> Format.fprintf fmt "LMem(%a)" pp_node e)
 
   and pp_soptexp fmt e =
     match e with None -> Format.fprintf fmt "None" | Some e -> pp_node fmt e
@@ -265,7 +262,8 @@ module SDiff = struct
   include SElement
 
   type sym_context = {
-    parent : (string * Diff.CilElement.t) list;
+    parent : sym_node list;
+    patch_node : sym_node;
     func_name : string;
   }
 
@@ -293,19 +291,17 @@ module SDiff = struct
         SInsertStmt
           ( ctx,
             {
-              node = SStmt (match_stmt cfg exp_map s);
+              node = SStmt (match_stmt cfg exp_map s, s);
               id = match_stmt_id cfg s.Cil.skind;
               literal = H.string_of_stmt s;
-              cil = Diff.CilElement.EStmt s;
             } )
     | D.Diff.DeleteStmt (_, s) ->
         SDeleteStmt
           ( ctx,
             {
-              node = SStmt (match_stmt cfg exp_map s);
+              node = SStmt (match_stmt cfg exp_map s, s);
               id = match_stmt_id cfg s.Cil.skind;
               literal = H.string_of_stmt s;
-              cil = Diff.CilElement.EStmt s;
             } )
     | _ -> failwith "mk_sdiff: not implemented"
 
@@ -314,27 +310,24 @@ module SDiff = struct
     | Cil.If (e, s1, s2, _) ->
         SElement.SIf
           ( {
-              node = SExp (match_exp cfg exp_map e);
+              node = SExp (match_exp cfg exp_map e, e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
-              cil = Diff.CilElement.EExp e;
             },
             List.map
               (fun s ->
                 {
-                  SElement.node = SStmt (match_stmt cfg exp_map s);
+                  SElement.node = SStmt (match_stmt cfg exp_map s, s);
                   id = match_stmt_id cfg s.Cil.skind;
                   literal = H.string_of_stmt s;
-                  cil = Diff.CilElement.EStmt s;
                 })
               s1.Cil.bstmts,
             List.map
               (fun s ->
                 {
-                  SElement.node = SStmt (match_stmt cfg exp_map s);
+                  SElement.node = SStmt (match_stmt cfg exp_map s, s);
                   id = match_stmt_id cfg s.Cil.skind;
                   literal = H.string_of_stmt s;
-                  cil = Diff.CilElement.EStmt s;
                 })
               s2.Cil.bstmts )
     | Cil.Instr i -> (
@@ -343,57 +336,50 @@ module SDiff = struct
         | Cil.Set (l, e, _) ->
             SElement.SSet
               ( {
-                  node = SLval (match_lval cfg exp_map l);
+                  node = SLval (match_lval cfg exp_map l, l);
                   id = match_lval_id exp_map l;
                   literal = H.string_of_lval l;
-                  cil = Diff.CilElement.ELval l;
                 },
                 {
-                  node = SExp (match_exp cfg exp_map e);
+                  node = SExp (match_exp cfg exp_map e, e);
                   id = match_exp_id exp_map e;
                   literal = H.string_of_exp e;
-                  cil = Diff.CilElement.EExp e;
                 } )
         | Cil.Call (Some l, e, es, _) ->
             SElement.SCall
               ( Some
                   {
-                    node = SLval (match_lval cfg exp_map l);
+                    node = SLval (match_lval cfg exp_map l, l);
                     id = match_lval_id exp_map l;
                     literal = H.string_of_lval l;
-                    cil = Diff.CilElement.ELval l;
                   },
                 {
-                  node = SExp (match_exp cfg exp_map e);
+                  node = SExp (match_exp cfg exp_map e, e);
                   id = match_exp_id exp_map e;
                   literal = H.string_of_exp e;
-                  cil = Diff.CilElement.EExp e;
                 },
                 List.map
                   (fun e ->
                     {
-                      SElement.node = SExp (match_exp cfg exp_map e);
+                      SElement.node = SExp (match_exp cfg exp_map e, e);
                       id = match_exp_id exp_map e;
                       literal = H.string_of_exp e;
-                      cil = Diff.CilElement.EExp e;
                     })
                   es )
         | Cil.Call (None, e, es, _) ->
             SElement.SCall
               ( None,
                 {
-                  node = SExp (match_exp cfg exp_map e);
+                  node = SExp (match_exp cfg exp_map e, e);
                   id = match_exp_id exp_map e;
                   literal = H.string_of_exp e;
-                  cil = Diff.CilElement.EExp e;
                 },
                 List.map
                   (fun e ->
                     {
-                      SElement.node = SExp (match_exp cfg exp_map e);
+                      SElement.node = SExp (match_exp cfg exp_map e, e);
                       id = match_exp_id exp_map e;
                       literal = H.string_of_exp e;
-                      cil = Diff.CilElement.EExp e;
                     })
                   es )
         | _ -> failwith "match_stmt: not supported")
@@ -402,10 +388,9 @@ module SDiff = struct
           List.fold_left
             (fun (acc : SElement.sym_node list) s ->
               {
-                node = SStmt (match_stmt cfg exp_map s);
+                node = SStmt (match_stmt cfg exp_map s, s);
                 id = match_stmt_id cfg s.Cil.skind;
                 literal = H.string_of_stmt s;
-                cil = Diff.CilElement.EStmt s;
               }
               :: acc)
             [] b.bstmts
@@ -416,19 +401,17 @@ module SDiff = struct
         SElement.SReturn
           (Some
              {
-               node = SExp (match_exp cfg exp_map e);
+               node = SExp (match_exp cfg exp_map e, e);
                id = match_exp_id exp_map e;
                literal = H.string_of_exp e;
-               cil = Diff.CilElement.EExp e;
              })
     | Cil.Return (None, _) -> SElement.SReturn None
     | Cil.Goto (s, _) ->
         SElement.SGoto
           {
-            node = SStmt (match_stmt cfg exp_map !s);
+            node = SStmt (match_stmt cfg exp_map !s, !s);
             id = match_stmt_id cfg !s.Cil.skind;
             literal = H.string_of_stmt !s;
-            cil = Diff.CilElement.EStmt !s;
           }
     | _ -> failwith "match_stmt: not implemented"
 
@@ -438,100 +421,88 @@ module SDiff = struct
     | Cil.Lval l ->
         SELval
           {
-            node = SLval (match_lval cfg exp_map l);
+            node = SLval (match_lval cfg exp_map l, l);
             id = match_lval_id exp_map l;
             literal = H.string_of_lval l;
-            cil = Diff.CilElement.ELval l;
           }
     | Cil.SizeOf t -> SSizeOf (to_styp t)
     | Cil.SizeOfE e' ->
         SSizeOfE
           {
-            node = SExp (match_exp cfg exp_map e');
+            node = SExp (match_exp cfg exp_map e', e');
             id = match_exp_id exp_map e';
             literal = H.string_of_exp e';
-            cil = Diff.CilElement.EExp e';
           }
     | Cil.SizeOfStr s -> SSizeOfStr s
     | Cil.BinOp (op, e1, e2, t) ->
         SBinOp
           ( to_sbinop op,
             {
-              node = SExp (match_exp cfg exp_map e1);
+              node = SExp (match_exp cfg exp_map e1, e1);
               id = match_exp_id exp_map e1;
               literal = H.string_of_exp e1;
-              cil = Diff.CilElement.EExp e1;
             },
             {
-              node = SExp (match_exp cfg exp_map e2);
+              node = SExp (match_exp cfg exp_map e2, e2);
               id = match_exp_id exp_map e2;
               literal = H.string_of_exp e2;
-              cil = Diff.CilElement.EExp e2;
             },
             to_styp t )
     | Cil.UnOp (op, e, t) ->
         SUnOp
           ( to_sunop op,
             {
-              node = SExp (match_exp cfg exp_map e);
+              node = SExp (match_exp cfg exp_map e, e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
-              cil = Diff.CilElement.EExp e;
             },
             to_styp t )
     | Cil.CastE (t, e) ->
         SCastE
           ( to_styp t,
             {
-              node = SExp (match_exp cfg exp_map e);
+              node = SExp (match_exp cfg exp_map e, e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
-              cil = Diff.CilElement.EExp e;
             } )
     | Cil.Question (e1, e2, e3, t) ->
         SQuestion
           ( {
-              node = SExp (match_exp cfg exp_map e1);
+              node = SExp (match_exp cfg exp_map e1, e1);
               id = match_exp_id exp_map e1;
               literal = H.string_of_exp e1;
-              cil = Diff.CilElement.EExp e1;
             },
             {
-              node = SExp (match_exp cfg exp_map e2);
+              node = SExp (match_exp cfg exp_map e2, e2);
               id = match_exp_id exp_map e2;
               literal = H.string_of_exp e2;
-              cil = Diff.CilElement.EExp e2;
             },
             {
-              node = SExp (match_exp cfg exp_map e3);
+              node = SExp (match_exp cfg exp_map e3, e3);
               id = match_exp_id exp_map e3;
               literal = H.string_of_exp e3;
-              cil = Diff.CilElement.EExp e3;
             },
             to_styp t )
     | Cil.AddrOf l ->
         SAddrOf
           {
-            node = SLval (match_lval cfg exp_map l);
+            node = SLval (match_lval cfg exp_map l, l);
             id = match_lval_id exp_map l;
             literal = H.string_of_lval l;
-            cil = Diff.CilElement.ELval l;
           }
     | Cil.StartOf l ->
         SStartOf
           {
-            node = SLval (match_lval cfg exp_map l);
+            node = SLval (match_lval cfg exp_map l, l);
             id = match_lval_id exp_map l;
             literal = H.string_of_lval l;
-            cil = Diff.CilElement.ELval l;
           }
     | Cil.AddrOfLabel stmt ->
         SAddrOfLabel
           {
-            node = SStmt (match_stmt cfg exp_map !stmt);
+            node = SStmt (match_stmt cfg exp_map !stmt, !stmt);
             id = match_stmt_id cfg !stmt.Cil.skind;
             literal = H.string_of_stmt !stmt;
-            cil = Diff.CilElement.EStmt !stmt;
           }
     | _ -> failwith "match_exp: not implemented"
 
@@ -543,14 +514,13 @@ module SDiff = struct
       | Cil.Mem e ->
           SElement.SMem
             {
-              node = SExp (match_exp cfg exp_map e);
+              node = SExp (match_exp cfg exp_map e, e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
-              cil = Diff.CilElement.EExp e;
             }
     in
     let soffset = match_offset cfg exp_map offset in
-    (slhost, soffset)
+    Lval (slhost, soffset)
 
   and match_offset cfg exp_map o =
     match o with
@@ -566,10 +536,9 @@ module SDiff = struct
     | Cil.Index (e, o) ->
         SElement.SIndex
           ( {
-              node = SExp (match_exp cfg exp_map e);
+              node = SExp (match_exp cfg exp_map e, e);
               id = match_exp_id exp_map e;
               literal = H.string_of_exp e;
-              cil = Diff.CilElement.EExp e;
             },
             match_offset cfg exp_map o )
 
@@ -598,13 +567,33 @@ module SDiff = struct
     | hd :: tl -> (
         match hd with
         | D.CilElement.EStmt s ->
-            (match_stmt_id cfg s.Cil.skind, hd) :: match_context cfg exp_map tl
+            {
+              id = match_stmt_id cfg s.Cil.skind;
+              node = SStmt (SSNull, s);
+              literal = H.string_of_stmt s;
+            }
+            :: match_context cfg exp_map tl
         | D.CilElement.EExp e ->
-            (match_exp_id exp_map e, hd) :: match_context cfg exp_map tl
+            {
+              id = match_exp_id exp_map e;
+              node = SExp (SENULL, e);
+              literal = H.string_of_exp e;
+            }
+            :: match_context cfg exp_map tl
         | D.CilElement.ELval l ->
-            (match_lval_id exp_map l, hd) :: match_context cfg exp_map tl
+            {
+              id = match_lval_id exp_map l;
+              node = SLval (SLNull, l);
+              literal = H.string_of_lval l;
+            }
+            :: match_context cfg exp_map tl
         | D.CilElement.EGlobal g ->
-            (extract_fun_name g, hd) :: match_context cfg exp_map tl
+            {
+              id = extract_fun_name g;
+              node = SGlob (SGNull, g);
+              literal = H.string_of_global g;
+            }
+            :: match_context cfg exp_map tl
         | _ -> failwith "match_context: not implemented")
 
   and match_exp_id exp_map e =
@@ -925,14 +914,17 @@ let define_sym_diff donor_dir donor diff =
   let cfg, exp_map = H.parse_sparrow sparrow_dir in
   List.fold_left
     (fun acc d ->
-      let root_path = get_parent_lst d in
-      let s_root_path = List.rev root_path |> SDiff.match_context cfg exp_map in
-      let root_func, _ = List.hd s_root_path in
+      let root_path = get_parent_lst d |> List.rev in
+      let s_root_path = SDiff.match_context cfg exp_map root_path in
       let rest_path = List.tl s_root_path in
       let parent_fun = get_parent_fun root_path in
       H.cfg := reduce_cfg cfg parent_fun.vname;
       let s_context : SDiff.sym_context =
-        { parent = rest_path; func_name = root_func }
+        {
+          parent = rest_path;
+          patch_node = List.hd rest_path;
+          func_name = parent_fun.vname;
+        }
       in
       SDiff.mk_sdiff s_context !H.cfg exp_map d :: acc)
     [] diff
@@ -1023,7 +1015,7 @@ module DiffJson = struct
             ( "parent",
               `List
                 (List.fold_left
-                   (fun acc (id, _) -> `String id :: acc)
+                   (fun acc node -> `String node.id :: acc)
                    [] context.parent) );
           ] )
     in
@@ -1048,7 +1040,7 @@ module DiffJson = struct
     let node = sstmt.node in
     let stmt =
       match node with
-      | SStmt s -> s
+      | SStmt (s, _) -> s
       | _ -> failwith "sstmt_to_json: undefined sstmt"
     in
     match stmt with
@@ -1178,7 +1170,7 @@ module DiffJson = struct
     let node = sexp.node in
     let exp =
       match node with
-      | SExp e -> e
+      | SExp (e, _) -> e
       | _ -> failwith "sexp_to_json: undefined sexp"
     in
     match exp with
@@ -1253,25 +1245,27 @@ module DiffJson = struct
     let node = slval.node in
     let lval =
       match node with
-      | SLval l -> l
+      | SLval (l, _) -> l
       | _ -> failwith "slval_to_json: undefined slval"
     in
-    let lhost, offset = lval in
-    `Assoc
-      [
-        ( "node",
-          `Assoc
-            [
-              ( "lval",
-                `Assoc
-                  [
-                    ("lhost", slhost_to_json lhost);
-                    ("offset", soffset_to_json offset);
-                  ] );
-            ] );
-        ("id", `String slval.id);
-        ("literal", `String slval.literal);
-      ]
+    match lval with
+    | SLNull -> `Null
+    | Lval (lhost, offset) ->
+        `Assoc
+          [
+            ( "node",
+              `Assoc
+                [
+                  ( "lval",
+                    `Assoc
+                      [
+                        ("lhost", slhost_to_json lhost);
+                        ("offset", soffset_to_json offset);
+                      ] );
+                ] );
+            ("id", `String slval.id);
+            ("literal", `String slval.literal);
+          ]
 
   and slhost_to_json lhost =
     match lhost with

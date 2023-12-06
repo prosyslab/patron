@@ -1,8 +1,9 @@
 module S = SymDiff
 module D = Diff
-module H = TransformerHelper
+module EF = EditFunction
+module H = Utils
 
-let check_parent parent instr =
+(* let check_parent parent instr =
   match parent with
   | D.CilElement.EStmt s -> (
       match s.skind with
@@ -16,7 +17,7 @@ let check_parent parent instr =
       | _ -> false)
   | _ ->
       failwith
-        "check_parent: an expression cannot be inserted without the parent"
+        "check_parent: an expression cannot be inserted without the parent" *)
 
 let check_sibling_exp sibling exp_list =
   match sibling with
@@ -32,12 +33,12 @@ let check_stmt stmt stmt_list =
 let check_exp exp exp_list =
   List.exists (fun x -> H.string_of_exp x = H.string_of_exp exp) exp_list
 
-let check_sibling_stmt sibling stmt_list =
+let check_parent_stmt sibling stmt_list =
   match sibling with
   | D.CilElement.EStmt s ->
       List.exists (fun x -> H.eq_stmt x.Cil.skind s.skind) stmt_list
   | D.CilElement.Null -> false
-  | _ -> failwith "check_sibling_stmt: sibling of a stmt must be a stmt"
+  | _ -> failwith "check_parent_stmt: parent is not a stmt"
 
 let get_sibling_exp sibling exp_list =
   match sibling with
@@ -64,7 +65,7 @@ let get_sibling_stmt sibling stmt_list =
       List.find (fun x -> H.string_of_stmt x = H.string_of_stmt s) stmt_list
   | _ -> failwith "get_sibling_stmt: sibling of a stmt must be a stmt"
 
-class expInsertVisitorInstr context (exp : Cil.exp) =
+(* class expInsertVisitorInstr context (exp : Cil.exp) =
   object
     inherit Cil.nopCilVisitor
 
@@ -190,80 +191,45 @@ class expUpdateVisitorInstr context (from_exp : Cil.exp) (to_exp : Cil.exp) =
             else failwith "expUpdateVisitorInstr: rval is not matched"
         | _ -> DoChildren
       else DoChildren
-  end
+  end *)
 
-class stmtInsertVisitor context stmt =
+class stmtInsertVisitor parent stmt =
   object
     inherit Cil.nopCilVisitor
 
     method! vblock (b : Cil.block) =
-      if check_sibling_stmt context.D.Diff.left_sibling b.bstmts then
+      if check_parent_stmt parent b.bstmts then
         ChangeTo
           {
             b with
-            bstmts =
-              H.append_after_elt_stmt
-                (get_sibling_stmt context.D.Diff.left_sibling b.bstmts)
-                stmt b.bstmts;
-          }
-      else if check_sibling_stmt context.right_sibling b.bstmts then
-        ChangeTo
-          {
-            b with
-            bstmts =
-              H.append_before_elt_stmt
-                (get_sibling_stmt context.right_sibling b.bstmts)
-                stmt b.bstmts;
-          }
-      else if check_snk context.snk b.bstmts then
-        ChangeTo
-          {
-            b with
-            bstmts =
-              H.append_before_elt_stmt
-                (get_snk context.snk b.bstmts)
-                stmt b.bstmts;
+            bstmts = stmt :: b.bstmts
           }
       else DoChildren
   end
 
-class stmtDeleteVisitor context stmt =
+class stmtDeleteVisitor stmt =
   object
     inherit Cil.nopCilVisitor
 
     method! vblock (b : Cil.block) =
       if check_stmt stmt b.bstmts then
         ChangeTo { b with bstmts = H.delete_elt_stmt stmt b.bstmts }
-      else if check_sibling_stmt context.D.Diff.left_sibling b.bstmts then
-        ChangeTo
-          {
-            b with
-            bstmts =
-              H.delete_after_elt_stmt
-                (get_sibling_stmt context.D.Diff.left_sibling b.bstmts)
-                b.bstmts;
-          }
-      else if check_sibling_stmt context.right_sibling b.bstmts then
-        ChangeTo
-          {
-            b with
-            bstmts =
-              H.delete_before_elt_stmt
-                (get_sibling_stmt context.right_sibling b.bstmts)
-                b.bstmts;
-          }
       else DoChildren
   end
 
 let apply_action donee action =
   match action with
-  | D.Diff.InsertStmt (context, stmt) ->
-      let vis = new stmtInsertVisitor context stmt in
+  | EF.InsertStmt (parent, stmt) ->
+    (match parent with
+    | Fun g -> failwith "InsertStmt: not implemented"
+    | Stmt s -> 
+        let vis = new stmtInsertVisitor parent stmt in
+        ignore (Cil.visitCilFile vis donee)
+    | _ -> failwith "InsertStmt: Incorrect parent type")
+  | DeleteStmt stmt ->
+      let vis = new stmtDeleteVisitor stmt in
       ignore (Cil.visitCilFile vis donee)
-  | DeleteStmt (context, stmt) ->
-      let vis = new stmtDeleteVisitor context stmt in
-      ignore (Cil.visitCilFile vis donee)
-  | InsertExp (context, exp) ->
+  (* | InsertExp (context, exp) ->
       let vis = new expInsertVisitorInstr context exp in
       ignore (Cil.visitCilFile vis donee)
   | DeleteExp (context, exp) ->
@@ -280,10 +246,10 @@ let apply_action donee action =
       ignore (Cil.visitCilFile vis donee)
   | UpdateLval (context, _from, _to) ->
       let vis = new lvalUpdateVisitorInstr context _from _to in
-      ignore (Cil.visitCilFile vis donee)
+      ignore (Cil.visitCilFile vis donee) *)
   | _ -> failwith "Not implemented"
 
-let apply donee edit_script =
+let apply donee edit_function =
   let donee_backup = donee in
-  List.iter (fun action -> apply_action donee action) edit_script;
+  List.iter (fun action -> apply_action donee action) edit_function;
   if H.compare_files donee_backup donee then (true, donee) else (false, donee)

@@ -16,10 +16,10 @@
   bugPatDB
   patTrans
   utils
-  ; translator
+  editFunction
   symDiff
   diff
-  ; transplanter
+  patch
   inline)
  (libraries
   patronlib
