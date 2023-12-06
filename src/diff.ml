@@ -524,9 +524,9 @@ module Diff = struct
   let compare = compare
 end
 
-let define_diff donor_file patch_file =
+let define_diff buggy_file patch_file =
   let globs1, globs2 =
-    ( H.remove_comments donor_file.Cil.globals,
+    ( H.remove_comments buggy_file.Cil.globals,
       H.remove_comments patch_file.Cil.globals )
   in
   Diff.fold_globals2 Option.None 0 globs1 globs2 []

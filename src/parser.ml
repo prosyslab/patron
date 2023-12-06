@@ -3,6 +3,7 @@ open Z3env
 module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module L = Logger
+module Sys = Stdlib.Sys
 
 module ASTMap = struct
   module Key = struct
@@ -68,7 +69,8 @@ let file2func = function
   | "UnOpExp.facts" -> "UnOp"
   | "CallExp.facts" -> "Call"
   | "CFPath.facts" -> "CFPath"
-  | "DetailedDUEdge.facts" -> "DUEdge"
+  (* | "DetailedDUEdge.facts" -> "DUEdge" *)
+  | "DUEdge.facts" -> "DUEdge"
   | "DUPath.facts" -> "DUPath"
   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
   | "LibCallExp.facts" -> "LibCall"
@@ -90,10 +92,9 @@ let parse_cf_facts datalog_dir fact_file =
 
 (* TODO: combine symdiff making process and make_cf_facts wrt the file IO *)
 let make_cf_facts work_dir =
-  let datalog_dir = Filename.concat work_dir "sparrow-out/taint/datalog" in
   List.fold_left ~init:Chc.empty
-    ~f:(fun facts file -> parse_cf_facts datalog_dir file |> Chc.union facts)
-    fact_files
+    ~f:(fun facts file -> parse_cf_facts work_dir file |> Chc.union facts)
+    Z3env.fact_files
 
 let make_ast_facts ast_map =
   let func_name = "ASTNode" in
@@ -107,8 +108,7 @@ let make_ast_facts ast_map =
   in
   [ Chc.Elt.FuncApply (func_name, args) ] |> Chc.of_list
 
-let make_facts work_dir ast_map =
-  Chc.union (make_ast_facts ast_map) (make_cf_facts work_dir)
+let make_facts work_dir = make_cf_facts work_dir
 
 let rec sexp2chc = function
   | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->
@@ -185,6 +185,44 @@ let mk_alarm_map work_dir =
   with _ ->
     Logger.debug "Empty Semantic Constraint";
     AlarmMap.empty
+
+let read_and_split file =
+  In_channel.read_lines file |> List.map ~f:(fun l -> String.split ~on:'\t' l)
+
+let get_aexp alarm splited filename =
+  match Filename.basename filename |> Filename.chop_extension with
+  | "AlarmDivExp" -> (
+      match splited with
+      | [ a; _; divisor ] when String.equal a alarm ->
+          Chc.singleton (Chc.Elt.FDNumeral divisor)
+      | _ -> Chc.empty)
+  | _ -> Logger.error "get_aexp: not implemented"
+
+let get_alarm work_dir =
+  let src, snk, alarm =
+    match
+      Filename.concat work_dir "SparrowAlarm.facts"
+      |> read_and_split |> List.hd_exn
+    with
+    | [ src; snk; alarm_id ] -> (src, snk, alarm_id)
+    | _ -> L.error ~to_console:true "get_alarm: invalid format"
+  in
+  let alarm_exp_files =
+    Sys.readdir work_dir
+    |> Array.filter ~f:(fun f ->
+           Filename.basename f
+           |> String.is_substring_at ~pos:0 ~substring:"Alarm")
+  in
+  let aexps =
+    Array.fold
+      ~f:(fun aexps file ->
+        match Filename.concat work_dir file |> read_and_split with
+        | hd :: [] -> get_aexp alarm hd file
+        | [] -> aexps
+        | _ -> aexps (* TEMP *))
+      ~init:Chc.empty alarm_exp_files
+  in
+  (src, snk, aexps)
 
 let mk_parent_tuples parent stmts =
   List.fold_left ~init:[] ~f:(fun acc s -> (parent, s) :: acc) stmts
@@ -269,8 +307,6 @@ let extract_stmts ast diff =
   else failwith "not implemented yet for multi-location patches"
 
 let make work_dir ast diff =
-  let target_func_stmts = extract_stmts ast diff in
-  let ast_map = ASTMap.make_map target_func_stmts in
-  Chc.union
-    (make_facts work_dir ast_map)
-    (make_rules work_dir ast_map target_func_stmts)
+  (* let target_func_stmts = extract_stmts ast diff in
+     let ast_map = ASTMap.make_map target_func_stmts in *)
+  (make_facts work_dir, get_alarm work_dir)

@@ -629,9 +629,9 @@ let parse_args_facts facts_path =
   in
   StrMap.map (fun lst -> List.rev lst) result
 
-let parse_sparrow sparrow_dir =
+let parse_sparrow sparrow_dir target_alarm =
   let node_json = Yojson.Basic.from_file (sparrow_dir ^ "/node.json") in
-  let path = Filename.concat sparrow_dir "taint/datalog" in
+  let path = Filename.concat sparrow_dir ("taint/datalog/" ^ target_alarm) in
   let nodes = J.member "nodes" node_json in
   let key_list = J.keys nodes in
   let alloc_exp_facts = parse_facts (Filename.concat path "AllocExp.facts") in

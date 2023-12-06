@@ -25,10 +25,12 @@ let remove_before_src_after_snk src snk rels =
   let after_deps = fixedpoint rels after_snk Chc.empty |> fst in
   rels |> (Fun.flip Chc.diff) before_deps |> (Fun.flip Chc.diff) after_deps
 
-let collect_deps src snk terms chc =
+let collect_deps src snk aexps chc =
   let func_apps =
     Chc.extract_func_apps chc |> remove_before_src_after_snk src snk
   in
+  let snk_term = Chc.Elt.FDNumeral snk in
+  let terms = Chc.add snk_term aexps in
   fixedpoint func_apps terms Chc.empty
   |> fst
   |> Chc.filter (fun dep -> Chc.Elt.is_duedge dep |> not)
@@ -95,42 +97,29 @@ let sort_rule_optimize ref deps =
   in
   (lcs |> List.rev) @ (unsorted |> List.rev)
 
-let abstract_bug_pattern donor src snk alarm =
-  let alarm_rels = Chc.filter_func_app alarm in
-  let init_terms =
-    Chc.fold
-      (fun rel terms -> Chc.add_args_to_terms terms rel)
-      alarm_rels Chc.empty
-  in
-  let deps = collect_deps src snk init_terms donor |> Chc.to_list in
+let abstract_bug_pattern buggy src snk aexps =
+  let deps = collect_deps src snk aexps buggy |> Chc.to_list in
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
   Z3env.src := src;
   Z3env.snk := snk;
-  let deps = sort_rule_optimize errtrace deps in
+  (* let deps = sort_rule_optimize errtrace deps in *)
   let errtrace_rule = Chc.Elt.Implies (deps, errtrace) |> Chc.Elt.numer2var in
-  let error_cons = Chc.Elt.numer2var alarm in
-  let err_rel = Chc.Elt.get_head error_cons in
+  (* let error_cons = Chc.Elt.numer2var alarm in
+     let err_rel = Chc.Elt.get_head error_cons in *)
   let bug_rule =
     Chc.Elt.Implies ([ errtrace (*; err_rel*) ], Chc.Elt.FuncApply ("Bug", []))
   in
   Chc.of_list [ errtrace_rule; (*error_cons;*) bug_rule ]
 
-let run (i_opt, w_opt) target_dir donor_dir patch_dir db_dir =
-  L.info "Add Bug Pattern to DB...";
-  let out_dir =
-    (Filename.dirname target_dir |> Filename.basename)
-    ^ "-"
-    ^ Filename.basename target_dir
-    |> Filename.concat db_dir
-  in
-  let donor_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
-  Maps.reset_maps donor_maps;
+let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
+  let buggy_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
+  Maps.reset_maps buggy_maps;
   Maps.reset_maps patch_maps;
-  let donor_ast =
-    Parser.parse_ast donor_dir |> fun f ->
+  let buggy_ast =
+    Parser.parse_ast buggy_dir |> fun f ->
     if List.length i_opt <> 0 then Inline.perform i_opt f else f
   in
   let patch_ast =
@@ -138,28 +127,33 @@ let run (i_opt, w_opt) target_dir donor_dir patch_dir db_dir =
     if List.length i_opt <> 0 then Inline.perform i_opt f else f
   in
   L.info "Constructing AST diff...";
-  let ast_diff = Diff.define_diff donor_ast patch_ast in
+  let ast_diff = Diff.define_diff buggy_ast patch_ast in
   L.info "Mapping CFG Elements to AST nodes...";
-  let sym_diff = SymDiff.define_sym_diff donor_dir donor_ast ast_diff in
-  if w_opt then L.info "Writing out the edit script...";
-  SymDiff.to_json sym_diff ast_diff out_dir;
-  (* TODO: iter this process so that there will be n Chcs *)
-  let donor = Parser.make donor_dir donor_ast sym_diff in
-  Chc.pretty_dump (Filename.concat out_dir "donor") donor;
-  Chc.sexp_dump (Filename.concat out_dir "donor") donor;
-  L.info "Make CHC done";
-  let alarm_map = Parser.mk_alarm_map donor_dir in
-  let (src, snk), one_alarm = Parser.AlarmMap.choose alarm_map in
-  let pattern = abstract_bug_pattern donor src snk one_alarm in
+  let sym_diff =
+    SymDiff.define_sym_diff buggy_dir target_alarm buggy_ast ast_diff
+  in
+  if w_opt then (
+    L.info "Writing out the edit script...";
+    SymDiff.to_json sym_diff ast_diff out_dir);
+  let alarm_dir =
+    Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
+  in
+  let buggy, (src, snk, aexps) = Parser.make alarm_dir buggy_ast sym_diff in
+  Chc.pretty_dump (Filename.concat out_dir "buggy") buggy;
+  Chc.sexp_dump (Filename.concat out_dir "buggy") buggy;
+  L.info "Make Facts in buggy done";
+  (* let alarm_map = Parser.mk_alarm_map buggy_dir in
+     let (src, snk), one_alarm = Parser.AlarmMap.choose alarm_map in *)
+  let pattern = abstract_bug_pattern buggy src snk aexps in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
-  L.info "Try matching with Donor...";
   reset_env ();
+  L.info "Try matching with buggy...";
   (* let z3env = get_env () in *)
-  Chc.match_and_log out_dir "donor" donor_maps donor pattern;
+  Chc.match_and_log out_dir "buggy" buggy_maps buggy pattern;
   (* L.info "Try matching with Patch...";
      Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]; *)
-  Maps.dump "donor" donor_maps out_dir;
+  Maps.dump "buggy" buggy_maps out_dir;
   (* Maps.dump "patch" patch_maps out_dir; *)
   L.info "Done."

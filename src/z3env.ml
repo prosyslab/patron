@@ -50,6 +50,7 @@ type t = {
   binop : Z3.FuncDecl.func_decl;
   unop : Z3.FuncDecl.func_decl;
   cfpath : Z3.FuncDecl.func_decl;
+  duedge : Z3.FuncDecl.func_decl;
   dupath : Z3.FuncDecl.func_decl;
   (* Functions for Semantic Constraint *)
   evallv : Z3.FuncDecl.func_decl;
@@ -112,6 +113,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.binop;
   Z3.Fixedpoint.register_relation solver env.unop;
   Z3.Fixedpoint.register_relation solver env.cfpath;
+  Z3.Fixedpoint.register_relation solver env.duedge;
   Z3.Fixedpoint.register_relation solver env.dupath;
   Z3.Fixedpoint.register_relation solver env.evallv;
   Z3.Fixedpoint.register_relation solver env.eval;
@@ -138,7 +140,8 @@ let fact_files =
     "BinOpExp.facts";
     "CallExp.facts";
     "CFPath.facts";
-    "DetailedDUEdge.facts";
+    (* "DetailedDUEdge.facts"; *)
+    "DUEdge.facts";
     "DUPath.facts";
     "LibCallExp.facts";
     "LvalExp.facts";
@@ -274,6 +277,9 @@ let mk_env () =
   let cfpath =
     Z3.FuncDecl.mk_func_decl_s z3ctx "CFPath" [ node; node ] boolean_sort
   in
+  let duedge =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "DUEdge" [ node; node ] boolean_sort
+  in
   let dupath =
     Z3.FuncDecl.mk_func_decl_s z3ctx "DUPath" [ node; node ] boolean_sort
   in
@@ -326,7 +332,8 @@ let mk_env () =
       "BinOpExp.facts";
       "CallExp.facts";
       "CFPath.facts";
-      "DetailedDUEdge.facts";
+      (* "DetailedDUEdge.facts"; *)
+      "DUEdge.facts";
       "DUPath.facts";
       "LibCallExp.facts";
       "LvalExp.facts";
@@ -344,6 +351,7 @@ let mk_env () =
       ("BinOpExp.facts", binop, [ expr; binop_sort; expr; expr ]);
       ("CallExp.facts", call, [ expr; expr; arg_list ]);
       ("CFPath.facts", cfpath, [ node; node ]);
+      ("DUEdge.facts", duedge, [ node; node ]);
       ("DUPath.facts", dupath, [ node; node ]);
       ("GlobalVar.facts", var, [ lval; identifier ]);
       ("LibCallExp.facts", libcall, [ expr; expr; arg_list ]);
@@ -375,6 +383,7 @@ let mk_env () =
       "Set";
       "Call";
       "CFPath";
+      "DUEdge";
       "DUPath";
       "Var";
       "LibCall";
@@ -439,6 +448,7 @@ let mk_env () =
       binop;
       unop;
       cfpath;
+      duedge;
       dupath;
       evallv;
       eval;

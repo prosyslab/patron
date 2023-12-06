@@ -908,10 +908,10 @@ let reduce_cfg cfg func_name =
       if vname = func_name then H.CfgMap.M.add k v acc else acc)
     cfg H.CfgMap.M.empty
 
-let define_sym_diff donor_dir donor diff =
-  get_gvars donor;
-  let sparrow_dir = Filename.concat donor_dir "sparrow-out" in
-  let cfg, exp_map = H.parse_sparrow sparrow_dir in
+let define_sym_diff buggy_dir target_alarm buggy diff =
+  get_gvars buggy;
+  let sparrow_dir = Filename.concat buggy_dir "sparrow-out" in
+  let cfg, exp_map = H.parse_sparrow sparrow_dir target_alarm in
   List.fold_left
     (fun acc d ->
       let root_path = get_parent_lst d |> List.rev in

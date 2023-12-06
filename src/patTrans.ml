@@ -16,10 +16,10 @@ end)
 
 let fold_db f db_dir =
   Sys_unix.fold_dir ~init:(false, [])
-    ~f:(fun (matched, donors) cand ->
+    ~f:(fun (matched, buggys) cand ->
       L.debug "Try matching with %s..." cand;
       let cand_path = Filename.concat db_dir cand in
-      if f cand_path then (true, cand :: donors) else (matched, donors))
+      if f cand_path then (true, cand :: buggys) else (matched, buggys))
     db_dir
 
 let match_bug out_dir donee donee_maps pattern =
@@ -56,9 +56,9 @@ let try_until_matched out_dir donee donee_maps pattern =
     in
     loop removable
 
-let match_bug_for_one_prj out_dir donee donee_maps donor_cand_path =
+let match_bug_for_one_prj out_dir donee donee_maps buggy_cand_path =
   let pattern =
-    Parser.parse_chc (Filename.concat donor_cand_path "pattern_mach.chc")
+    Parser.parse_chc (Filename.concat buggy_cand_path "pattern_mach.chc")
     |> Chc.map Chc.Elt.numer2var
   in
   try_until_matched out_dir donee donee_maps pattern
@@ -150,42 +150,42 @@ let match_facts =
               | _ -> L.error "match_facts: wrong format")
       | _ -> L.error "match_facts: wrong format")
 
-let dump_sol_map donor_name donor_maps donee_maps out_dir pairs =
+let dump_sol_map buggy_name buggy_maps donee_maps out_dir pairs =
   let oc =
-    Out_channel.create (Filename.concat out_dir (donor_name ^ "_sol.map"))
+    Out_channel.create (Filename.concat out_dir (buggy_name ^ "_sol.map"))
   in
   let fmt = F.formatter_of_out_channel oc in
   PairSet.iter
-    (fun (donor_n, donee_n) ->
-      if 0 <= donor_n && donor_n <= 21 then
+    (fun (buggy_n, donee_n) ->
+      if 0 <= buggy_n && buggy_n <= 21 then
         F.fprintf fmt "%s\t%s\n"
-          (Z3utils.binop_of_int donor_n)
+          (Z3utils.binop_of_int buggy_n)
           (Z3utils.binop_of_int donee_n)
-      else if 22 <= donor_n && donor_n <= 24 then
+      else if 22 <= buggy_n && buggy_n <= 24 then
         F.fprintf fmt "%s\t%s\n"
-          (Z3utils.unop_of_int donor_n)
+          (Z3utils.unop_of_int buggy_n)
           (Z3utils.unop_of_int donee_n)
       else
         F.fprintf fmt "%s\t%s\n"
-          (Hashtbl.find donor_maps.Maps.numeral_map donor_n)
+          (Hashtbl.find buggy_maps.Maps.numeral_map buggy_n)
           (Hashtbl.find donee_maps.Maps.numeral_map donee_n))
     pairs;
   F.pp_print_flush fmt ();
   Out_channel.close oc
 
-let match_ans donee_maps out_dir db_dir donor_name =
-  let donor_dir = Filename.concat db_dir donor_name in
-  let donor_ans =
-    Filename.concat donor_dir "donor_ans.smt2"
+let match_ans donee_maps out_dir db_dir buggy_name =
+  let buggy_dir = Filename.concat db_dir buggy_name in
+  let buggy_ans =
+    Filename.concat buggy_dir "buggy_ans.smt2"
     |> In_channel.read_all |> Sexp.of_string
   in
   let donee_ans =
     Filename.concat out_dir "donee_ans.smt2"
     |> In_channel.read_all |> Sexp.of_string
   in
-  let donor_facts =
+  let buggy_facts =
     Option.(
-      find_bug donor_ans >>= find_errtrace donor_ans >>| collect_facts donor_ans)
+      find_bug buggy_ans >>= find_errtrace buggy_ans >>| collect_facts buggy_ans)
     |> Option.value_exn
   in
   let donee_facts =
@@ -193,14 +193,14 @@ let match_ans donee_maps out_dir db_dir donor_name =
       find_bug donee_ans >>= find_errtrace donee_ans >>| collect_facts donee_ans)
     |> Option.value_exn
   in
-  let numeral_pairs = match_facts donor_facts donee_facts in
-  let donor_maps = Maps.create_maps () in
-  Maps.reset_maps donor_maps;
-  let donor_numeral_map_ic =
-    In_channel.create (Filename.concat donor_dir "donor_numeral.map")
+  let numeral_pairs = match_facts buggy_facts donee_facts in
+  let buggy_maps = Maps.create_maps () in
+  Maps.reset_maps buggy_maps;
+  let buggy_numeral_map_ic =
+    In_channel.create (Filename.concat buggy_dir "buggy_numeral.map")
   in
-  Maps.load_numeral_map donor_numeral_map_ic donor_maps.Maps.numeral_map;
-  dump_sol_map donor_name donor_maps donee_maps out_dir numeral_pairs
+  Maps.load_numeral_map buggy_numeral_map_ic buggy_maps.Maps.numeral_map;
+  dump_sol_map buggy_name buggy_maps donee_maps out_dir numeral_pairs
 
 let run db_dir donee_dir out_dir =
   L.info "Finding bug pattern from DB...";
@@ -210,20 +210,20 @@ let run db_dir donee_dir out_dir =
   Chc.pretty_dump (Filename.concat out_dir "donee") donee;
   Chc.sexp_dump (Filename.concat out_dir "donee") donee;
   L.info "Make CHC done";
-  let is_matched, matched_donors =
+  let is_matched, matched_buggys =
     fold_db (match_bug_for_one_prj out_dir donee donee_maps) db_dir
   in
   if not is_matched then (
-    L.info ~to_console:true "There is no donor to donate patch TT";
+    L.info ~to_console:true "There is no buggy to donate patch TT";
     exit 1);
   List.iter
-    ~f:(fun donor_name ->
-      match_ans donee_maps out_dir db_dir donor_name;
-      List.iter matched_donors ~f:(fun donor_cand ->
-          let is_patched, patch = TF.transplant donor_cand donee_dir out_dir in
+    ~f:(fun buggy_name ->
+      match_ans donee_maps out_dir db_dir buggy_name;
+      List.iter matched_buggys ~f:(fun buggy_cand ->
+          let is_patched, patch = TF.transplant buggy_cand donee_dir out_dir in
           if is_patched then (
             L.info ~to_console:true
               "Patch is successfully written at %s/applied.c\n" out_dir;
             TF.write_out out_dir patch;
             exit 0)))
-    matched_donors
+    matched_buggys
