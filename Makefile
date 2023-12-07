@@ -5,12 +5,15 @@ RM=@rm
 EXE=patron
 
 all:
-	$(DUNE) build src/main.exe
+	-$(DUNE) build @fmt --auto-promote src/main.exe
 	$(LN) _build/default/src/main.exe $(EXE)
 
 test: all
 	$(MAKE) -C test
 	$(DUNE) test
+
+promote:
+	$(DUNE) promote
 
 clean:
 	$(DUNE) clean
