@@ -565,6 +565,6 @@ let match_and_log out_dir ver_name maps chc pattern =
   let status = pattern_match out_dir ver_name maps chc pattern in
   Option.iter
     ~f:(fun ans ->
-      L.info "Matched";
+      L.info "%s is Matched" ver_name;
       Z3utils.dump_expr_to_smt (ver_name ^ "_ans") ans out_dir)
     status

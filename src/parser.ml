@@ -207,6 +207,8 @@ let make_ast_facts ast_map stmts cfg =
 let read_and_split file =
   In_channel.read_lines file |> List.map ~f:(fun l -> String.split ~on:'\t' l)
 
+exception Not_impl_aexp
+
 let get_aexp alarm splited filename =
   match Filename.basename filename |> Filename.chop_extension with
   | "AlarmDivExp" -> (
@@ -214,7 +216,9 @@ let get_aexp alarm splited filename =
       | [ a; _; divisor ] when String.equal a alarm ->
           Chc.singleton (Chc.Elt.FDNumeral divisor)
       | _ -> Chc.empty)
-  | _ -> Logger.error "get_aexp: not implemented"
+  | f ->
+      Logger.warn "get_aexp - not implemented: %s" f;
+      raise Not_impl_aexp
 
 let get_alarm work_dir =
   let src, snk, alarm =
@@ -249,8 +253,9 @@ let make_facts buggy_dir target_alarm ast out_dir =
   let stmts = Utils.extract_stmts ast in
   let ast_map = ASTMap.make_map stmts in
   let facts =
-    Chc.union (make_cf_facts alarm_dir)
-      (make_ast_facts ast_map stmts !Utils.cfg)
+    (* Chc.union
+       (make_ast_facts ast_map stmts !Utils.cfg) *)
+    make_cf_facts alarm_dir
   in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;

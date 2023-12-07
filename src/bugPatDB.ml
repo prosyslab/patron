@@ -5,6 +5,7 @@ module L = Logger
 module Hashtbl = Stdlib.Hashtbl
 module Set = Stdlib.Set
 module Map = Stdlib.Map
+module Sys = Stdlib.Sys
 
 let rec fixedpoint rels terms deps =
   let deps', terms' =
@@ -118,6 +119,18 @@ let parse_ast dir i_opt =
   Parser.parse_ast dir |> fun f ->
   if List.length i_opt <> 0 then Inline.perform i_opt f else f
 
+let match_bug_for_one_prj pattern buggy_dir target_alarm ast out_dir =
+  let maps = Maps.create_maps () in
+  Maps.reset_maps maps;
+  try
+    let facts, _ = Parser.make_facts buggy_dir target_alarm ast out_dir in
+    Chc.match_and_log out_dir target_alarm maps facts pattern;
+    Maps.dump target_alarm maps out_dir;
+    reset_env ();
+    L.info "Try matching with %s..." target_alarm;
+    L.info "match_bug_for_one_prj: %s is done" target_alarm
+  with Parser.Not_impl_aexp -> L.info "PASS"
+
 let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   let buggy_maps = Maps.create_maps () in
   Maps.reset_maps buggy_maps;
@@ -144,4 +157,11 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   L.info "Try matching with buggy...";
   Chc.match_and_log out_dir "buggy" buggy_maps buggy_facts pattern;
   Maps.dump "buggy" buggy_maps out_dir;
+  Sys.readdir (Filename.concat buggy_dir "sparrow-out/taint/datalog")
+  |> Array.iter ~f:(fun ta ->
+         if
+           (not (String.equal target_alarm ta))
+           && Sys.is_directory
+                (Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ ta))
+         then match_bug_for_one_prj pattern buggy_dir ta buggy_ast out_dir);
   L.info "Done."
