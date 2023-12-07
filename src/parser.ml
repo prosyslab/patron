@@ -147,7 +147,7 @@ let mk_parent_tuples parent stmts =
   List.fold_left ~init:[] ~f:(fun acc s -> (parent, s) :: acc) stmts
 
 let match_eq_nodes ast_node cfg ast_map =
-  let ast_id = ASTMap.M.find ast_node ast_map in
+  let ast_id = Hashtbl.find ast_map ast_node |> string_of_int in
   let _, cfg_id =
     Utils.CfgMap.M.find_first
       (fun cnode ->
@@ -184,8 +184,8 @@ let make_ast_facts ast_map stmts cfg =
         | _ -> acc)
       stmts
     |> List.fold_left ~init:[] ~f:(fun acc (parent, child) ->
-           let parent = ASTMap.M.find parent ast_map in
-           let child = ASTMap.M.find child ast_map in
+           let parent = Hashtbl.find ast_map parent |> string_of_int in
+           let child = Hashtbl.find ast_map child |> string_of_int in
            (parent, child) :: acc)
   in
   let parent_rel =
@@ -246,12 +246,12 @@ let get_alarm work_dir =
   in
   (src, snk, aexps)
 
-let make_facts buggy_dir target_alarm ast out_dir =
+let make_facts buggy_dir target_alarm ast out_dir ast_map =
   let alarm_dir =
     Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
   in
   let stmts = Utils.extract_stmts ast in
-  let ast_map = ASTMap.make_map stmts in
+  Maps.make_ast_map stmts ast_map;
   let facts =
     (* Chc.union
        (make_ast_facts ast_map stmts !Utils.cfg) *)

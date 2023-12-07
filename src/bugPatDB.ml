@@ -123,7 +123,9 @@ let match_bug_for_one_prj pattern buggy_dir target_alarm ast out_dir =
   let maps = Maps.create_maps () in
   Maps.reset_maps maps;
   try
-    let facts, _ = Parser.make_facts buggy_dir target_alarm ast out_dir in
+    let facts, _ =
+      Parser.make_facts buggy_dir target_alarm ast out_dir maps.ast_map
+    in
     Chc.match_and_log out_dir target_alarm maps facts pattern;
     Maps.dump target_alarm maps out_dir;
     reset_env ();
@@ -148,6 +150,7 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   L.info "Make Facts in buggy done";
   let buggy_facts, (src, snk, aexps) =
     Parser.make_facts buggy_dir target_alarm buggy_ast out_dir
+      buggy_maps.ast_map
   in
   let pattern = abstract_bug_pattern buggy_facts src snk aexps in
   L.info "Make Bug Pattern done";
