@@ -114,18 +114,15 @@ let abstract_bug_pattern buggy src snk aexps =
   in
   Chc.of_list [ errtrace_rule; (*error_cons;*) bug_rule ]
 
+let parse_ast dir i_opt =
+  Parser.parse_ast dir |> fun f ->
+  if List.length i_opt <> 0 then Inline.perform i_opt f else f
+
 let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
-  let buggy_maps, patch_maps = (Maps.create_maps (), Maps.create_maps ()) in
+  let buggy_maps = Maps.create_maps () in
   Maps.reset_maps buggy_maps;
-  Maps.reset_maps patch_maps;
-  let buggy_ast =
-    Parser.parse_ast buggy_dir |> fun f ->
-    if List.length i_opt <> 0 then Inline.perform i_opt f else f
-  in
-  let patch_ast =
-    Parser.parse_ast patch_dir |> fun f ->
-    if List.length i_opt <> 0 then Inline.perform i_opt f else f
-  in
+  let buggy_ast = parse_ast buggy_dir i_opt in
+  let patch_ast = parse_ast patch_dir i_opt in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
   L.info "Mapping CFG Elements to AST nodes...";
@@ -135,25 +132,16 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   if w_opt then (
     L.info "Writing out the edit script...";
     SymDiff.to_json sym_diff ast_diff out_dir);
-  let alarm_dir =
-    Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
-  in
-  let buggy, (src, snk, aexps) = Parser.make alarm_dir buggy_ast sym_diff in
-  Chc.pretty_dump (Filename.concat out_dir "buggy") buggy;
-  Chc.sexp_dump (Filename.concat out_dir "buggy") buggy;
   L.info "Make Facts in buggy done";
-  (* let alarm_map = Parser.mk_alarm_map buggy_dir in
-     let (src, snk), one_alarm = Parser.AlarmMap.choose alarm_map in *)
-  let pattern = abstract_bug_pattern buggy src snk aexps in
+  let buggy_facts, (src, snk, aexps) =
+    Parser.make_facts buggy_dir target_alarm buggy_ast out_dir
+  in
+  let pattern = abstract_bug_pattern buggy_facts src snk aexps in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   reset_env ();
   L.info "Try matching with buggy...";
-  (* let z3env = get_env () in *)
-  Chc.match_and_log out_dir "buggy" buggy_maps buggy pattern;
-  (* L.info "Try matching with Patch...";
-     Chc.match_and_log out_dir "patch" patch_maps patch pattern [ z3env.bug ]; *)
+  Chc.match_and_log out_dir "buggy" buggy_maps buggy_facts pattern;
   Maps.dump "buggy" buggy_maps out_dir;
-  (* Maps.dump "patch" patch_maps out_dir; *)
   L.info "Done."

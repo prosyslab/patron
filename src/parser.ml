@@ -96,20 +96,6 @@ let make_cf_facts work_dir =
     ~f:(fun facts file -> parse_cf_facts work_dir file |> Chc.union facts)
     Z3env.fact_files
 
-let make_ast_facts ast_map =
-  let func_name = "ASTNode" in
-  let args =
-    ASTMap.M.fold
-      (fun _ id acc ->
-        let id_str = String.concat ~sep:"-" [ func_name; id ] in
-        mk_term id_str :: acc
-        (* Chc.empty *))
-      ast_map []
-  in
-  [ Chc.Elt.FuncApply (func_name, args) ] |> Chc.of_list
-
-let make_facts work_dir = make_cf_facts work_dir
-
 let rec sexp2chc = function
   | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->
       Chc.Elt.CLt (sexp2chc e1, sexp2chc e2)
@@ -157,34 +143,66 @@ let parse_chc chc_file =
          try (Sexp.of_string rule |> sexp2chc) :: chc_list with _ -> chc_list)
   |> Chc.of_list
 
-module AlarmMap = Map.Make (struct
-  type t = String.t * String.t
+let mk_parent_tuples parent stmts =
+  List.fold_left ~init:[] ~f:(fun acc s -> (parent, s) :: acc) stmts
 
-  let compare (s1, t1) (s2, t2) =
-    let cmp = String.compare s1 s2 in
-    if cmp = 0 then String.compare t1 t2 else cmp
-end)
-(* (src node id, snk node id) -> error constraint *)
-
-let mk_alarm_map work_dir =
-  let err_cons_file =
-    Filename.concat work_dir "sparrow-out/taint/datalog/Alarm.rules"
+let match_eq_nodes ast_node cfg ast_map =
+  let ast_id = ASTMap.M.find ast_node ast_map in
+  let _, cfg_id =
+    Utils.CfgMap.M.find_first
+      (fun cnode ->
+        match (ast_node.Cil.skind, cnode) with
+        | Cil.Instr i, cn -> (
+            match (List.hd_exn i, cn) with
+            | Cil.Call (_, _, _, loc), Utils.CfgMap.Key.CCall (_, _, cloc) ->
+                SymDiff.SDiff.eq_line loc cloc
+            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CSet (_, _, cloc)
+            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CAlloc (_, _, cloc)
+            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CSalloc (_, _, cloc)
+            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CFalloc (_, _, cloc) ->
+                SymDiff.SDiff.eq_line loc cloc
+            | _ -> false)
+        | Cil.If (_, _, _, loc), Utils.CfgMap.Key.CIf cloc ->
+            SymDiff.SDiff.eq_line loc cloc
+        | Cil.Return (_, loc), Utils.CfgMap.Key.CReturn1 (_, cloc)
+        | Cil.Return (_, loc), Utils.CfgMap.Key.CReturn2 cloc ->
+            SymDiff.SDiff.eq_line loc cloc
+        | _ -> false)
+      cfg
   in
-  try
-    let alarms =
-      In_channel.read_lines err_cons_file
-      |> List.map ~f:(fun alarm ->
-             match String.split ~on:'\t' alarm with
-             | [ src; snk; err_rule ] -> (src, snk, err_rule)
-             | _ -> L.error ~to_console:true "mk_alarm_map: invalid format")
-    in
-    List.fold_left ~init:AlarmMap.empty
-      ~f:(fun am (src, snk, err_rule) ->
-        AlarmMap.add (src, snk) (Sexp.of_string err_rule |> sexp2chc) am)
-      alarms
-  with _ ->
-    Logger.debug "Empty Semantic Constraint";
-    AlarmMap.empty
+  Chc.Elt.FuncApply ("EqNode", [ FDNumeral cfg_id; FDNumeral ast_id ])
+
+let make_ast_facts ast_map stmts cfg =
+  let parent_tups =
+    List.fold_left ~init:[]
+      ~f:(fun acc s ->
+        match s.Cil.skind with
+        | Cil.Block b | Cil.Loop (b, _, _, _) ->
+            mk_parent_tuples s b.bstmts @ acc
+        | Cil.If (_, tb, eb, _) ->
+            mk_parent_tuples s tb.bstmts @ mk_parent_tuples s eb.bstmts @ acc
+        | _ -> acc)
+      stmts
+    |> List.fold_left ~init:[] ~f:(fun acc (parent, child) ->
+           let parent = ASTMap.M.find parent ast_map in
+           let child = ASTMap.M.find child ast_map in
+           (parent, child) :: acc)
+  in
+  let parent_rel =
+    List.fold_left ~init:[]
+      ~f:(fun acc (parent, child) ->
+        Chc.Elt.FuncApply ("AstParent", [ FDNumeral parent; FDNumeral child ])
+        :: acc)
+      parent_tups
+    |> Chc.of_list
+  in
+  let eqnode_rel =
+    List.fold_left ~init:[]
+      ~f:(fun acc stmt -> match_eq_nodes stmt cfg ast_map :: acc)
+      stmts
+    |> Chc.of_list
+  in
+  Chc.union parent_rel eqnode_rel
 
 let read_and_split file =
   In_channel.read_lines file |> List.map ~f:(fun l -> String.split ~on:'\t' l)
@@ -224,89 +242,16 @@ let get_alarm work_dir =
   in
   (src, snk, aexps)
 
-let mk_parent_tuples parent stmts =
-  List.fold_left ~init:[] ~f:(fun acc s -> (parent, s) :: acc) stmts
-
-let match_eq_nodes ast_node cfg ast_map =
-  let ast_id = ASTMap.M.find ast_node ast_map in
-  let _, cfg_id =
-    Utils.CfgMap.M.find_first
-      (fun cnode ->
-        match (ast_node.Cil.skind, cnode) with
-        | Cil.Instr i, cn -> (
-            match (List.hd_exn i, cn) with
-            | Cil.Call (_, _, _, loc), Utils.CfgMap.Key.CCall (_, _, cloc) ->
-                SymDiff.SDiff.eq_line loc cloc
-            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CSet (_, _, cloc)
-            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CAlloc (_, _, cloc)
-            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CSalloc (_, _, cloc)
-            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CFalloc (_, _, cloc) ->
-                SymDiff.SDiff.eq_line loc cloc
-            | _ -> false)
-        | Cil.If (_, _, _, loc), Utils.CfgMap.Key.CIf cloc ->
-            SymDiff.SDiff.eq_line loc cloc
-        | Cil.Return (_, loc), Utils.CfgMap.Key.CReturn1 (_, cloc)
-        | Cil.Return (_, loc), Utils.CfgMap.Key.CReturn2 cloc ->
-            SymDiff.SDiff.eq_line loc cloc
-        | _ -> false)
-      cfg
+let make_facts buggy_dir target_alarm ast out_dir =
+  let alarm_dir =
+    Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
   in
-  Chc.Elt.FuncApply ("EqNode", [ FDNumeral cfg_id; FDNumeral ast_id ])
-
-let parse_ast_rules ast_map stmts cfg =
-  let parent_tups =
-    List.fold_left ~init:[]
-      ~f:(fun acc s ->
-        match s.Cil.skind with
-        | Cil.Block b | Cil.Loop (b, _, _, _) ->
-            mk_parent_tuples s b.bstmts @ acc
-        | Cil.If (_, tb, eb, _) ->
-            mk_parent_tuples s tb.bstmts @ mk_parent_tuples s eb.bstmts @ acc
-        | _ -> acc)
-      stmts
-    |> List.fold_left ~init:[] ~f:(fun acc (parent, child) ->
-           let parent = ASTMap.M.find parent ast_map in
-           let child = ASTMap.M.find child ast_map in
-           (parent, child) :: acc)
+  let stmts = Utils.extract_stmts ast in
+  let ast_map = ASTMap.make_map stmts in
+  let facts =
+    Chc.union (make_cf_facts alarm_dir)
+      (make_ast_facts ast_map stmts !Utils.cfg)
   in
-  let parent_rel =
-    List.fold_left ~init:[]
-      ~f:(fun acc (parent, child) ->
-        Chc.Elt.FuncApply ("AstParent", [ FDNumeral parent; FDNumeral child ])
-        :: acc)
-      parent_tups
-    |> Chc.of_list
-  in
-  let eqnode_rel =
-    List.fold_left ~init:[]
-      ~f:(fun acc stmt -> match_eq_nodes stmt cfg ast_map :: acc)
-      stmts
-    |> Chc.of_list
-  in
-  Chc.union parent_rel eqnode_rel
-
-let make_rules work_dir ast_map stmts =
-  parse_chc (Filename.concat work_dir "sparrow-out/taint/datalog/Sem.rules")
-  |> Chc.union (parse_ast_rules ast_map stmts !Utils.cfg)
-
-let extract_stmts ast diff =
-  (* TODO: fix the target function to function of sink *)
-  let target_func =
-    List.fold_left
-      ~f:(fun acc x -> SymDiff.SDiff.extract_func_name x :: acc)
-      ~init:[] diff
-    |> List.rev
-  in
-  let is_patch_all_in_one =
-    List.for_all
-      ~f:(fun x -> String.equal x (List.hd_exn target_func))
-      target_func
-  in
-  if is_patch_all_in_one then
-    Utils.extract_target_func_stmt_lst ast (List.hd_exn target_func)
-  else failwith "not implemented yet for multi-location patches"
-
-let make work_dir ast diff =
-  (* let target_func_stmts = extract_stmts ast diff in
-     let ast_map = ASTMap.make_map target_func_stmts in *)
-  (make_facts work_dir, get_alarm work_dir)
+  Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
+  Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;
+  (facts, get_alarm alarm_dir)
