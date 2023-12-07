@@ -119,12 +119,12 @@ let parse_ast dir i_opt =
   Parser.parse_ast dir |> fun f ->
   if List.length i_opt <> 0 then Inline.perform i_opt f else f
 
-let match_bug_for_one_prj pattern buggy_dir target_alarm ast out_dir =
+let match_bug_for_one_prj pattern buggy_dir target_alarm ast cfg out_dir =
   let maps = Maps.create_maps () in
   Maps.reset_maps maps;
   try
     let facts, _ =
-      Parser.make_facts buggy_dir target_alarm ast out_dir maps.ast_map
+      Parser.make_facts buggy_dir target_alarm ast cfg out_dir maps
     in
     Chc.match_and_log out_dir target_alarm maps facts pattern;
     Maps.dump target_alarm maps out_dir;
@@ -140,18 +140,19 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   let patch_ast = parse_ast patch_dir i_opt in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
-  L.info "Mapping CFG Elements to AST nodes...";
-  let sym_diff =
-    SymDiff.define_sym_diff buggy_dir target_alarm buggy_ast ast_diff
+  let buggy_cfg =
+    Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out/node.json")
   in
+  L.info "Make Facts in buggy done";
+  let buggy_facts, (src, snk, aexps) =
+    Parser.make_facts buggy_dir target_alarm buggy_ast buggy_cfg out_dir
+      buggy_maps
+  in
+  L.info "Mapping CFG Elements to AST nodes...";
+  let sym_diff = SymDiff.define_sym_diff buggy_maps buggy_ast ast_diff in
   if w_opt then (
     L.info "Writing out the edit script...";
     SymDiff.to_json sym_diff ast_diff out_dir);
-  L.info "Make Facts in buggy done";
-  let buggy_facts, (src, snk, aexps) =
-    Parser.make_facts buggy_dir target_alarm buggy_ast out_dir
-      buggy_maps.ast_map
-  in
   let pattern = abstract_bug_pattern buggy_facts src snk aexps in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
@@ -166,5 +167,7 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
            (not (String.equal target_alarm ta))
            && Sys.is_directory
                 (Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ ta))
-         then match_bug_for_one_prj pattern buggy_dir ta buggy_ast out_dir);
+         then
+           match_bug_for_one_prj pattern buggy_dir ta buggy_ast buggy_cfg
+             out_dir);
   L.info "Done."

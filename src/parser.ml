@@ -61,6 +61,7 @@ let mk_term s =
         update_numer name;
         Chc.Elt.FDNumeral s)
 
+(* TODO: Add Assume.facts *)
 let file2func = function
   | "AllocExp.facts" -> "Alloc"
   | "Arg.facts" -> "Arg"
@@ -84,17 +85,30 @@ let file2func = function
 let parse_cf_facts datalog_dir fact_file =
   let func_name = file2func fact_file in
   let fact_file_path = Filename.concat datalog_dir fact_file in
-  In_channel.read_lines fact_file_path
-  |> List.map ~f:(fun line ->
-         let args = String.split ~on:'\t' line |> List.map ~f:mk_term in
-         Chc.Elt.FuncApply (func_name, args))
-  |> Chc.of_list
+  let elt_lst, facts =
+    In_channel.read_lines fact_file_path
+    |> List.fold_left ~init:([], Utils.StrMap.empty) ~f:(fun (lst, map) line ->
+           let arg_lst = String.split ~on:'\t' line in
+           let args = List.map ~f:mk_term arg_lst in
+           let elt = Chc.Elt.FuncApply (func_name, args) in
+           let map =
+             Utils.StrMap.add (List.hd_exn arg_lst) (List.tl_exn arg_lst) map
+           in
+           (elt :: lst, map))
+  in
+  (List.rev elt_lst |> Chc.of_list, (func_name, facts))
 
 (* TODO: combine symdiff making process and make_cf_facts wrt the file IO *)
-let make_cf_facts work_dir =
-  List.fold_left ~init:Chc.empty
-    ~f:(fun facts file -> parse_cf_facts work_dir file |> Chc.union facts)
-    Z3env.fact_files
+let make_cf_facts work_dir cfg map =
+  let cf_facts, facts_map =
+    List.fold_left ~init:(Chc.empty, [])
+      ~f:(fun (facts, lst) file ->
+        let chc, fact_map = parse_cf_facts work_dir file in
+        (Chc.union facts chc, fact_map :: lst))
+      Z3env.fact_files
+  in
+  Maps.CfgNode.parse_sparrow cfg map facts_map;
+  cf_facts
 
 let rec sexp2chc = function
   | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->
@@ -148,31 +162,35 @@ let mk_parent_tuples parent stmts =
 
 let match_eq_nodes ast_node cfg ast_map =
   let ast_id = Hashtbl.find ast_map ast_node |> string_of_int in
-  let _, cfg_id =
-    Utils.CfgMap.M.find_first
-      (fun cnode ->
-        match (ast_node.Cil.skind, cnode) with
-        | Cil.Instr i, cn -> (
-            match (List.hd_exn i, cn) with
-            | Cil.Call (_, _, _, loc), Utils.CfgMap.Key.CCall (_, _, cloc) ->
-                SymDiff.SDiff.eq_line loc cloc
-            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CSet (_, _, cloc)
-            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CAlloc (_, _, cloc)
-            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CSalloc (_, _, cloc)
-            | Cil.Set (_, _, loc), Utils.CfgMap.Key.CFalloc (_, _, cloc) ->
-                SymDiff.SDiff.eq_line loc cloc
-            | _ -> false)
-        | Cil.If (_, _, _, loc), Utils.CfgMap.Key.CIf cloc ->
-            SymDiff.SDiff.eq_line loc cloc
-        | Cil.Return (_, loc), Utils.CfgMap.Key.CReturn1 (_, cloc)
-        | Cil.Return (_, loc), Utils.CfgMap.Key.CReturn2 cloc ->
-            SymDiff.SDiff.eq_line loc cloc
-        | _ -> false)
-      cfg
+  let cfg_id =
+    Hashtbl.fold
+      (fun cnode id acc ->
+        let bool =
+          match (ast_node.Cil.skind, cnode) with
+          | Cil.Instr i, cn -> (
+              match (List.hd_exn i, cn) with
+              | Cil.Call (_, _, _, loc), Maps.CfgNode.CCall (_, _, cloc) ->
+                  SymDiff.SDiff.eq_line loc cloc
+              | Cil.Set (_, _, loc), Maps.CfgNode.CSet (_, _, cloc)
+              | Cil.Set (_, _, loc), Maps.CfgNode.CAlloc (_, _, cloc)
+              | Cil.Set (_, _, loc), Maps.CfgNode.CSalloc (_, _, cloc)
+              | Cil.Set (_, _, loc), Maps.CfgNode.CFalloc (_, _, cloc) ->
+                  SymDiff.SDiff.eq_line loc cloc
+              | _ -> false)
+          | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc ->
+              SymDiff.SDiff.eq_line loc cloc
+          | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc)
+          | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
+              SymDiff.SDiff.eq_line loc cloc
+          | _ -> false
+        in
+        if bool then id :: acc else acc)
+      cfg []
+    |> List.hd_exn
   in
   Chc.Elt.FuncApply ("EqNode", [ FDNumeral cfg_id; FDNumeral ast_id ])
 
-let make_ast_facts ast_map stmts cfg =
+let make_ast_facts (maps : Maps.t) stmts =
   let parent_tups =
     List.fold_left ~init:[]
       ~f:(fun acc s ->
@@ -184,8 +202,8 @@ let make_ast_facts ast_map stmts cfg =
         | _ -> acc)
       stmts
     |> List.fold_left ~init:[] ~f:(fun acc (parent, child) ->
-           let parent = Hashtbl.find ast_map parent |> string_of_int in
-           let child = Hashtbl.find ast_map child |> string_of_int in
+           let parent = Hashtbl.find maps.ast_map parent |> string_of_int in
+           let child = Hashtbl.find maps.ast_map child |> string_of_int in
            (parent, child) :: acc)
   in
   let parent_rel =
@@ -198,7 +216,7 @@ let make_ast_facts ast_map stmts cfg =
   in
   let eqnode_rel =
     List.fold_left ~init:[]
-      ~f:(fun acc stmt -> match_eq_nodes stmt cfg ast_map :: acc)
+      ~f:(fun acc stmt -> match_eq_nodes stmt maps.cfg_map maps.ast_map :: acc)
       stmts
     |> Chc.of_list
   in
@@ -246,16 +264,18 @@ let get_alarm work_dir =
   in
   (src, snk, aexps)
 
-let make_facts buggy_dir target_alarm ast out_dir ast_map =
+let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
   let alarm_dir =
     Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
   in
+  Utils.parse_map alarm_dir maps.exp_map;
   let stmts = Utils.extract_stmts ast in
-  Maps.make_ast_map stmts ast_map;
+  Maps.make_ast_map stmts maps.ast_map;
   let facts =
     (* Chc.union
-       (make_ast_facts ast_map stmts !Utils.cfg) *)
-    make_cf_facts alarm_dir
+       (make_ast_facts stmts
+       maps) *)
+    make_cf_facts alarm_dir cfg maps.cfg_map
   in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;

@@ -601,24 +601,39 @@ module SDiff = struct
       match e with
       | Cil.Const c -> match_const c exp_map
       | Cil.Lval l ->
-          H.StrMap.filter (fun _ v -> H.string_of_lval l |> H.subset v) exp_map
+          Hashtbl.fold
+            (fun k v acc ->
+              if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
+            exp_map []
       | Cil.SizeOf t -> match_sizeof t exp_map
       | Cil.BinOp _ ->
-          H.StrMap.filter (fun _ v -> H.string_of_exp e |> H.subset v) exp_map
+          Hashtbl.fold
+            (fun k v acc ->
+              if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
+            exp_map []
       | Cil.UnOp _ ->
-          H.StrMap.filter (fun _ v -> H.string_of_exp e |> H.subset v) exp_map
+          Hashtbl.fold
+            (fun k v acc ->
+              if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
+            exp_map []
       | Cil.CastE _ ->
-          H.StrMap.filter (fun _ v -> H.string_of_exp e |> H.subset v) exp_map
+          Hashtbl.fold
+            (fun k v acc ->
+              if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
+            exp_map []
       | Cil.Question _ ->
-          H.StrMap.filter (fun _ v -> H.string_of_exp e |> H.subset v) exp_map
+          Hashtbl.fold
+            (fun k v acc ->
+              if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
+            exp_map []
       | _ ->
           H.print_ekind e;
           failwith "match_exp: not implemented"
     in
     let id, _ =
       let outmap =
-        H.StrMap.fold
-          (fun k v acc ->
+        List.fold_left
+          (fun acc (k, v) ->
             if acc = [] then (k, v) :: acc
             else if
               let _, prev = List.hd acc in
@@ -626,22 +641,29 @@ module SDiff = struct
             then (k, v) :: List.tl acc
             else acc)
           candidate []
+        |> List.rev
       in
       if outmap = [] then ("None", "") else List.hd outmap
     in
     id
 
   and match_sizeof t exp_map =
-    H.StrMap.filter (fun _ v -> H.string_of_typ t |> H.subset v) exp_map
+    Hashtbl.fold
+      (fun k v acc ->
+        if H.string_of_typ t |> H.subset v then (k, v) :: acc else acc)
+      exp_map []
 
   and match_lval_id exp_map l =
     let candidate =
-      H.StrMap.filter (fun _ v -> H.string_of_lval l |> H.subset v) exp_map
+      Hashtbl.fold
+        (fun k v acc ->
+          if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
+        exp_map []
     in
     let id, _ =
       let outmap =
-        H.StrMap.fold
-          (fun k v acc ->
+        List.fold_left
+          (fun acc (k, v) ->
             if acc = [] then (k, v) :: acc
             else if
               let _, prev = List.hd acc in
@@ -649,6 +671,7 @@ module SDiff = struct
             then (k, v) :: List.tl acc
             else acc)
           candidate []
+        |> List.rev
       in
       if outmap = [] then ("None", "") else List.hd outmap
     in
@@ -656,49 +679,46 @@ module SDiff = struct
 
   and eq_line loc cloc =
     let file_name = loc.Cil.file |> Filename.basename in
-    if
-      loc.Cil.line = cloc.H.CfgMap.Key.line
-      && file_name = cloc.H.CfgMap.Key.file
-    then true
+    if loc.Cil.line = cloc.Maps.CfgNode.line && file_name = cloc.file then true
     else false
 
   and match_set_id cfg loc =
-    H.CfgMap.M.fold
+    Hashtbl.fold
       (fun k v acc ->
         match k with
-        | H.CfgMap.Key.CSet (_, _, cloc)
-        | H.CfgMap.Key.CAlloc (_, _, cloc)
-        | H.CfgMap.Key.CFalloc (_, _, cloc)
-        | H.CfgMap.Key.CSalloc (_, _, cloc) ->
+        | Maps.CfgNode.CSet (_, _, cloc)
+        | Maps.CfgNode.CAlloc (_, _, cloc)
+        | Maps.CfgNode.CFalloc (_, _, cloc)
+        | Maps.CfgNode.CSalloc (_, _, cloc) ->
             if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
   and match_call_id cfg loc =
-    H.CfgMap.M.fold
+    Hashtbl.fold
       (fun k v acc ->
         match k with
-        | H.CfgMap.Key.CCall (_, _, cloc) ->
+        | Maps.CfgNode.CCall (_, _, cloc) ->
             if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
   and match_return_id cfg loc =
-    H.CfgMap.M.fold
+    Hashtbl.fold
       (fun k v acc ->
         match k with
-        | H.CfgMap.Key.CReturn1 (_, cloc) ->
+        | Maps.CfgNode.CReturn1 (_, cloc) ->
             if eq_line loc cloc then v :: acc else acc
-        | H.CfgMap.Key.CReturn2 cloc ->
+        | Maps.CfgNode.CReturn2 cloc ->
             if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
   and match_assume_id cfg loc cond =
-    H.CfgMap.M.fold
+    Hashtbl.fold
       (fun k v acc ->
         match k with
-        | H.CfgMap.Key.CAssume (ccond, cloc) ->
+        | Maps.CfgNode.CAssume (ccond, cloc) ->
             if eq_line loc cloc && H.string_of_exp cond |> H.subset ccond then
               v :: acc
             else acc
@@ -706,10 +726,10 @@ module SDiff = struct
       cfg []
 
   and match_loop_id cfg loc =
-    H.CfgMap.M.fold
+    Hashtbl.fold
       (fun k v acc ->
         match k with
-        | H.CfgMap.Key.CSkip cloc -> if eq_line loc cloc then v :: acc else acc
+        | Maps.CfgNode.CSkip cloc -> if eq_line loc cloc then v :: acc else acc
         | _ -> acc)
       cfg []
 
@@ -740,12 +760,24 @@ module SDiff = struct
   and match_const c exp_map =
     match c with
     | Cil.CInt64 (i, _, _) ->
-        H.StrMap.filter (fun _ v -> Int64.to_string i |> H.subset v) exp_map
-    | Cil.CStr s -> H.StrMap.filter (fun _ v -> s |> H.subset v) exp_map
+        Hashtbl.fold
+          (fun k v acc ->
+            if Int64.to_string i |> H.subset v then (k, v) :: acc else acc)
+          exp_map []
+    | Cil.CStr s ->
+        Hashtbl.fold
+          (fun k v acc -> if s |> H.subset v then (k, v) :: acc else acc)
+          exp_map []
     | Cil.CChr c ->
-        H.StrMap.filter (fun _ v -> String.make 1 c |> H.subset v) exp_map
+        Hashtbl.fold
+          (fun k v acc ->
+            if Char.escaped c |> H.subset v then (k, v) :: acc else acc)
+          exp_map []
     | Cil.CReal (f, _, _) ->
-        H.StrMap.filter (fun _ v -> string_of_float f |> H.subset v) exp_map
+        Hashtbl.fold
+          (fun k v acc ->
+            if string_of_float f |> H.subset v then (k, v) :: acc else acc)
+          exp_map []
     | _ -> failwith "match_const: not implemented"
 
   and to_styp t =
@@ -900,25 +932,25 @@ class globVisitor =
 let get_gvars ast =
   let gv = new globVisitor in
   Cil.visitCilFile gv ast
+(*
+   let reduce_cfg cfg func_name =
+     Hashtbl.fold
+       (fun k v acc ->
+         let vname = Str.split (Str.regexp_string "-") v |> List.hd in
+         if vname = func_name then H.CfgMap.M.add k v acc else acc)
+       cfg H.CfgMap.M.empty *)
 
-let reduce_cfg cfg func_name =
-  H.CfgMap.M.fold
-    (fun k v acc ->
-      let vname = Str.split (Str.regexp_string "-") v |> List.hd in
-      if vname = func_name then H.CfgMap.M.add k v acc else acc)
-    cfg H.CfgMap.M.empty
-
-let define_sym_diff buggy_dir target_alarm buggy diff =
+let define_sym_diff (maps : Maps.t) buggy diff =
   get_gvars buggy;
-  let sparrow_dir = Filename.concat buggy_dir "sparrow-out" in
-  let cfg, exp_map = H.parse_sparrow sparrow_dir target_alarm in
+  let cfg = maps.cfg_map in
+  let exp_map = maps.exp_map in
   List.fold_left
     (fun acc d ->
       let root_path = get_parent_lst d |> List.rev in
       let s_root_path = SDiff.match_context cfg exp_map root_path in
       let rest_path = List.tl s_root_path in
       let parent_fun = get_parent_fun root_path in
-      H.cfg := reduce_cfg cfg parent_fun.vname;
+      (* H.cfg := reduce_cfg cfg parent_fun.vname; *)
       let s_context : SDiff.sym_context =
         {
           parent = rest_path;
@@ -926,7 +958,7 @@ let define_sym_diff buggy_dir target_alarm buggy diff =
           func_name = parent_fun.vname;
         }
       in
-      SDiff.mk_sdiff s_context !H.cfg exp_map d :: acc)
+      SDiff.mk_sdiff s_context cfg exp_map d :: acc)
     [] diff
 
 (* json area *)

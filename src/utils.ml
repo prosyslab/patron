@@ -531,57 +531,52 @@ let delete_after_elt_exp elt lst =
   if List.length result = List.length lst - 1 then result
   else failwith "exp_list delete error"
 
-module CfgMap = struct
-  module Key = struct
-    type loc = { file : string; line : int }
+(* module CfgMap = struct
+     module Key = struct
+       type loc = { file : string; line : int }
 
-    type t =
-      | CNone
-      | CSet of string * string * loc (* (lv, e, loc) *)
-      | CExternal of string * loc (*(lv, loc)*)
-      | CAlloc of string * string * loc (*(lv, Array e, _, loc) *)
-      | CSalloc of string * string * loc (*(lv, s, loc) *)
-      | CFalloc of string * string * loc (*(lv, f, loc) *)
-      | CCall of string * t * loc (*(Some lv, CcallExp(fexp, params, loc))*)
-      | CCallExp of string * string list * loc (*(None, fexp, params, loc)*)
-      | CReturn1 of string * loc (*(Some e, loc) *)
-      | CReturn2 of loc (*(None, loc) *)
-      | CIf of loc (*(_, _, _, loc) *)
-      | CAssume of string * loc (*(e, _, loc) *)
-      | CLoop of loc (*loc *)
-      | CAsm of loc (*(_, _, _, _, _, loc) *)
-      | CSkip of loc (*(_, loc)*)
+       type t =
+         | CNone
+         | CSet of string * string * loc (* (lv, e, loc) *)
+         | CExternal of string * loc (*(lv, loc)*)
+         | CAlloc of string * string * loc (*(lv, Array e, _, loc) *)
+         | CSalloc of string * string * loc (*(lv, s, loc) *)
+         | CFalloc of string * string * loc (*(lv, f, loc) *)
+         | CCall of string * t * loc (*(Some lv, CcallExp(fexp, params, loc))*)
+         | CCallExp of string * string list * loc (*(None, fexp, params, loc)*)
+         | CReturn1 of string * loc (*(Some e, loc) *)
+         | CReturn2 of loc (*(None, loc) *)
+         | CIf of loc (*(_, _, _, loc) *)
+         | CAssume of string * loc (*(e, _, loc) *)
+         | CLoop of loc (*loc *)
+         | CAsm of loc (*(_, _, _, _, _, loc) *)
+         | CSkip of loc (*(_, loc)*)
 
-    let rec size = function
-      | CNone -> 0
-      | CSet _ -> 2
-      | CExternal _ -> 1
-      | CAlloc _ -> 2
-      | CSalloc _ -> 2
-      | CFalloc _ -> 2
-      | CCall (_, cfg, _) -> 1 + size cfg
-      | CCallExp (_, param, _) -> 1 + List.length param
-      | CReturn1 _ | CReturn2 _ -> 1
-      | CIf _ -> 3
-      | CAssume _ -> 1
-      | CLoop _ -> 1
-      | CAsm _ -> 0
-      | CSkip _ -> 0
+       let rec size = function
+         | CNone -> 0
+         | CSet _ -> 2
+         | CExternal _ -> 1
+         | CAlloc _ -> 2
+         | CSalloc _ -> 2
+         | CFalloc _ -> 2
+         | CCall (_, cfg, _) -> 1 + size cfg
+         | CCallExp (_, param, _) -> 1 + List.length param
+         | CReturn1 _ | CReturn2 _ -> 1
+         | CIf _ -> 3
+         | CAssume _ -> 1
+         | CLoop _ -> 1
+         | CAsm _ -> 0
+         | CSkip _ -> 0
 
-    let compare a b = Int.compare (size a) (size b)
-  end
+       let compare a b = Int.compare (size a) (size b)
+     end
 
-  module M = Map.Make (Key)
+     module M = Map.Make (Key)
 
-  type t = string M.t
-end
+     type t = string M.t
+   end
 
-let cfg : CfgMap.t ref = ref CfgMap.M.empty
-
-let parse_loc loc =
-  let parsed = Str.split (Str.regexp ":") loc in
-  if List.length parsed <> 2 then { CfgMap.Key.file = ""; line = -1 }
-  else { file = List.nth parsed 0; line = int_of_string (List.nth parsed 1) }
+   let cfg : CfgMap.t ref = ref CfgMap.M.empty *)
 
 let parse_facts facts_path =
   let lines = read_lines facts_path in
@@ -593,15 +588,15 @@ let parse_facts facts_path =
       StrMap.add id elmt map)
     StrMap.empty lines
 
-let parse_map path =
+let parse_map path map =
   let lines = read_lines path in
-  List.fold_left
-    (fun map line ->
+  List.iter
+    (fun line ->
       let splited = Str.split (Str.regexp "\t") line in
       let key = List.hd splited in
       let value = List.hd (List.tl splited) in
-      StrMap.add key value map)
-    StrMap.empty lines
+      Hashtbl.add map key value)
+    lines
 
 let parse_call_facts facts_path =
   let lines = read_lines facts_path in
@@ -629,81 +624,21 @@ let parse_args_facts facts_path =
   in
   StrMap.map (fun lst -> List.rev lst) result
 
-let parse_sparrow sparrow_dir target_alarm =
-  let node_json = Yojson.Basic.from_file (sparrow_dir ^ "/node.json") in
-  let path = Filename.concat sparrow_dir ("taint/datalog/" ^ target_alarm) in
-  let nodes = J.member "nodes" node_json in
+let parse_node_json sparrow_dir =
+  let file = Yojson.Basic.from_file (sparrow_dir ^ "/node.json") in
+  let nodes = J.member "nodes" file in
   let key_list = J.keys nodes in
-  let alloc_exp_facts = parse_facts (Filename.concat path "AllocExp.facts") in
-  let args_facts = parse_args_facts (Filename.concat path "Arg.facts") in
-  let set_facts = parse_facts (Filename.concat path "Set.facts") in
-  let call_facts = parse_call_facts (Filename.concat path "Set.facts") in
-  let return_facts = parse_facts (Filename.concat path "Return.facts") in
-  let assume_facts = parse_facts (Filename.concat path "Assume.facts") in
-  let exp_map = parse_map (Filename.concat path "Exp.map") in
-  let cfg =
-    List.fold_left
-      (fun acc k ->
-        let cont = J.member k nodes in
-        let cmd = J.to_list (J.member "cmd" cont) in
-        let loc = J.member "loc" cont in
-        let cmd =
-          match J.to_string (List.hd cmd) with
-          | "skip" -> CfgMap.Key.CSkip (parse_loc (J.to_string loc))
-          | "return" ->
-              let arg_opt = StrMap.find_opt k return_facts in
-              if arg_opt = None then CNone
-              else
-                let arg = Option.get arg_opt in
-                if arg <> [] then
-                  CReturn1 (List.hd arg, parse_loc (J.to_string loc))
-                else CReturn2 (parse_loc (J.to_string loc))
-          | "call" ->
-              let arg_opt = StrMap.find_opt k call_facts in
-              if arg_opt = None then CNone
-              else
-                let arg = Option.get arg_opt in
-                let call_exp = List.nth arg 1 in
-                let lval = List.nth arg 0 in
-                let arg_lst = StrMap.find_opt call_exp args_facts in
-                let arg_lst =
-                  if arg_lst = None then [] else Option.get arg_lst
-                in
-                CCall
-                  ( List.hd arg,
-                    CCallExp (lval, arg_lst, parse_loc (J.to_string loc)),
-                    parse_loc (J.to_string loc) )
-          | "assume" ->
-              let arg_opt = StrMap.find_opt k assume_facts in
-              if arg_opt = None then CNone
-              else
-                let arg = Option.get arg_opt in
-                CAssume (List.hd arg, parse_loc (J.to_string loc))
-          | "set" ->
-              let arg = StrMap.find_opt k set_facts in
-              if arg = None then CNone
-              else
-                let arg = Option.get arg in
-                CSet (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc))
-          | "alloc" -> (
-              let arg = StrMap.find_opt k alloc_exp_facts in
-              match arg with
-              | None -> CNone
-              | Some arg ->
-                  CAlloc
-                    (List.hd arg, List.nth arg 1, parse_loc (J.to_string loc)))
-          | "falloc" -> CNone
-          | "salloc" -> CNone
-          | _ ->
-              print_endline "----------";
-              print_endline (J.to_string (List.hd cmd));
-              print_endline "----------";
-              failwith "Unknown Command"
-        in
-        match cmd with CNone | CSkip _ -> acc | _ -> CfgMap.M.add cmd k acc)
-      CfgMap.M.empty key_list
-  in
-  (cfg, exp_map)
+  List.fold_left
+    (fun acc key ->
+      let cont = J.member key nodes in
+      let cmd =
+        J.to_list (J.member "cmd" cont)
+        |> List.fold_left (fun acc y -> J.to_string y :: acc) []
+        |> List.rev
+      in
+      let loc = J.member "loc" cont |> J.to_string in
+      (key, cmd, loc) :: acc)
+    [] key_list
 
 let cil_stmts = ref []
 
