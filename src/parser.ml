@@ -80,6 +80,7 @@ let file2func = function
   | "SAllocExp.facts" -> "SAlloc"
   | "Skip.facts" -> "Skip"
   | "EvalLv.facts" -> "EvalLv"
+  | "Assume.facts" -> "Assume"
   | f -> L.error "file2func - wrong filename: %s" f
 
 let parse_cf_facts datalog_dir fact_file =

@@ -149,6 +149,7 @@ let fact_files =
     "Set.facts";
     "Skip.facts";
     "UnOpExp.facts";
+    "Assume.facts";
   ]
 
 let pos_numer_cnt = ref 2
