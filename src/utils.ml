@@ -589,6 +589,7 @@ let parse_facts facts_path =
     StrMap.empty lines
 
 let parse_map path map =
+  let path = path ^ "/Exp.map" in
   let lines = read_lines path in
   List.iter
     (fun line ->
@@ -633,7 +634,15 @@ let parse_node_json sparrow_dir =
       let cont = J.member key nodes in
       let cmd =
         J.to_list (J.member "cmd" cont)
-        |> List.fold_left (fun acc y -> J.to_string y :: acc) []
+        |> List.fold_left
+             (fun acc y ->
+               try J.to_string y :: acc
+               with _ -> (
+                 try
+                   let bool = J.to_bool y in
+                   if bool then "true" :: acc else "false" :: acc
+                 with _ -> "null" :: acc))
+             []
         |> List.rev
       in
       let loc = J.member "loc" cont |> J.to_string in

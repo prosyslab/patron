@@ -100,6 +100,7 @@ let sort_rule_optimize ref deps =
 
 let abstract_bug_pattern buggy src snk aexps =
   let deps = collect_deps src snk aexps buggy |> Chc.to_list in
+  List.iter ~f:(fun dep -> Chc.pp_chc F.std_formatter dep) deps;
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
@@ -141,7 +142,7 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
   let buggy_cfg =
-    Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out/node.json")
+    Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out")
   in
   L.info "Make Facts in buggy done";
   let buggy_facts, (src, snk, aexps) =
