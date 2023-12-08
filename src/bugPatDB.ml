@@ -34,7 +34,8 @@ let collect_deps src snk aexps chc =
   let terms = Chc.add snk_term aexps in
   fixedpoint func_apps terms Chc.empty
   |> fst
-  |> Chc.filter (fun dep -> Chc.Elt.is_duedge dep |> not)
+  |> Chc.filter (fun dep ->
+         (Chc.Elt.is_duedge dep || Chc.Elt.is_assume dep) |> not)
   |> Chc.inter chc
 
 let sort_rule_optimize ref deps =
@@ -127,10 +128,10 @@ let match_bug_for_one_prj pattern buggy_dir target_alarm ast cfg out_dir =
     let facts, _ =
       Parser.make_facts buggy_dir target_alarm ast cfg out_dir maps
     in
-    Chc.match_and_log out_dir target_alarm maps facts pattern;
-    Maps.dump target_alarm maps out_dir;
     reset_env ();
     L.info "Try matching with %s..." target_alarm;
+    Chc.match_and_log out_dir target_alarm maps facts pattern;
+    Maps.dump target_alarm maps out_dir;
     L.info "match_bug_for_one_prj: %s is done" target_alarm
   with Parser.Not_impl_aexp -> L.info "PASS"
 

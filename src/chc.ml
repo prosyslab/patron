@@ -97,6 +97,7 @@ module Elt = struct
   let is_rule = function Implies _ -> true | _ -> false
   let is_duedge = function FuncApply ("DUEdge", _) -> true | _ -> false
   let is_dupath = function FuncApply ("DUPath", _) -> true | _ -> false
+  let is_assume = function FuncApply ("Assume", _) -> true | _ -> false
 
   let get_body = function
     | Implies (body, _) -> body
@@ -511,7 +512,7 @@ let update_rule head_name new_body chcs =
   remove target chcs |> add new_rule
 
 let add_fact maps solver f =
-  if Elt.is_duedge f |> not then
+  if (Elt.is_duedge f || Elt.is_assume f) |> not then
     let fact = Elt.to_z3 maps f in
     Z3.Fixedpoint.add_rule solver fact None
 

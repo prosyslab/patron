@@ -35,19 +35,6 @@ let parse_ast target_dir =
   if not (Feature.enabled "epicenter") then Rmtmps.removeUnusedTemps cil;
   cil
 
-let numer_cnt = ref 25
-
-let update_numer name =
-  match name with
-  | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" ->
-      expr_numer_cnt := !numer_cnt
-  | "Lval" -> lval_numer_cnt := !numer_cnt
-  | "Val" -> value_numer_cnt := !numer_cnt
-  | "ArgList" -> arg_list_numer_cnt := !numer_cnt
-  | "Loc" -> loc_numer_cnt := !numer_cnt
-  | "Pos" -> pos_numer_cnt := !numer_cnt
-  | _ -> node_numer_cnt := !numer_cnt
-
 let mk_term s =
   if Z3utils.is_binop s || Z3utils.is_unop s then Chc.Elt.FDNumeral s
   else
@@ -57,8 +44,6 @@ let mk_term s =
       if List.length splitted = 1 then Chc.Elt.Var s
       else (
         incr numer_cnt;
-        let name = List.hd_exn splitted in
-        update_numer name;
         Chc.Elt.FDNumeral s)
 
 (* TODO: Add Assume.facts *)
