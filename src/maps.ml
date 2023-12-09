@@ -23,95 +23,23 @@ module CfgNode = struct
     | CAsm of loc (*(_, _, _, _, _, loc) *)
     | CSkip of loc (*(_, loc)*)
 
-  let parse_loc loc =
-    let parsed = Str.split (Str.regexp ":") loc in
-    if List.length parsed <> 2 then { file = ""; line = -1 }
-    else
-      {
-        file = List.nth_exn parsed 0;
-        line = int_of_string (List.nth_exn parsed 1);
-      }
-
-  let parse_sparrow nodes map fact_maps =
-    (* let set_facts = parse_facts (Filename.concat path "Set.facts") in
-       let call_facts = parse_call_facts (Filename.concat path "Set.facts") in *)
-    (* let exp_map = parse_map (Filename.concat path "Exp.map") in *)
-    let _, args_facts =
-      List.find_exn ~f:(fun (k, _) -> String.equal k "Arg") fact_maps
-    in
-    let _, alloc_exp_facts =
-      List.find_exn ~f:(fun (k, _) -> String.equal k "Alloc") fact_maps
-    in
-    let _, set_facts =
-      List.find_exn ~f:(fun (k, _) -> String.equal k "Set") fact_maps
-    in
-    (* TODO: call_facts not proper *)
-    let _, call_facts =
-      List.find_exn ~f:(fun (k, _) -> String.equal k "Call") fact_maps
-    in
-    let _, return_facts =
-      List.find_exn ~f:(fun (k, _) -> String.equal k "Return") fact_maps
-    in
-    let _, assume_facts =
-      List.find_exn ~f:(fun (k, _) -> String.equal k "Assume") fact_maps
-    in
-    List.iter
-      ~f:(fun (key, cmd, loc) ->
-        let cmd =
-          match List.hd_exn cmd with
-          | "skip" -> CSkip (parse_loc loc)
-          | "return" ->
-              let arg_opt = Utils.StrMap.find_opt key return_facts in
-              if Option.is_none arg_opt then CNone
-              else
-                let arg = Option.value ~default:[] arg_opt in
-                if List.length arg <> 0 then
-                  CReturn1 (List.hd_exn arg, parse_loc loc)
-                else CReturn2 (parse_loc loc)
-          | "call" ->
-              let arg_opt = Utils.StrMap.find_opt key call_facts in
-              if Option.is_none arg_opt then CNone
-              else
-                let arg = Option.value ~default:[] arg_opt in
-                let call_exp = List.nth_exn arg 1 in
-                let lval = List.nth_exn arg 0 in
-                let arg_lst = Utils.StrMap.find_opt call_exp args_facts in
-                let arg_lst =
-                  if Option.is_none arg_lst then []
-                  else Option.value ~default:[] arg_lst
-                in
-                CCall
-                  ( List.hd_exn arg,
-                    CCallExp (lval, arg_lst, parse_loc loc),
-                    parse_loc loc )
-          | "assume" ->
-              let arg_opt = Utils.StrMap.find_opt key assume_facts in
-              if Option.is_none arg_opt then CNone
-              else
-                let arg = Option.value ~default:[] arg_opt in
-                CAssume (List.hd_exn arg, parse_loc loc)
-          | "set" ->
-              let arg = Utils.StrMap.find_opt key set_facts in
-              if Option.is_none arg then CNone
-              else
-                let arg = Option.value ~default:[] arg in
-                CSet (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc)
-          | "alloc" -> (
-              let arg = Utils.StrMap.find_opt key alloc_exp_facts in
-              match arg with
-              | None -> CNone
-              | Some arg ->
-                  CAlloc (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc))
-          | "falloc" -> CNone
-          | "salloc" -> CNone
-          | _ ->
-              print_endline "----------";
-              print_endline (List.hd_exn cmd);
-              print_endline "----------";
-              failwith "Unknown Command"
-        in
-        match cmd with CNone | CSkip _ -> () | _ -> Hashtbl.add map cmd key)
-      nodes
+  let pp = function
+    | CNone -> "CNone"
+    | CSet (lv, e, _) -> F.sprintf "CSet(%s, %s)" lv e
+    | CExternal (lv, _) -> F.sprintf "CExternal(%s)" lv
+    | CAlloc (lv, e, _) -> F.sprintf "CAlloc(%s, %s)" lv e
+    | CSalloc (lv, s, _) -> F.sprintf "CSalloc(%s, %s)" lv s
+    | CFalloc (lv, f, _) -> F.sprintf "CFalloc(%s, %s)" lv f
+    | CCall (lv, _, _) -> F.sprintf "CCall(%s)" lv
+    | CCallExp (fexp, params, _) ->
+        F.sprintf "CCallExp(%s, %s)" fexp (String.concat ~sep:", " params)
+    | CReturn1 (e, _) -> F.sprintf "CReturn1(%s)" e
+    | CReturn2 _ -> "CReturn2"
+    | CIf _ -> "CIf"
+    | CAssume (e, _) -> F.sprintf "CAssume(%s)" e
+    | CLoop _ -> "CLoop"
+    | CAsm _ -> "CAsm"
+    | CSkip _ -> "CSkip"
 end
 
 type t = {

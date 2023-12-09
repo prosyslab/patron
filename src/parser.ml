@@ -28,6 +28,112 @@ module ASTMap = struct
     map
 end
 
+let parse_loc loc =
+  let parsed = Str.split (Str.regexp ":") loc in
+  if List.length parsed <> 2 then { Maps.CfgNode.file = ""; line = -1 }
+  else
+    {
+      file = List.nth_exn parsed 0;
+      line = int_of_string (List.nth_exn parsed 1);
+    }
+
+let parse_facts facts func_name =
+  Chc.fold
+    (fun c acc ->
+      match c with
+      | Chc.Elt.FuncApply (f, lst) when String.equal f func_name -> lst :: acc
+      | _ -> acc)
+    facts []
+
+let find_fact_opt key (fact : Chc.Elt.t list list) =
+  let extract_str = function
+    | Chc.Elt.Const z -> Z.to_string z
+    | Chc.Elt.Var s -> s
+    | Chc.Elt.FDNumeral s -> s
+    | _ -> failwith "find_fact_opt - not implemented"
+  in
+  let arg_opt =
+    List.find
+      ~f:(fun lst ->
+        let key_in_fact = List.hd_exn lst |> extract_str in
+        String.equal key_in_fact key)
+      fact
+  in
+  if Option.is_none arg_opt then None
+  else
+    let out =
+      Option.value ~default:[] arg_opt
+      |> List.tl_exn
+      |> List.fold_left ~init:[] ~f:(fun acc s -> extract_str s :: acc)
+      |> List.rev
+    in
+    Some out
+
+let parse_sparrow nodes map chc =
+  let set_facts = parse_facts chc "Set" in
+  let call_facts = parse_facts chc "Call" in
+  let args_facts = parse_facts chc "Arg" in
+  let alloc_exp_facts = parse_facts chc "Alloc" in
+  let return_facts = parse_facts chc "Return" in
+  let assume_facts = parse_facts chc "Assume" in
+  List.iter
+    ~f:(fun (key, cmd, loc) ->
+      let cmd =
+        match List.hd_exn cmd with
+        | "skip" -> Maps.CfgNode.CSkip (parse_loc loc)
+        | "return" ->
+            let arg_opt = find_fact_opt key return_facts in
+            if Option.is_none arg_opt then CNone
+            else
+              let arg = Option.value ~default:[] arg_opt in
+              if List.length arg <> 0 then
+                CReturn1 (List.hd_exn arg, parse_loc loc)
+              else CReturn2 (parse_loc loc)
+        | "call" ->
+            let arg_opt = find_fact_opt key call_facts in
+            if Option.is_none arg_opt then CNone
+            else
+              let arg = Option.value ~default:[] arg_opt in
+              let call_exp = List.nth_exn arg 1 in
+              let lval = List.nth_exn arg 0 in
+              let arg_lst = find_fact_opt call_exp args_facts in
+              let arg_lst =
+                if Option.is_none arg_lst then []
+                else Option.value ~default:[] arg_lst
+              in
+              CCall
+                ( List.hd_exn arg,
+                  CCallExp (lval, arg_lst, parse_loc loc),
+                  parse_loc loc )
+        | "assume" ->
+            let arg_opt = find_fact_opt key assume_facts in
+            if Option.is_none arg_opt then CNone
+            else
+              let arg = Option.value ~default:[] arg_opt in
+              CAssume (List.hd_exn arg, parse_loc loc)
+        | "set" ->
+            let arg = find_fact_opt key set_facts in
+            if Option.is_none arg then CNone
+            else
+              let arg = Option.value ~default:[] arg in
+              CSet (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc)
+        | "alloc" -> (
+            let arg = find_fact_opt key alloc_exp_facts in
+            match arg with
+            | None -> CNone
+            | Some arg ->
+                CAlloc (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc))
+        | "falloc" -> CNone
+        | "salloc" -> CNone
+        | _ ->
+            print_endline "----------";
+            print_endline (List.hd_exn cmd);
+            print_endline "----------";
+            failwith "Unknown Command"
+      in
+      match cmd with CNone | CSkip _ -> () | _ -> Hashtbl.add map cmd key)
+    nodes
+
 let parse_ast target_dir =
   let file = Utils.get_target_file target_dir in
   if !Cilutil.printStages then ignore ();
@@ -71,29 +177,29 @@ let file2func = function
 let parse_cf_facts datalog_dir fact_file =
   let func_name = file2func fact_file in
   let fact_file_path = Filename.concat datalog_dir fact_file in
-  let elt_lst, facts =
+  let elt_lst =
     In_channel.read_lines fact_file_path
-    |> List.fold_left ~init:([], Utils.StrMap.empty) ~f:(fun (lst, map) line ->
+    |> List.fold_left ~init:[] ~f:(fun lst line ->
            let arg_lst = String.split ~on:'\t' line in
            let args = List.map ~f:mk_term arg_lst in
            let elt = Chc.Elt.FuncApply (func_name, args) in
-           let map =
-             Utils.StrMap.add (List.hd_exn arg_lst) (List.tl_exn arg_lst) map
-           in
-           (elt :: lst, map))
+           (* let map =
+                Utils.StrMap.add (List.hd_exn arg_lst) (List.tl_exn arg_lst) map
+              in *)
+           elt :: lst)
   in
-  (List.rev elt_lst |> Chc.of_list, (func_name, facts))
+  List.rev elt_lst |> Chc.of_list
 
 (* TODO: combine symdiff making process and make_cf_facts wrt the file IO *)
 let make_cf_facts work_dir cfg map =
-  let cf_facts, facts_map =
-    List.fold_left ~init:(Chc.empty, [])
-      ~f:(fun (facts, lst) file ->
-        let chc, fact_map = parse_cf_facts work_dir file in
-        (Chc.union facts chc, fact_map :: lst))
+  let cf_facts =
+    List.fold_left ~init:Chc.empty
+      ~f:(fun facts file ->
+        let chc = parse_cf_facts work_dir file in
+        Chc.union facts chc)
       Z3env.fact_files
   in
-  Maps.CfgNode.parse_sparrow cfg map facts_map;
+  parse_sparrow cfg map cf_facts;
   cf_facts
 
 let rec sexp2chc = function
