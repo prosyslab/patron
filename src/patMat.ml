@@ -233,32 +233,107 @@ let abstract_bug_pattern buggy src snk aexps maps diffs ast =
   in
   Z3env.src := src;
   Z3env.snk := snk;
-  (* let deps = sort_rule_optimize errtrace deps in *)
-  let errtrace_rule = Chc.Elt.Implies (deps, errtrace) |> Chc.Elt.numer2var in
-  (* let error_cons = Chc.Elt.numer2var alarm in
-     let err_rel = Chc.Elt.get_head error_cons in *)
-  let bug_rule =
-    Chc.Elt.Implies ([ errtrace (*; err_rel*) ], Chc.Elt.FuncApply ("Bug", []))
-  in
-  Chc.of_list [ errtrace_rule; (*error_cons;*) bug_rule ]
+  Chc.Elt.Implies (deps, errtrace) |> Chc.Elt.numer2var |> Chc.singleton
 (* |> Chc.union smallest_ast_pattern *)
 
 let parse_ast dir i_opt =
   Parser.parse_ast dir |> fun f ->
   if List.length i_opt <> 0 then Inline.perform i_opt f else f
 
-let match_bug_for_one_prj pattern buggy_dir target_alarm ast cfg out_dir =
-  let maps = Maps.create_maps () in
-  Maps.reset_maps maps;
+let parse_dl_fact rel =
+  match String.split ~on:'(' rel with
+  | [ func_name; tl ] ->
+      let args =
+        String.chop_suffix_if_exists ~suffix:")." tl
+        |> String.split ~on:','
+        |> List.map ~f:(fun s -> int_of_string s)
+      in
+      (func_name, args)
+  | _ -> L.error "parse_dl_fact - invalid format"
+
+let is_dl_fact s =
+  String.is_suffix s ~suffix:"." && not (String.is_substring ~substring:":-" s)
+
+let parse_ans ans =
+  String.split ~on:'|' ans
+  |> List.fold_left
+       ~f:(fun fs rel -> if is_dl_fact rel then parse_dl_fact rel :: fs else fs)
+       ~init:[]
+
+module PairSet = Set.Make (struct
+  type t = int * int
+
+  let compare (x1, y1) (x2, y2) =
+    let c1 = Int.compare x1 x2 in
+    if c1 = 0 then Int.compare y1 y2 else c1
+
+  let equal a b = compare a b = 0
+end)
+
+let match_facts =
+  List.fold2_exn
+    ~f:(fun pairs f1 f2 ->
+      match (f1, f2) with
+      | (fn1, args1), (fn2, args2)
+        when String.equal fn1 fn2 && List.length args1 = List.length args2 ->
+          List.fold2_exn
+            ~f:(fun ps a1 a2 -> PairSet.add (a1, a2) ps)
+            ~init:pairs args1 args2
+      | _ -> L.error "match_facts - invalid format")
+    ~init:PairSet.empty
+
+let dump_sol_map target_alarm buggy_maps target_maps out_dir pairs =
+  let oc =
+    Out_channel.create (Filename.concat out_dir (target_alarm ^ "_sol.map"))
+  in
+  let fmt = F.formatter_of_out_channel oc in
+  PairSet.iter
+    (fun (buggy_n, donee_n) ->
+      if 0 <= buggy_n && buggy_n <= 21 then
+        F.fprintf fmt "%s\t%s\n"
+          (Z3utils.binop_of_int buggy_n)
+          (Z3utils.binop_of_int donee_n)
+      else if 22 <= buggy_n && buggy_n <= 24 then
+        F.fprintf fmt "%s\t%s\n"
+          (Z3utils.unop_of_int buggy_n)
+          (Z3utils.unop_of_int donee_n)
+      else
+        F.fprintf fmt "%s\t%s\n"
+          (Hashtbl.find buggy_maps.Maps.numeral_map buggy_n)
+          (Hashtbl.find target_maps.Maps.numeral_map donee_n))
+    pairs;
+  F.pp_print_flush fmt ();
+  Out_channel.close oc
+
+let match_ans buggy_maps target_maps target_alarm out_dir =
+  let buggy_ans =
+    Filename.concat out_dir "buggy_ans.smt2" |> In_channel.read_all
+  in
+  let target_ans =
+    Filename.concat out_dir (target_alarm ^ "_ans.smt2") |> In_channel.read_all
+  in
+  let buggy_facts = parse_ans buggy_ans in
+  let target_facts = parse_ans target_ans in
+  let pairs = match_facts buggy_facts target_facts in
+  dump_sol_map target_alarm buggy_maps target_maps out_dir pairs
+
+let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
+    out_dir =
+  let target_maps = Maps.create_maps () in
+  Maps.reset_maps target_maps;
   try
     let facts, _ =
-      Parser.make_facts buggy_dir target_alarm ast cfg out_dir maps
+      Parser.make_facts buggy_dir target_alarm ast cfg out_dir target_maps
     in
     reset_env ();
     L.info "Try matching with %s..." target_alarm;
-    Chc.match_and_log out_dir target_alarm maps facts pattern;
-    Maps.dump target_alarm maps out_dir;
-    L.info "match_bug_for_one_prj: %s is done" target_alarm
+    let status =
+      Chc.match_and_log out_dir target_alarm target_maps facts pattern
+    in
+    Maps.dump target_alarm target_maps out_dir;
+    if Option.is_some status then
+      match_ans buggy_maps target_maps target_alarm out_dir;
+    L.info "Matching with %s is done" target_alarm
   with Parser.Not_impl_aexp -> L.info "PASS"
 
 let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
@@ -289,7 +364,8 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   reset_env ();
   L.info "Try matching with buggy...";
-  Chc.match_and_log out_dir "buggy" buggy_maps buggy_facts pattern;
+  ( Chc.match_and_log out_dir "buggy" buggy_maps buggy_facts pattern
+  |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
   Sys.readdir (Filename.concat buggy_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
@@ -298,6 +374,6 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
            && Sys.is_directory
                 (Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ ta))
          then
-           match_bug_for_one_prj pattern buggy_dir ta buggy_ast buggy_cfg
-             out_dir);
+           match_bug_for_one_prj pattern buggy_maps buggy_dir ta buggy_ast
+             buggy_cfg out_dir);
   L.info "Done."

@@ -161,8 +161,8 @@ module Elt = struct
     | Var _ as v -> v
     | FDNumeral s ->
         if
-          Z3utils.is_binop s || Z3utils.is_unop s || String.equal s !src
-          || String.equal s !snk
+          Z3utils.is_binop s || Z3utils.is_unop s || String.equal s !Z3env.src
+          || String.equal s !Z3env.snk
         then FDNumeral s
         else Var s
     | Const _ as c -> c
@@ -541,7 +541,6 @@ let pattern_match out_dir ver_name maps chc pattern =
   L.info "Start making Z3 instance from facts and rels";
   add_all maps solver (union chc pattern);
   L.info "Complete making Z3 instance from facts and rels";
-  Z3utils.dump_solver_to_smt ver_name solver out_dir;
   let status =
     Z3.Fixedpoint.query solver
       (Z3.FuncDecl.apply z3env.errtrace
@@ -550,13 +549,7 @@ let pattern_match out_dir ver_name maps chc pattern =
            Hashtbl.find maps.sym_map !Z3env.snk;
          ])
   in
-  Z3utils.dump_formula ver_name solver
-    (Z3.FuncDecl.apply z3env.errtrace
-       [
-         Hashtbl.find maps.sym_map !Z3env.src;
-         Hashtbl.find maps.sym_map !Z3env.snk;
-       ])
-    out_dir;
+  Z3utils.dump_solver_to_smt (ver_name ^ "_formula") solver out_dir;
   match status with
   | Z3.Solver.UNSATISFIABLE -> None
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
@@ -568,4 +561,5 @@ let match_and_log out_dir ver_name maps chc pattern =
     ~f:(fun ans ->
       L.info "%s is Matched" ver_name;
       Z3utils.dump_expr_to_smt (ver_name ^ "_ans") ans out_dir)
-    status
+    status;
+  status

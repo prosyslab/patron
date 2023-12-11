@@ -4,7 +4,7 @@ let extract_bug_pattern opts target_dir target_alarm out_dir =
   if (Sys.file_exists buggy_dir && Sys.file_exists patch_dir) |> not then (
     prerr_endline "Error: No target directory specified";
     exit 1)
-  else BugPatDB.run opts target_alarm buggy_dir patch_dir out_dir
+  else PatMat.run opts target_alarm buggy_dir patch_dir out_dir
 
 let main () =
   let options = Options.parse () in

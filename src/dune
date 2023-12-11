@@ -13,8 +13,7 @@
   z3utils
   parser
   chc
-  bugPatDB
-  patTrans
+  patMat
   utils
   editFunction
   symDiff
