@@ -252,7 +252,10 @@ let parse_chc chc_file =
 let mk_parent_tuples parent stmts =
   List.fold_left ~init:[] ~f:(fun acc s -> (parent, s) :: acc) stmts
 
-let match_eq_nodes ast_node cfg ast_map =
+let match_eq_nodes ast_node maps =
+  let cfg = maps.Maps.cfg_map in
+  let ast_map = maps.Maps.ast_map in
+  let node_map = maps.Maps.node_map in
   let ast_id = Hashtbl.find ast_map ast_node |> string_of_int in
   let cfg_id =
     Hashtbl.fold
@@ -260,15 +263,17 @@ let match_eq_nodes ast_node cfg ast_map =
         let bool =
           match (ast_node.Cil.skind, cnode) with
           | Cil.Instr i, cn -> (
-              match (List.hd_exn i, cn) with
-              | Cil.Call (_, _, _, loc), Maps.CfgNode.CCall (_, _, cloc) ->
-                  SymDiff.SDiff.eq_line loc cloc
-              | Cil.Set (_, _, loc), Maps.CfgNode.CSet (_, _, cloc)
-              | Cil.Set (_, _, loc), Maps.CfgNode.CAlloc (_, _, cloc)
-              | Cil.Set (_, _, loc), Maps.CfgNode.CSalloc (_, _, cloc)
-              | Cil.Set (_, _, loc), Maps.CfgNode.CFalloc (_, _, cloc) ->
-                  SymDiff.SDiff.eq_line loc cloc
-              | _ -> false)
+              if List.length i = 0 then false
+              else
+                match (List.hd_exn i, cn) with
+                | Cil.Call (_, _, _, loc), Maps.CfgNode.CCall (_, _, cloc) ->
+                    SymDiff.SDiff.eq_line loc cloc
+                | Cil.Set (_, _, loc), Maps.CfgNode.CSet (_, _, cloc)
+                | Cil.Set (_, _, loc), Maps.CfgNode.CAlloc (_, _, cloc)
+                | Cil.Set (_, _, loc), Maps.CfgNode.CSalloc (_, _, cloc)
+                | Cil.Set (_, _, loc), Maps.CfgNode.CFalloc (_, _, cloc) ->
+                    SymDiff.SDiff.eq_line loc cloc
+                | _ -> false)
           | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc ->
               SymDiff.SDiff.eq_line loc cloc
           | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc)
@@ -278,9 +283,17 @@ let match_eq_nodes ast_node cfg ast_map =
         in
         if bool then id :: acc else acc)
       cfg []
-    |> List.hd_exn
+    |> fun x -> if List.length x = 0 then None else Some (List.hd_exn x)
   in
-  Chc.Elt.FuncApply ("EqNode", [ FDNumeral cfg_id; FDNumeral ast_id ])
+  if Option.is_none cfg_id then None
+  else (
+    Hashtbl.add node_map (Option.value_exn cfg_id) ast_id;
+    Some
+      (Chc.Elt.FuncApply
+         ( "EqNode",
+           [
+             FDNumeral (Option.value_exn cfg_id); FDNumeral ("AstNode-" ^ ast_id);
+           ] )))
 
 let make_ast_facts (maps : Maps.t) stmts =
   let parent_tups =
@@ -294,8 +307,14 @@ let make_ast_facts (maps : Maps.t) stmts =
         | _ -> acc)
       stmts
     |> List.fold_left ~init:[] ~f:(fun acc (parent, child) ->
-           let parent = Hashtbl.find maps.ast_map parent |> string_of_int in
-           let child = Hashtbl.find maps.ast_map child |> string_of_int in
+           let parent =
+             Hashtbl.find maps.ast_map parent |> string_of_int |> fun n ->
+             [ "AstNode"; n ] |> String.concat ~sep:"-"
+           in
+           let child =
+             Hashtbl.find maps.ast_map child |> string_of_int |> fun n ->
+             [ "AstNode"; n ] |> String.concat ~sep:"-"
+           in
            (parent, child) :: acc)
   in
   let parent_rel =
@@ -308,7 +327,9 @@ let make_ast_facts (maps : Maps.t) stmts =
   in
   let eqnode_rel =
     List.fold_left ~init:[]
-      ~f:(fun acc stmt -> match_eq_nodes stmt maps.cfg_map maps.ast_map :: acc)
+      ~f:(fun acc stmt ->
+        match_eq_nodes stmt maps |> fun x ->
+        if Option.is_none x then acc else Option.value_exn x :: acc)
       stmts
     |> Chc.of_list
   in
@@ -364,10 +385,8 @@ let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
   let stmts = Utils.extract_stmts ast in
   Maps.make_ast_map stmts maps.ast_map;
   let facts =
-    (* Chc.union
-       (make_ast_facts stmts
-       maps) *)
     make_cf_facts alarm_dir cfg maps.cfg_map
+    |> Chc.union (make_ast_facts maps stmts)
   in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;

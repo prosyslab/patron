@@ -285,6 +285,13 @@ module SDiff = struct
     | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) ->
         ctx.func_name
 
+  let extract_context sdiff =
+    match sdiff with
+    | SInsertStmt (ctx, _) | SDeleteStmt (ctx, _) -> ctx
+    | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) -> ctx
+    | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) ->
+        ctx
+
   let rec mk_sdiff ctx cfg exp_map diff =
     match diff with
     | D.Diff.InsertStmt (_, s) ->

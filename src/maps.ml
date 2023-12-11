@@ -48,6 +48,7 @@ type t = {
   ast_map : (Cil.stmt, int) Hashtbl.t;
   cfg_map : (CfgNode.t, string) Hashtbl.t;
   exp_map : (string, string) Hashtbl.t;
+  node_map : (string, string) Hashtbl.t;
 }
 
 let create_maps () =
@@ -57,6 +58,7 @@ let create_maps () =
     ast_map = Hashtbl.create 1000;
     cfg_map = Hashtbl.create 1000;
     exp_map = Hashtbl.create 1000;
+    node_map = Hashtbl.create 1000;
   }
 
 let load_map cast1 cast2 ic map =
@@ -77,8 +79,8 @@ let load_numeral_map = load_map int_of_string Fun.id
 let reset_maps maps =
   Hashtbl.reset maps.sym_map;
   Hashtbl.reset maps.numeral_map;
-  Hashtbl.reset maps.ast_map;
-  Hashtbl.reset maps.cfg_map
+  Hashtbl.reset maps.cfg_map;
+  Hashtbl.reset maps.node_map
 
 let make_ast_map stmts ast_map =
   List.fold_left ~init:1
@@ -112,5 +114,5 @@ let dump_ast_map =
 
 let dump mode maps out_dir =
   dump_sym_map mode maps.sym_map out_dir;
-  dump_numeral_map mode maps.numeral_map out_dir
-(* dump_ast_map mode maps.ast_map out_dir *)
+  dump_numeral_map mode maps.numeral_map out_dir;
+  dump_ast_map mode maps.ast_map out_dir

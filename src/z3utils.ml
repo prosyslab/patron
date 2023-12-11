@@ -5,7 +5,7 @@ include Z3env
 let match_func f =
   let z3env = get_env () in
   match f with
-  | "Parent" -> z3env.ast_parent
+  | "AstParent" -> z3env.ast_parent
   | "EqNode" -> z3env.eq_node
   | "Src" -> z3env.src
   | "Snk" -> z3env.snk
@@ -132,7 +132,7 @@ let match_sort s =
     | "Loc" -> z3env.loc
     | "Val" -> z3env.value
     | "Pos" -> z3env.int_sort
-    | "ASTNode" -> z3env.ast_node
+    | "AstNode" -> z3env.ast_node
     | _ -> z3env.node
 
 let numer_cnt = ref 24 (* for binop, unop *)
