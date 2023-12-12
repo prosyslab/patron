@@ -127,8 +127,6 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.errtrace;
   Z3.Fixedpoint.register_relation solver env.bug
 
-let init_env () = None
-
 let fact_files =
   [
     "AllocExp.facts";
@@ -364,13 +362,8 @@ let mk_env () =
       bug;
     }
   in
-  Some env
-
-let z3env = init_env () |> ref
+  env
 
 let get_env () =
   Z3.Memory.reset ();
-  z3env := mk_env ();
-  match !z3env with
-  | Some env -> env
-  | None -> failwith "get_env: Z3 environment is not set up yet"
+  mk_env ()
