@@ -123,6 +123,8 @@ let extract_parent diff ast_map =
   | _ -> failwith "parent not found"
 
 let compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast =
+  L.info "Compute AST pattern...";
+  List.iter ~f:(fun n -> L.info "%s" n) ast_node_lst;
   let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
   let parent_tups =
     List.fold_left ~init:[]
@@ -142,7 +144,7 @@ let compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast =
            :: acc)
   in
   let start =
-    List.find_exn ~f:(fun (_, c) -> String.equal c patch_node) parent_tups
+    List.find_exn ~f:(fun (p, _) -> String.equal p patch_node) parent_tups
   in
   let rec go_up (p, c) acc =
     let rec go_down candidates acc =
@@ -179,12 +181,13 @@ let compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast =
           if String.equal p p' then (p', c') :: acc' else acc')
         parent_tups
     in
-    let up_opt = List.find ~f:(fun (_, c') -> String.equal p c') acc in
-    let up =
-      if Option.is_none up_opt then failwith "common ancestor not found"
-      else Option.value_exn up_opt
-    in
-    if List.length candidates = 0 then go_up up (up :: acc)
+    if List.length candidates = 0 then
+      let up_opt = List.find ~f:(fun (_, c') -> String.equal p c') acc in
+      let up =
+        if Option.is_none up_opt then failwith "common ancestor not found"
+        else Option.value_exn up_opt
+      in
+      go_up up (up :: acc)
     else
       let is_found =
         List.exists
@@ -200,14 +203,19 @@ let compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast =
         :: acc
       else
         let down = go_down candidates [] in
+        let up_opt = List.find ~f:(fun (_, c') -> String.equal p c') acc in
+        let up =
+          if Option.is_none up_opt then failwith "common ancestor not found"
+          else Option.value_exn up_opt
+        in
         if List.length down = 0 then go_up up (up :: acc) else acc @ down
   in
   let solution = go_up start [ start ] in
-  List.fold_left ~init:Chc.empty
+  List.fold_left ~init:[]
     ~f:(fun acc (p, c) ->
       let p = Chc.Elt.Var ("AstNode-" ^ p) in
       let c = Chc.Elt.Var ("AstNode-" ^ c) in
-      Chc.add (Chc.Elt.FuncApply ("AstParent", [ p; c ])) acc)
+      Chc.Elt.FuncApply ("AstParent", [ p; c ]) :: acc)
     solution
 
 let abstract_bug_pattern buggy src snk aexps maps diffs ast =
@@ -220,21 +228,21 @@ let abstract_bug_pattern buggy src snk aexps maps diffs ast =
     |> List.hd_exn
   in
   let deps = collect_deps src snk aexps buggy |> Chc.to_list in
-  (* let ast_node_lst = collect_nodes deps node_map in
-     let patch_node, patch_func = extract_parent ctx ast_map in
-     let smallest_ast_pattern =
-       if String.equal patch_node "" then
-         failwith "not implemented for direct patch below the function"
-       else compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast
-     in *)
+  let ast_node_lst = collect_nodes deps node_map in
+  let patch_node, patch_func = extract_parent ctx ast_map in
+  let smallest_ast_pattern =
+    if String.equal patch_node "" then
+      failwith "not implemented for direct patch below the function"
+    else compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast
+  in
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  Chc.Elt.Implies (deps, errtrace) |> Chc.Elt.numer2var |> Chc.singleton
-(* |> Chc.union smallest_ast_pattern *)
+  Chc.Elt.Implies (deps @ smallest_ast_pattern, errtrace)
+  |> Chc.Elt.numer2var |> Chc.singleton
 
 let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
     out_dir =
