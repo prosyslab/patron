@@ -23,6 +23,7 @@ let match_func f =
   | "BinOp" -> z3env.binop
   | "UnOp" -> z3env.unop
   | "CFPath" -> z3env.cfpath
+  | "DetailedDUEdge" -> z3env.deduedge
   | "DUEdge" -> z3env.duedge
   | "DUPath" -> z3env.dupath
   | "EvalLv" -> z3env.evallv

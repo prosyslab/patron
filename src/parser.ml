@@ -161,7 +161,7 @@ let file2func = function
   | "UnOpExp.facts" -> "UnOp"
   | "CallExp.facts" -> "Call"
   | "CFPath.facts" -> "CFPath"
-  (* | "DetailedDUEdge.facts" -> "DUEdge" *)
+  | "DetailedDUEdge.facts" -> "DetailedDUEdge"
   | "DUEdge.facts" -> "DUEdge"
   | "DUPath.facts" -> "DUPath"
   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"

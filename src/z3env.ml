@@ -5,10 +5,6 @@ module F = Format
 
 type t = {
   z3ctx : Z3.context;
-  donor_solver : Z3.Fixedpoint.fixedpoint;
-  patch_solver : Z3.Fixedpoint.fixedpoint;
-  donee_solver : Z3.Fixedpoint.fixedpoint;
-  pattern_solver : Z3.Fixedpoint.fixedpoint;
   boolean_sort : Z3.Sort.sort;
   int_sort : Z3.Sort.sort;
   bv_sort : Z3.Sort.sort;
@@ -50,6 +46,7 @@ type t = {
   binop : Z3.FuncDecl.func_decl;
   unop : Z3.FuncDecl.func_decl;
   cfpath : Z3.FuncDecl.func_decl;
+  deduedge : Z3.FuncDecl.func_decl;
   duedge : Z3.FuncDecl.func_decl;
   dupath : Z3.FuncDecl.func_decl;
   (* Functions for Semantic Constraint *)
@@ -68,8 +65,6 @@ type t = {
   dzerror : Z3.FuncDecl.func_decl;
   errtrace : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
-  fact_files : String.t list;
-  rels : string list;
 }
 
 let buggy_src = ref ""
@@ -113,6 +108,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.binop;
   Z3.Fixedpoint.register_relation solver env.unop;
   Z3.Fixedpoint.register_relation solver env.cfpath;
+  Z3.Fixedpoint.register_relation solver env.deduedge;
   Z3.Fixedpoint.register_relation solver env.duedge;
   Z3.Fixedpoint.register_relation solver env.dupath;
   Z3.Fixedpoint.register_relation solver env.evallv;
@@ -140,7 +136,7 @@ let fact_files =
     "BinOpExp.facts";
     "CallExp.facts";
     "CFPath.facts";
-    (* "DetailedDUEdge.facts"; *)
+    "DetailedDUEdge.facts";
     "DUEdge.facts";
     "DUPath.facts";
     "LibCallExp.facts";
@@ -150,6 +146,7 @@ let fact_files =
     "Skip.facts";
     "UnOpExp.facts";
     "Assume.facts";
+    "EvalLv.facts";
   ]
 
 let numer_cnt = ref 25
@@ -159,10 +156,6 @@ let mk_env () =
     Z3.mk_context
       [ ("model", "true"); ("proof", "true"); ("unsat_core", "true") ]
   in
-  let donor_solver = mk_fixedpoint z3ctx in
-  let patch_solver = mk_fixedpoint z3ctx in
-  let donee_solver = mk_fixedpoint z3ctx in
-  let pattern_solver = mk_fixedpoint z3ctx in
   let boolean_sort = Z3.Boolean.mk_sort z3ctx in
   let int_sort =
     Z3.FiniteDomain.mk_sort_s z3ctx "int" (Int64.of_int !numer_cnt)
@@ -257,6 +250,10 @@ let mk_env () =
   let cfpath =
     Z3.FuncDecl.mk_func_decl_s z3ctx "CFPath" [ node; node ] boolean_sort
   in
+  let deduedge =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "DetailedDUEdge" [ node; node; loc ]
+      boolean_sort
+  in
   let duedge =
     Z3.FuncDecl.mk_func_decl_s z3ctx "DUEdge" [ node; node ] boolean_sort
   in
@@ -305,57 +302,9 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "ErrTrace" [ node; node ] boolean_sort
   in
   let bug = Z3.FuncDecl.mk_func_decl_s z3ctx "Bug" [] boolean_sort in
-  let fact_files =
-    [
-      "AllocExp.facts";
-      "Arg.facts";
-      "BinOpExp.facts";
-      "CallExp.facts";
-      "CFPath.facts";
-      (* "DetailedDUEdge.facts"; *)
-      "DUEdge.facts";
-      "DUPath.facts";
-      "LibCallExp.facts";
-      "LvalExp.facts";
-      "Return.facts";
-      "Set.facts";
-      "Skip.facts";
-      "UnOpExp.facts";
-    ]
-  in
-  let rels =
-    [
-      "Alloc";
-      "Arg";
-      "Set";
-      "Call";
-      "CFPath";
-      "DUEdge";
-      "DUPath";
-      "Var";
-      "LibCall";
-      "LvalExp";
-      "Return";
-      "Cast";
-      "BinOp";
-      "UnOp";
-      "SAlloc";
-      "Skip";
-      "EvalLv";
-      "Eval";
-      "Memory";
-      "ArrayVal";
-      "ConstStr";
-      "Alarm";
-    ]
-  in
   let env =
     {
       z3ctx;
-      donor_solver;
-      patch_solver;
-      donee_solver;
-      pattern_solver;
       boolean_sort;
       int_sort;
       bv_sort;
@@ -395,6 +344,7 @@ let mk_env () =
       binop;
       unop;
       cfpath;
+      deduedge;
       duedge;
       dupath;
       evallv;
@@ -412,14 +362,8 @@ let mk_env () =
       dzerror;
       errtrace;
       bug;
-      fact_files;
-      rels;
     }
   in
-  reg_rel_to_solver env env.donor_solver;
-  reg_rel_to_solver env env.patch_solver;
-  reg_rel_to_solver env env.donee_solver;
-  reg_rel_to_solver env env.pattern_solver;
   Some env
 
 let z3env = init_env () |> ref
