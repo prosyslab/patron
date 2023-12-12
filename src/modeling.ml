@@ -1,7 +1,9 @@
 open Core
 open Z3utils
 module L = Logger
+module F = Format
 module Hashtbl = Stdlib.Hashtbl
+module Set = Stdlib.Set
 
 module PairSet = Set.Make (struct
   type t = int * int

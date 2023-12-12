@@ -170,7 +170,7 @@ let mk_term s =
       let splitted = String.split ~on:'-' s in
       if List.length splitted = 1 then Chc.Elt.Var s
       else (
-        incr numer_cnt;
+        incr sort_size;
         Chc.Elt.FDNumeral s)
 
 (* TODO: Add Assume.facts *)

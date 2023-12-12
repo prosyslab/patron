@@ -149,7 +149,7 @@ let fact_files =
     "EvalLv.facts";
   ]
 
-let numer_cnt = ref 25
+let sort_size = ref 25
 
 let mk_env () =
   let z3ctx =
@@ -158,7 +158,7 @@ let mk_env () =
   in
   let boolean_sort = Z3.Boolean.mk_sort z3ctx in
   let int_sort =
-    Z3.FiniteDomain.mk_sort_s z3ctx "int" (Int64.of_int !numer_cnt)
+    Z3.FiniteDomain.mk_sort_s z3ctx "int" (Int64.of_int !sort_size)
   in
   let bv_sort = Z3.BitVector.mk_sort z3ctx 64 (* NOTE: hard coded *) in
   let str_sort = Z3.Seq.mk_string_sort z3ctx in
@@ -166,29 +166,29 @@ let mk_env () =
   let one = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 1 in
   let two = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 2 in
   let three = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 3 in
-  let node = Z3.FiniteDomain.mk_sort_s z3ctx "node" (Int64.of_int !numer_cnt) in
+  let node = Z3.FiniteDomain.mk_sort_s z3ctx "node" (Int64.of_int !sort_size) in
   let ast_node =
-    Z3.FiniteDomain.mk_sort_s z3ctx "ast_node" (Int64.of_int !numer_cnt)
+    Z3.FiniteDomain.mk_sort_s z3ctx "ast_node" (Int64.of_int !sort_size)
   in
-  let lval = Z3.FiniteDomain.mk_sort_s z3ctx "lval" (Int64.of_int !numer_cnt) in
-  let expr = Z3.FiniteDomain.mk_sort_s z3ctx "expr" (Int64.of_int !numer_cnt) in
+  let lval = Z3.FiniteDomain.mk_sort_s z3ctx "lval" (Int64.of_int !sort_size) in
+  let expr = Z3.FiniteDomain.mk_sort_s z3ctx "expr" (Int64.of_int !sort_size) in
   let binop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "binop" (Int64.of_int 25) in
   let unop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "unop" (Int64.of_int 25) in
   let identifier =
     Z3.FiniteDomain.mk_sort_s z3ctx "identifier" (Int64.of_int 1)
   in
   let arg_list =
-    Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" (Int64.of_int !numer_cnt)
+    Z3.FiniteDomain.mk_sort_s z3ctx "arg_list" (Int64.of_int !sort_size)
   in
   let str_literal =
-    Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" (Int64.of_int !numer_cnt)
+    Z3.FiniteDomain.mk_sort_s z3ctx "str_literal" (Int64.of_int !sort_size)
   in
-  let loc = Z3.FiniteDomain.mk_sort_s z3ctx "loc" (Int64.of_int !numer_cnt) in
+  let loc = Z3.FiniteDomain.mk_sort_s z3ctx "loc" (Int64.of_int !sort_size) in
   let value =
-    Z3.FiniteDomain.mk_sort_s z3ctx "value" (Int64.of_int !numer_cnt)
+    Z3.FiniteDomain.mk_sort_s z3ctx "value" (Int64.of_int !sort_size)
   in
   let const =
-    Z3.FiniteDomain.mk_sort_s z3ctx "const" (Int64.of_int !numer_cnt)
+    Z3.FiniteDomain.mk_sort_s z3ctx "const" (Int64.of_int !sort_size)
   in
   let ast_parent =
     Z3.FuncDecl.mk_func_decl_s z3ctx "AstParent" [ ast_node; ast_node ]
@@ -368,11 +368,9 @@ let mk_env () =
 
 let z3env = init_env () |> ref
 
-let reset_env () =
-  Z3.Memory.reset ();
-  z3env := mk_env ()
-
 let get_env () =
+  Z3.Memory.reset ();
+  z3env := mk_env ();
   match !z3env with
   | Some env -> env
   | None -> failwith "get_env: Z3 environment is not set up yet"

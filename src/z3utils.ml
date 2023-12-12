@@ -1,9 +1,8 @@
 open Core
+open Z3env
 module L = Logger
-include Z3env
 
-let match_func f =
-  let z3env = get_env () in
+let match_func z3env f =
   match f with
   | "AstParent" -> z3env.ast_parent
   | "EqNode" -> z3env.eq_node
@@ -114,8 +113,7 @@ let unop_of_int = function
   | 24 -> "Neg"
   | _ -> L.error "unop_of_int: invalid symbol"
 
-let match_sort s =
-  let z3env = get_env () in
+let match_sort z3env s =
   let sort_id = String.split ~on:'-' s in
   let name = List.hd_exn sort_id in
   if List.length sort_id = 1 then
@@ -142,8 +140,7 @@ let new_numer () =
   incr numer_cnt;
   !numer_cnt
 
-let mk_numer maps sym sort =
-  let z3env = get_env () in
+let mk_numer z3env maps sym sort =
   if Z3.Sort.equal sort z3env.binop_sort then
     Z3.Expr.mk_numeral_int z3env.z3ctx (int_of_binop sym) sort
   else if Z3.Sort.equal sort z3env.unop_sort then

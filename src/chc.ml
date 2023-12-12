@@ -210,113 +210,135 @@ module Elt = struct
     | Implies (cons, hd) ->
         Implies (List.map ~f:(subst src snk) cons, subst src snk hd)
 
-  let rec to_z3 maps t =
-    let z3env = Z3env.get_env () in
+  let rec to_z3 z3env maps t =
     match t with
     | Lt (e1, e2) ->
-        Z3.BitVector.mk_slt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.BitVector.mk_slt z3env.z3ctx (to_z3 z3env maps e1)
+          (to_z3 z3env maps e2)
     | Gt (e1, e2) ->
-        Z3.BitVector.mk_sgt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.BitVector.mk_sgt z3env.z3ctx (to_z3 z3env maps e1)
+          (to_z3 z3env maps e2)
     | Le (e1, e2) ->
-        Z3.BitVector.mk_sle z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.BitVector.mk_sle z3env.z3ctx (to_z3 z3env maps e1)
+          (to_z3 z3env maps e2)
     | Ge (e1, e2) ->
-        Z3.BitVector.mk_sge z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.BitVector.mk_sge z3env.z3ctx (to_z3 z3env maps e1)
+          (to_z3 z3env maps e2)
     | Eq (e1, e2) ->
-        Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.Boolean.mk_eq z3env.z3ctx (to_z3 z3env maps e1) (to_z3 z3env maps e2)
     | Ne (e1, e2) ->
         Z3.Boolean.mk_not z3env.z3ctx
-          (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+          (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 z3env maps e1)
+             (to_z3 z3env maps e2))
     | And (e1, e2) ->
         let zero = Z3.BitVector.mk_numeral z3env.z3ctx "0" 64 in
         Z3.Boolean.mk_and z3env.z3ctx
           [
             Z3.Boolean.mk_not z3env.z3ctx
-              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) zero);
+              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 z3env maps e1) zero);
             Z3.Boolean.mk_not z3env.z3ctx
-              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e2) zero);
+              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 z3env maps e2) zero);
           ]
     | Or (e1, e2) ->
         let zero = Z3.BitVector.mk_numeral z3env.z3ctx "0" 64 in
         Z3.Boolean.mk_or z3env.z3ctx
           [
             Z3.Boolean.mk_not z3env.z3ctx
-              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) zero);
+              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 z3env maps e1) zero);
             Z3.Boolean.mk_not z3env.z3ctx
-              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e2) zero);
+              (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 z3env maps e2) zero);
           ]
-    | Not e -> Z3.Boolean.mk_not z3env.z3ctx (to_z3 maps e)
+    | Not e -> Z3.Boolean.mk_not z3env.z3ctx (to_z3 z3env maps e)
     | CLt (e1, e2) ->
         Z3.Boolean.mk_ite z3env.z3ctx
-          (Z3.BitVector.mk_slt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+          (Z3.BitVector.mk_slt z3env.z3ctx (to_z3 z3env maps e1)
+             (to_z3 z3env maps e2))
           (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
           (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
     | CGt (e1, e2) ->
         Z3.Boolean.mk_ite z3env.z3ctx
-          (Z3.BitVector.mk_sgt z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+          (Z3.BitVector.mk_sgt z3env.z3ctx (to_z3 z3env maps e1)
+             (to_z3 z3env maps e2))
           (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
           (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
     | CLe (e1, e2) ->
         Z3.Boolean.mk_ite z3env.z3ctx
-          (Z3.BitVector.mk_sle z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+          (Z3.BitVector.mk_sle z3env.z3ctx (to_z3 z3env maps e1)
+             (to_z3 z3env maps e2))
           (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
           (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
     | CGe (e1, e2) ->
         Z3.Boolean.mk_ite z3env.z3ctx
-          (Z3.BitVector.mk_sge z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+          (Z3.BitVector.mk_sge z3env.z3ctx (to_z3 z3env maps e1)
+             (to_z3 z3env maps e2))
           (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
           (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
     | CEq (e1, e2) ->
         Z3.Boolean.mk_ite z3env.z3ctx
-          (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+          (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 z3env maps e1)
+             (to_z3 z3env maps e2))
           (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
           (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
     | CNe (e1, e2) ->
         Z3.Boolean.mk_ite z3env.z3ctx
-          (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2))
+          (Z3.Boolean.mk_eq z3env.z3ctx (to_z3 z3env maps e1)
+             (to_z3 z3env maps e2))
           (Z3.BitVector.mk_numeral z3env.z3ctx "0" 64)
           (Z3.BitVector.mk_numeral z3env.z3ctx "1" 64)
-    | CBNot e -> Z3.BitVector.mk_not z3env.z3ctx (to_z3 maps e)
+    | CBNot e -> Z3.BitVector.mk_not z3env.z3ctx (to_z3 z3env maps e)
     | CLNot e ->
         let zero = Z3.BitVector.mk_numeral z3env.z3ctx "0" 64 in
         let one = Z3.BitVector.mk_numeral z3env.z3ctx "1" 64 in
-        let is_zero = Z3.Boolean.mk_eq z3env.z3ctx (to_z3 maps e) zero in
+        let is_zero = Z3.Boolean.mk_eq z3env.z3ctx (to_z3 z3env maps e) zero in
         Z3.Boolean.mk_ite z3env.z3ctx is_zero one zero
-    | CNeg e -> Z3.BitVector.mk_neg z3env.z3ctx (to_z3 maps e)
+    | CNeg e -> Z3.BitVector.mk_neg z3env.z3ctx (to_z3 z3env maps e)
     | FuncApply (f, args) ->
-        Z3.FuncDecl.apply (Z3utils.match_func f) (List.map ~f:(to_z3 maps) args)
+        Z3.FuncDecl.apply
+          (Z3utils.match_func z3env f)
+          (List.map ~f:(to_z3 z3env maps) args)
     | Add (e1, e2) ->
-        Z3.BitVector.mk_add z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.BitVector.mk_add z3env.z3ctx (to_z3 z3env maps e1)
+          (to_z3 z3env maps e2)
     | Sub (e1, e2) ->
-        Z3.BitVector.mk_sub z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.BitVector.mk_sub z3env.z3ctx (to_z3 z3env maps e1)
+          (to_z3 z3env maps e2)
     | Mul (e1, e2) ->
-        Z3.BitVector.mk_mul z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.BitVector.mk_mul z3env.z3ctx (to_z3 z3env maps e1)
+          (to_z3 z3env maps e2)
     | Div (e1, e2) ->
-        Z3.BitVector.mk_sdiv z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.BitVector.mk_sdiv z3env.z3ctx (to_z3 z3env maps e1)
+          (to_z3 z3env maps e2)
     | Mod (e1, e2) ->
-        Z3.BitVector.mk_smod z3env.z3ctx (to_z3 maps e1) (to_z3 maps e2)
+        Z3.BitVector.mk_smod z3env.z3ctx (to_z3 z3env maps e1)
+          (to_z3 z3env maps e2)
     | BvShl (t1, t2) ->
-        Z3.BitVector.mk_shl z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
+        Z3.BitVector.mk_shl z3env.z3ctx (to_z3 z3env maps t1)
+          (to_z3 z3env maps t2)
     | BvShr (t1, t2) ->
-        Z3.BitVector.mk_lshr z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
+        Z3.BitVector.mk_lshr z3env.z3ctx (to_z3 z3env maps t1)
+          (to_z3 z3env maps t2)
     | BvAnd (t1, t2) ->
-        Z3.BitVector.mk_and z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
+        Z3.BitVector.mk_and z3env.z3ctx (to_z3 z3env maps t1)
+          (to_z3 z3env maps t2)
     | BvOr (t1, t2) ->
-        Z3.BitVector.mk_or z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
+        Z3.BitVector.mk_or z3env.z3ctx (to_z3 z3env maps t1)
+          (to_z3 z3env maps t2)
     | BvXor (t1, t2) ->
-        Z3.BitVector.mk_xor z3env.z3ctx (to_z3 maps t1) (to_z3 maps t2)
+        Z3.BitVector.mk_xor z3env.z3ctx (to_z3 z3env maps t1)
+          (to_z3 z3env maps t2)
     | Var x ->
-        let sort = Z3utils.match_sort x in
+        let sort = Z3utils.match_sort z3env x in
         Z3.Expr.mk_const_s z3env.z3ctx x sort
     | FDNumeral s ->
-        let sort = Z3utils.match_sort s in
-        Z3utils.mk_numer maps s sort
+        let sort = Z3utils.match_sort z3env s in
+        Z3utils.mk_numer z3env maps s sort
     | Const i -> Z3.BitVector.mk_numeral z3env.z3ctx (Z.to_string i) 64
     | Implies (tl, hd) ->
         let cons =
           if List.is_empty tl then Z3.Boolean.mk_true z3env.z3ctx
-          else Z3.Boolean.mk_and z3env.z3ctx (List.map ~f:(to_z3 maps) tl)
+          else Z3.Boolean.mk_and z3env.z3ctx (List.map ~f:(to_z3 z3env maps) tl)
         in
-        Z3.Boolean.mk_implies z3env.z3ctx cons (to_z3 maps hd)
+        Z3.Boolean.mk_implies z3env.z3ctx cons (to_z3 z3env maps hd)
 end
 
 include Set.Make (struct
@@ -553,17 +575,18 @@ let update_rule head_name new_body chcs =
   let new_rule = Elt.Implies (new_body, head) in
   remove target chcs |> add new_rule
 
-let add_fact maps solver f =
+let add_fact z3env maps solver f =
   if (Elt.is_duedge f || Elt.is_assume f) |> not then
-    let fact = Elt.to_z3 maps f in
+    let fact = Elt.to_z3 z3env maps f in
     Z3.Fixedpoint.add_rule solver fact None
 
-let add_rule maps solver r =
-  let z3env = Z3env.get_env () in
+let add_rule z3env maps solver r =
   if Elt.is_duedge r |> not then
-    let vars = collect_vars r |> to_list |> List.map ~f:(Elt.to_z3 maps) in
-    let impl = Elt.to_z3 maps r in
-    if List.is_empty vars then add_fact maps solver r
+    let vars =
+      collect_vars r |> to_list |> List.map ~f:(Elt.to_z3 z3env maps)
+    in
+    let impl = Elt.to_z3 z3env maps r in
+    if List.is_empty vars then add_fact z3env maps solver r
     else
       let rule =
         Z3.Quantifier.mk_forall_const z3env.z3ctx vars impl None [] [] None None
@@ -571,20 +594,19 @@ let add_rule maps solver r =
       in
       Z3.Fixedpoint.add_rule solver rule None
 
-let add_all maps solver =
+let add_all z3env maps solver =
   iter (fun chc ->
-      if Elt.is_rel chc then add_fact maps solver chc
-      else add_rule maps solver chc)
+      if Elt.is_rel chc then add_fact z3env maps solver chc
+      else add_rule z3env maps solver chc)
 
 let subst_pattern_for_target src snk = map (Elt.subst src snk)
 
-let pattern_match out_dir ver_name maps chc src snk pattern =
-  let z3env = Z3env.get_env () in
+let pattern_match z3env out_dir ver_name maps chc src snk pattern =
   let solver = mk_fixedpoint z3env.z3ctx in
   reg_rel_to_solver z3env solver;
   L.info "Start making Z3 instance from facts and rels";
   let pattern' = subst_pattern_for_target src snk pattern in
-  add_all maps solver (union chc pattern');
+  add_all z3env maps solver (union chc pattern');
   L.info "Complete making Z3 instance from facts and rels";
   let status =
     Z3.Fixedpoint.query solver
@@ -597,8 +619,8 @@ let pattern_match out_dir ver_name maps chc src snk pattern =
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
   | Z3.Solver.UNKNOWN -> None
 
-let match_and_log out_dir ver_name maps chc src snk pattern =
-  let status = pattern_match out_dir ver_name maps chc src snk pattern in
+let match_and_log z3env out_dir ver_name maps chc src snk pattern =
+  let status = pattern_match z3env out_dir ver_name maps chc src snk pattern in
   Option.iter
     ~f:(fun ans ->
       L.info "%s is Matched" ver_name;
