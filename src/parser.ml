@@ -134,12 +134,33 @@ let parse_sparrow nodes map chc =
       match cmd with CNone | CSkip _ -> () | _ -> Hashtbl.add map cmd key)
     nodes
 
-let parse_ast target_dir inline_funcs =
+class blockVisitor =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vblock b =
+      let stmts =
+        List.fold_left ~init:[]
+          ~f:(fun l stmt ->
+            match stmt.Cil.skind with
+            | Cil.Instr il when List.length il > 1 ->
+                let new_il = List.map ~f:Cil.mkStmtOneInstr (List.tl_exn il) in
+                stmt.skind <- Instr [ List.hd_exn il ];
+                l @ (stmt :: new_il)
+            | _ -> l @ [ stmt ])
+          b.bstmts
+      in
+      b.bstmts <- stmts;
+      ChangeDoChildrenPost (b, fun x -> x)
+  end
+
+let parse_ast target_dir =
   let file = Utils.get_target_file target_dir in
   if !Cilutil.printStages then ignore ();
   let cil = Frontc.parse file () in
-  if not (Feature.enabled "epicenter") then Rmtmps.removeUnusedTemps cil;
-  if List.length inline_funcs <> 0 then Inline.perform inline_funcs cil else cil
+  Rmtmps.removeUnusedTemps cil;
+  Cil.visitCilFile (new blockVisitor) cil;
+  cil
 
 let mk_term s =
   if Z3utils.is_binop s || Z3utils.is_unop s then Chc.Elt.FDNumeral s

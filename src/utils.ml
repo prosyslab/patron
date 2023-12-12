@@ -75,8 +75,8 @@ let print_ekind exp =
 
 let summarize_pp str =
   let sp = Str.split (Str.regexp "\n") str in
-  let line_num = sp |> List.length in
-  if line_num = 1 then List.nth sp 0 else List.nth sp 0 ^ "\n" ^ List.nth sp 1
+  (* let line_num = sp |> List.length in *)
+  try List.hd sp with _ -> ""
 
 let string_of_file file = Cil.dumpFile !Cil.printerForMaincil stdout "" file
 
@@ -530,53 +530,6 @@ let delete_after_elt_exp elt lst =
   let result = aux [] lst in
   if List.length result = List.length lst - 1 then result
   else failwith "exp_list delete error"
-
-(* module CfgMap = struct
-     module Key = struct
-       type loc = { file : string; line : int }
-
-       type t =
-         | CNone
-         | CSet of string * string * loc (* (lv, e, loc) *)
-         | CExternal of string * loc (*(lv, loc)*)
-         | CAlloc of string * string * loc (*(lv, Array e, _, loc) *)
-         | CSalloc of string * string * loc (*(lv, s, loc) *)
-         | CFalloc of string * string * loc (*(lv, f, loc) *)
-         | CCall of string * t * loc (*(Some lv, CcallExp(fexp, params, loc))*)
-         | CCallExp of string * string list * loc (*(None, fexp, params, loc)*)
-         | CReturn1 of string * loc (*(Some e, loc) *)
-         | CReturn2 of loc (*(None, loc) *)
-         | CIf of loc (*(_, _, _, loc) *)
-         | CAssume of string * loc (*(e, _, loc) *)
-         | CLoop of loc (*loc *)
-         | CAsm of loc (*(_, _, _, _, _, loc) *)
-         | CSkip of loc (*(_, loc)*)
-
-       let rec size = function
-         | CNone -> 0
-         | CSet _ -> 2
-         | CExternal _ -> 1
-         | CAlloc _ -> 2
-         | CSalloc _ -> 2
-         | CFalloc _ -> 2
-         | CCall (_, cfg, _) -> 1 + size cfg
-         | CCallExp (_, param, _) -> 1 + List.length param
-         | CReturn1 _ | CReturn2 _ -> 1
-         | CIf _ -> 3
-         | CAssume _ -> 1
-         | CLoop _ -> 1
-         | CAsm _ -> 0
-         | CSkip _ -> 0
-
-       let compare a b = Int.compare (size a) (size b)
-     end
-
-     module M = Map.Make (Key)
-
-     type t = string M.t
-   end
-
-   let cfg : CfgMap.t ref = ref CfgMap.M.empty *)
 
 let parse_facts facts_path =
   let lines = read_lines facts_path in
