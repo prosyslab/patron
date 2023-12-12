@@ -236,87 +236,6 @@ let abstract_bug_pattern buggy src snk aexps maps diffs ast =
   Chc.Elt.Implies (deps, errtrace) |> Chc.Elt.numer2var |> Chc.singleton
 (* |> Chc.union smallest_ast_pattern *)
 
-let parse_ast dir i_opt =
-  Parser.parse_ast dir |> fun f ->
-  if List.length i_opt <> 0 then Inline.perform i_opt f else f
-
-let parse_dl_fact rel =
-  match String.split ~on:'(' rel with
-  | [ func_name; tl ] ->
-      let args =
-        String.chop_suffix_if_exists ~suffix:")." tl
-        |> String.split ~on:','
-        |> List.map ~f:(fun s -> int_of_string s)
-      in
-      (func_name, args)
-  | _ -> L.error "parse_dl_fact - invalid format"
-
-let is_dl_fact s =
-  String.is_suffix s ~suffix:"." && not (String.is_substring ~substring:":-" s)
-
-let parse_ans ans =
-  String.split ~on:'|' ans
-  |> List.fold_left
-       ~f:(fun fs rel -> if is_dl_fact rel then parse_dl_fact rel :: fs else fs)
-       ~init:[]
-
-module PairSet = Set.Make (struct
-  type t = int * int
-
-  let compare (x1, y1) (x2, y2) =
-    let c1 = Int.compare x1 x2 in
-    if c1 = 0 then Int.compare y1 y2 else c1
-
-  let equal a b = compare a b = 0
-end)
-
-let match_facts =
-  List.fold2_exn
-    ~f:(fun pairs f1 f2 ->
-      match (f1, f2) with
-      | (fn1, args1), (fn2, args2)
-        when String.equal fn1 fn2 && List.length args1 = List.length args2 ->
-          List.fold2_exn
-            ~f:(fun ps a1 a2 -> PairSet.add (a1, a2) ps)
-            ~init:pairs args1 args2
-      | _ -> L.error "match_facts - invalid format")
-    ~init:PairSet.empty
-
-let dump_sol_map target_alarm buggy_maps target_maps out_dir pairs =
-  let oc =
-    Out_channel.create (Filename.concat out_dir (target_alarm ^ "_sol.map"))
-  in
-  let fmt = F.formatter_of_out_channel oc in
-  PairSet.iter
-    (fun (buggy_n, donee_n) ->
-      if 0 <= buggy_n && buggy_n <= 21 then
-        F.fprintf fmt "%s\t%s\n"
-          (Z3utils.binop_of_int buggy_n)
-          (Z3utils.binop_of_int donee_n)
-      else if 22 <= buggy_n && buggy_n <= 24 then
-        F.fprintf fmt "%s\t%s\n"
-          (Z3utils.unop_of_int buggy_n)
-          (Z3utils.unop_of_int donee_n)
-      else
-        F.fprintf fmt "%s\t%s\n"
-          (Hashtbl.find buggy_maps.Maps.numeral_map buggy_n)
-          (Hashtbl.find target_maps.Maps.numeral_map donee_n))
-    pairs;
-  F.pp_print_flush fmt ();
-  Out_channel.close oc
-
-let match_ans buggy_maps target_maps target_alarm out_dir =
-  let buggy_ans =
-    Filename.concat out_dir "buggy_ans.smt2" |> In_channel.read_all
-  in
-  let target_ans =
-    Filename.concat out_dir (target_alarm ^ "_ans.smt2") |> In_channel.read_all
-  in
-  let buggy_facts = parse_ans buggy_ans in
-  let target_facts = parse_ans target_ans in
-  let pairs = match_facts buggy_facts target_facts in
-  dump_sol_map target_alarm buggy_maps target_maps out_dir pairs
-
 let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
     out_dir =
   let target_maps = Maps.create_maps () in
@@ -332,15 +251,27 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
     in
     Maps.dump target_alarm target_maps out_dir;
     if Option.is_some status then
-      match_ans buggy_maps target_maps target_alarm out_dir;
+      Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
     L.info "Matching with %s is done" target_alarm
   with Parser.Not_impl_aexp -> L.info "PASS"
 
-let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
+let is_new_alarm dir ta a =
+  (not (String.equal ta a))
+  && Sys.is_directory (Filename.concat dir ("sparrow-out/taint/datalog/" ^ a))
+
+let match_with_new_alarms buggy_dir true_alarm buggy_maps buggy_ast buggy_cfg
+    pattern out_dir =
+  Sys.readdir (Filename.concat buggy_dir "sparrow-out/taint/datalog")
+  |> Array.iter ~f:(fun ta ->
+         if is_new_alarm buggy_dir true_alarm ta then
+           match_bug_for_one_prj pattern buggy_maps buggy_dir ta buggy_ast
+             buggy_cfg out_dir)
+
+let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   let buggy_maps = Maps.create_maps () in
   Maps.reset_maps buggy_maps;
-  let buggy_ast = parse_ast buggy_dir i_opt in
-  let patch_ast = parse_ast patch_dir i_opt in
+  let buggy_ast = Parser.parse_ast buggy_dir inline_funcs in
+  let patch_ast = Parser.parse_ast patch_dir inline_funcs in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
   let buggy_cfg =
@@ -348,12 +279,12 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   in
   L.info "Make Facts in buggy done";
   let buggy_facts, (src, snk, aexps) =
-    Parser.make_facts buggy_dir target_alarm buggy_ast buggy_cfg out_dir
+    Parser.make_facts buggy_dir true_alarm buggy_ast buggy_cfg out_dir
       buggy_maps
   in
   L.info "Mapping CFG Elements to AST nodes...";
   let sym_diff = SymDiff.define_sym_diff buggy_maps buggy_ast ast_diff in
-  if w_opt then (
+  if write_out then (
     L.info "Writing out the edit script...";
     SymDiff.to_json sym_diff ast_diff out_dir);
   let pattern =
@@ -367,13 +298,6 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   ( Chc.match_and_log out_dir "buggy" buggy_maps buggy_facts src snk pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
-  Sys.readdir (Filename.concat buggy_dir "sparrow-out/taint/datalog")
-  |> Array.iter ~f:(fun ta ->
-         if
-           (not (String.equal target_alarm ta))
-           && Sys.is_directory
-                (Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ ta))
-         then
-           match_bug_for_one_prj pattern buggy_maps buggy_dir ta buggy_ast
-             buggy_cfg out_dir);
+  match_with_new_alarms buggy_dir true_alarm buggy_maps buggy_ast buggy_cfg
+    pattern out_dir;
   L.info "Done."

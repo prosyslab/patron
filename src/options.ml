@@ -9,8 +9,8 @@ module L = Logger
 let verbose = ref 0
 
 type t = {
-  target_dir : string;
-  target_alarm : string;
+  bench_dir : string;
+  true_alarm : string;
   out_dir : string;
   inline : string list;
   write_out : bool;
@@ -25,45 +25,11 @@ let mkdir dirname =
     exit 1
   else Unix.mkdir dirname 0o755
 
-let init target_dir target_alarm out_dir debug inline memtrace write_out =
+let init bench_dir true_alarm out_dir debug inline memtrace write_out =
   if debug then L.set_level L.DEBUG else L.set_level L.INFO;
   mkdir out_dir;
   Filename.concat out_dir "log.txt" |> L.from_file;
-  { target_dir; target_alarm; out_dir; inline; write_out; debug; memtrace }
-
-(* let options =
-     let docs = Manpage.s_options in
-     let out_dir =
-       Arg.(
-         value
-         & opt string Filename.(concat current_dir_name "patron-out")
-         & info [ "o"; "out-dir" ] ~docs ~docv:"OUT_DIR"
-             ~doc:"The output directory")
-     in
-     let debug =
-       Arg.(
-         value & flag
-         & info [ "g"; "debug" ] ~doc:"Enable debug mode (verbose logging)")
-     in
-     let inline_opt =
-       Arg.(
-         value & opt_all string []
-         & info [ "i"; "inline" ] ~docv:"INLINE"
-             ~doc:"Inline functions in the given list")
-     in
-     let memtrace =
-       Arg.(value & flag & info [ "memtrace" ] ~docv:"BOOL" ~doc:"do memtrace")
-     in
-     let write_out =
-       Arg.(
-         value & flag
-         & info [ "w"; "write-out" ]
-             ~doc:"write out the diff.json file containing the detailed diff info")
-     in
-     Term.(const init $ target_dir $ out_dir $ debug $ inline_opt $ memtrace $ write_out)
-
-   let main_term opt target_dir =
-     { opt with target_dir } *)
+  { bench_dir; true_alarm; out_dir; inline; write_out; debug; memtrace }
 
 let main_cmd =
   let name = "patron" in
@@ -77,19 +43,19 @@ let main_cmd =
     ]
   in
   let info = Cmd.info name ~version:"0.0.1" ~doc ~man in
-  let target_dir =
+  let bench_dir =
     Arg.(
       required
       & pos 0 (some file) None
       & info [] ~docv:"TARGET_DIR"
           ~doc:"The target directory that has bug and patch directories")
   in
-  let target_alarm =
+  let true_alarm =
     Arg.(
       required
       & pos 1 (some string) None
-      & info [] ~docv:"TARGET_ALARM"
-          ~doc:"The target alarm that patched by developer")
+      & info [] ~docv:"true_alarm"
+          ~doc:"The true alarm that patched by developer")
   in
   let docs = Manpage.s_options in
   let out_dir =
@@ -121,7 +87,7 @@ let main_cmd =
   in
   Cmd.v info
     Term.(
-      const init $ target_dir $ target_alarm $ out_dir $ debug $ inline_opt
+      const init $ bench_dir $ true_alarm $ out_dir $ debug $ inline_opt
       $ memtrace $ write_out)
 
 let parse () =

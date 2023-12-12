@@ -134,12 +134,12 @@ let parse_sparrow nodes map chc =
       match cmd with CNone | CSkip _ -> () | _ -> Hashtbl.add map cmd key)
     nodes
 
-let parse_ast target_dir =
+let parse_ast target_dir inline_funcs =
   let file = Utils.get_target_file target_dir in
   if !Cilutil.printStages then ignore ();
   let cil = Frontc.parse file () in
   if not (Feature.enabled "epicenter") then Rmtmps.removeUnusedTemps cil;
-  cil
+  if List.length inline_funcs <> 0 then Inline.perform inline_funcs cil else cil
 
 let mk_term s =
   if Z3utils.is_binop s || Z3utils.is_unop s then Chc.Elt.FDNumeral s
