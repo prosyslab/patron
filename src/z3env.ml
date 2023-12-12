@@ -69,12 +69,11 @@ type t = {
   errtrace : Z3.FuncDecl.func_decl;
   bug : Z3.FuncDecl.func_decl;
   fact_files : String.t list;
-  funs : (string * Z3.FuncDecl.func_decl * Z3.Sort.sort list) list;
   rels : string list;
 }
 
-let src = ref ""
-let snk = ref ""
+let buggy_src = ref ""
+let buggy_snk = ref ""
 
 let mk_fixedpoint z3ctx =
   let mk_string_symbol s = Z3.Symbol.mk_string z3ctx s in
@@ -324,39 +323,6 @@ let mk_env () =
       "UnOpExp.facts";
     ]
   in
-  let funs =
-    [
-      ("AllocExp.facts", alloc, [ expr; expr ]);
-      ("Arg.facts", arg, [ arg_list; int_sort; expr ]);
-      ("Set.facts", set, [ node; lval; expr ]);
-      ("BinOpExp.facts", binop, [ expr; binop_sort; expr; expr ]);
-      ("CallExp.facts", call, [ expr; expr; arg_list ]);
-      ("CFPath.facts", cfpath, [ node; node ]);
-      ("DUEdge.facts", duedge, [ node; node ]);
-      ("DUPath.facts", dupath, [ node; node ]);
-      ("GlobalVar.facts", var, [ lval; identifier ]);
-      ("LibCallExp.facts", libcall, [ expr; expr; arg_list ]);
-      ("LocalVar.facts", var, [ lval; identifier ]);
-      ("LvalExp.facts", lval_exp, [ expr; lval ]);
-      ("Return.facts", ret, [ node; expr ]);
-      ("SAllocExp.facts", salloc, [ expr; str_literal ]);
-      ("Skip.facts", skip, [ node ]);
-      ("UnOpExp.facts", unop, [ expr; unop_sort; expr ]);
-      ("", evallv, [ node; lval; loc ]);
-      ("", eval, [ node; expr; value ]);
-      ("", memory, [ node; loc; value ]);
-      ("", arrval, [ value; bv_sort ]);
-      ("", strval, [ value; bv_sort ]);
-      ("", conststr, [ value; const ]);
-      ("", val_rel, [ value; bv_sort ]);
-      ("", sizeof, [ value; bv_sort ]);
-      ("", strlen, [ value; bv_sort ]);
-      ("", reach, [ node ]);
-      ("", errtrace, [ node; node ]);
-      ("", ioerror, [ node; bv_sort ]);
-      ("", dzerror, [ node; bv_sort ]);
-    ]
-  in
   let rels =
     [
       "Alloc";
@@ -447,7 +413,6 @@ let mk_env () =
       errtrace;
       bug;
       fact_files;
-      funs;
       rels;
     }
   in

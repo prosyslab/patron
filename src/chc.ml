@@ -161,13 +161,54 @@ module Elt = struct
     | Var _ as v -> v
     | FDNumeral s ->
         if
-          Z3utils.is_binop s || Z3utils.is_unop s || String.equal s !Z3env.src
-          || String.equal s !Z3env.snk
+          Z3utils.is_binop s || Z3utils.is_unop s
+          || String.equal s !Z3env.buggy_src
+          || String.equal s !Z3env.buggy_snk
         then FDNumeral s
         else Var s
     | Const _ as c -> c
     | Implies (cons, hd) ->
         Implies (List.map ~f:(fun c -> numer2var c) cons, numer2var hd)
+
+  let rec subst src snk = function
+    | Lt (t1, t2) -> Lt (subst src snk t1, subst src snk t2)
+    | Gt (t1, t2) -> Gt (subst src snk t1, subst src snk t2)
+    | Le (t1, t2) -> Le (subst src snk t1, subst src snk t2)
+    | Ge (t1, t2) -> Ge (subst src snk t1, subst src snk t2)
+    | Eq (t1, t2) -> Eq (subst src snk t1, subst src snk t2)
+    | Ne (t1, t2) -> Ne (subst src snk t1, subst src snk t2)
+    | And (t1, t2) -> And (subst src snk t1, subst src snk t2)
+    | Or (t1, t2) -> Or (subst src snk t1, subst src snk t2)
+    | CLt (t1, t2) -> CLt (subst src snk t1, subst src snk t2)
+    | CGt (t1, t2) -> CGt (subst src snk t1, subst src snk t2)
+    | CLe (t1, t2) -> CLe (subst src snk t1, subst src snk t2)
+    | CGe (t1, t2) -> CGe (subst src snk t1, subst src snk t2)
+    | CEq (t1, t2) -> CEq (subst src snk t1, subst src snk t2)
+    | CNe (t1, t2) -> CNe (subst src snk t1, subst src snk t2)
+    | Add (t1, t2) -> Add (subst src snk t1, subst src snk t2)
+    | Mul (t1, t2) -> Mul (subst src snk t1, subst src snk t2)
+    | Sub (t1, t2) -> Sub (subst src snk t1, subst src snk t2)
+    | Div (t1, t2) -> Div (subst src snk t1, subst src snk t2)
+    | Mod (t1, t2) -> Mod (subst src snk t1, subst src snk t2)
+    | BvShl (t1, t2) -> BvShl (subst src snk t1, subst src snk t2)
+    | BvShr (t1, t2) -> BvShr (subst src snk t1, subst src snk t2)
+    | BvAnd (t1, t2) -> BvAnd (subst src snk t1, subst src snk t2)
+    | BvOr (t1, t2) -> BvOr (subst src snk t1, subst src snk t2)
+    | BvXor (t1, t2) -> BvXor (subst src snk t1, subst src snk t2)
+    | Not t -> Not (subst src snk t)
+    | CBNot t -> CBNot (subst src snk t)
+    | CLNot t -> CLNot (subst src snk t)
+    | CNeg t -> CNeg (subst src snk t)
+    | FuncApply (fn, args) ->
+        FuncApply (fn, List.map ~f:(fun arg -> subst src snk arg) args)
+    | Var _ as v -> v
+    | FDNumeral s ->
+        if String.equal s !Z3env.buggy_src then FDNumeral src
+        else if String.equal s !Z3env.buggy_snk then FDNumeral snk
+        else FDNumeral s
+    | Const _ as c -> c
+    | Implies (cons, hd) ->
+        Implies (List.map ~f:(subst src snk) cons, subst src snk hd)
 
   let rec to_z3 maps t =
     let z3env = Z3env.get_env () in
@@ -534,20 +575,20 @@ let add_all maps solver =
       if Elt.is_rel chc then add_fact maps solver chc
       else add_rule maps solver chc)
 
-let pattern_match out_dir ver_name maps chc pattern =
+let subst_pattern_for_target src snk = map (Elt.subst src snk)
+
+let pattern_match out_dir ver_name maps chc src snk pattern =
   let z3env = Z3env.get_env () in
   let solver = mk_fixedpoint z3env.z3ctx in
   reg_rel_to_solver z3env solver;
   L.info "Start making Z3 instance from facts and rels";
-  add_all maps solver (union chc pattern);
+  let pattern' = subst_pattern_for_target src snk pattern in
+  add_all maps solver (union chc pattern');
   L.info "Complete making Z3 instance from facts and rels";
   let status =
     Z3.Fixedpoint.query solver
       (Z3.FuncDecl.apply z3env.errtrace
-         [
-           Hashtbl.find maps.sym_map !Z3env.src;
-           Hashtbl.find maps.sym_map !Z3env.snk;
-         ])
+         [ Hashtbl.find maps.sym_map src; Hashtbl.find maps.sym_map snk ])
   in
   Z3utils.dump_solver_to_smt (ver_name ^ "_formula") solver out_dir;
   match status with
@@ -555,8 +596,8 @@ let pattern_match out_dir ver_name maps chc pattern =
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
   | Z3.Solver.UNKNOWN -> None
 
-let match_and_log out_dir ver_name maps chc pattern =
-  let status = pattern_match out_dir ver_name maps chc pattern in
+let match_and_log out_dir ver_name maps chc src snk pattern =
+  let status = pattern_match out_dir ver_name maps chc src snk pattern in
   Option.iter
     ~f:(fun ans ->
       L.info "%s is Matched" ver_name;

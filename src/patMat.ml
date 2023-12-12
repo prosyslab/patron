@@ -231,8 +231,8 @@ let abstract_bug_pattern buggy src snk aexps maps diffs ast =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
-  Z3env.src := src;
-  Z3env.snk := snk;
+  Z3env.buggy_src := src;
+  Z3env.buggy_snk := snk;
   Chc.Elt.Implies (deps, errtrace) |> Chc.Elt.numer2var |> Chc.singleton
 (* |> Chc.union smallest_ast_pattern *)
 
@@ -322,13 +322,13 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
-    let facts, _ =
+    let facts, (src, snk, _) =
       Parser.make_facts buggy_dir target_alarm ast cfg out_dir target_maps
     in
     reset_env ();
     L.info "Try matching with %s..." target_alarm;
     let status =
-      Chc.match_and_log out_dir target_alarm target_maps facts pattern
+      Chc.match_and_log out_dir target_alarm target_maps facts src snk pattern
     in
     Maps.dump target_alarm target_maps out_dir;
     if Option.is_some status then
@@ -364,7 +364,7 @@ let run (i_opt, w_opt) target_alarm buggy_dir patch_dir out_dir =
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   reset_env ();
   L.info "Try matching with buggy...";
-  ( Chc.match_and_log out_dir "buggy" buggy_maps buggy_facts pattern
+  ( Chc.match_and_log out_dir "buggy" buggy_maps buggy_facts src snk pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
   Sys.readdir (Filename.concat buggy_dir "sparrow-out/taint/datalog")
