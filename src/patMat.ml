@@ -122,7 +122,9 @@ let extract_parent diff ast_map =
       (Hashtbl.find ast_map s |> string_of_int, func_name)
   | _ -> failwith "parent not found"
 
-let compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast =
+let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
+  let ast_map = maps.Maps.ast_map in
+  let node_map = maps.Maps.node_map in
   L.info "Compute AST pattern...";
   List.iter ~f:(fun n -> L.info "%s" n) ast_node_lst;
   let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
@@ -139,9 +141,11 @@ let compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast =
         | _ -> acc)
       stmts
     |> List.fold_left ~init:[] ~f:(fun acc (p, c) ->
-           ( Hashtbl.find ast_map p |> string_of_int,
-             Hashtbl.find ast_map c |> string_of_int )
-           :: acc)
+           if Hashtbl.mem ast_map p && Hashtbl.mem ast_map c then
+             ( Hashtbl.find ast_map p |> string_of_int,
+               Hashtbl.find ast_map c |> string_of_int )
+             :: acc
+           else acc)
   in
   let start =
     List.find_exn ~f:(fun (p, _) -> String.equal p patch_node) parent_tups
@@ -213,27 +217,54 @@ let compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast =
   let solution = go_up start [ start ] in
   List.fold_left ~init:[]
     ~f:(fun acc (p, c) ->
-      let p = Chc.Elt.Var ("AstNode-" ^ p) in
-      let c = Chc.Elt.Var ("AstNode-" ^ c) in
+      let p = Chc.Elt.FDNumeral ("AstNode-" ^ p) in
+      let c = Chc.Elt.FDNumeral ("AstNode-" ^ c) in
       Chc.Elt.FuncApply ("AstParent", [ p; c ]) :: acc)
     solution
+  |> fun x ->
+  List.fold_left ~init:x
+    ~f:(fun acc (p, c) ->
+      let p_cfg =
+        Hashtbl.fold
+          (fun k v acc -> if String.equal v p then k :: acc else acc)
+          node_map []
+        |> List.hd
+      in
+      let c_cfg =
+        Hashtbl.fold
+          (fun k v acc -> if String.equal v c then k :: acc else acc)
+          node_map []
+        |> List.hd
+      in
+      let p_ast = Chc.Elt.FDNumeral ("AstNode-" ^ p) in
+      let c_ast = Chc.Elt.FDNumeral ("AstNode-" ^ c) in
+      if Option.is_some p_cfg && Option.is_some c_cfg then
+        Chc.Elt.FuncApply
+          ("EqNode", [ FDNumeral (Option.value_exn p_cfg); p_ast ])
+        :: Chc.Elt.FuncApply
+             ("EqNode", [ FDNumeral (Option.value_exn c_cfg); c_ast ])
+        :: acc
+      else if Option.is_some p_cfg then
+        Chc.Elt.FuncApply
+          ("EqNode", [ FDNumeral (Option.value_exn p_cfg); p_ast ])
+        :: acc
+      else if Option.is_some c_cfg then
+        Chc.Elt.FuncApply
+          ("EqNode", [ FDNumeral (Option.value_exn c_cfg); c_ast ])
+        :: acc
+      else acc)
+    solution
 
-let abstract_bug_pattern buggy src snk aexps maps diffs ast =
+let abstract_bug_pattern buggy src snk aexps maps ctx ast =
   let node_map = maps.Maps.node_map in
   let ast_map = maps.Maps.ast_map in
-  let ctx =
-    List.fold_left ~init:[]
-      ~f:(fun acc diff -> SymDiff.SDiff.extract_context diff :: acc)
-      diffs
-    |> List.hd_exn
-  in
   let deps = collect_deps src snk aexps buggy |> Chc.to_list in
   let ast_node_lst = collect_nodes deps node_map in
   let patch_node, patch_func = extract_parent ctx ast_map in
   let smallest_ast_pattern =
     if String.equal patch_node "" then
       failwith "not implemented for direct patch below the function"
-    else compute_ast_pattern ast_node_lst patch_node patch_func ast_map ast
+    else compute_ast_pattern ast_node_lst patch_node patch_func maps ast
   in
   let errtrace =
     Chc.Elt.FuncApply
@@ -294,8 +325,15 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   if write_out then (
     L.info "Writing out the edit script...";
     SymDiff.to_json sym_diff ast_diff out_dir);
+  let ctx =
+    List.fold_left ~init:[]
+      ~f:(fun acc diff -> SymDiff.SDiff.extract_context diff :: acc)
+      sym_diff
+    |> List.hd_exn
+  in
+  let patch_node_id, _ = extract_parent ctx buggy_maps.Maps.ast_map in
   let pattern =
-    abstract_bug_pattern buggy_facts src snk aexps buggy_maps sym_diff buggy_ast
+    abstract_bug_pattern buggy_facts src snk aexps buggy_maps ctx buggy_ast
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
@@ -308,4 +346,13 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   Maps.dump "buggy" buggy_maps out_dir;
   match_with_new_alarms buggy_dir true_alarm buggy_maps buggy_ast buggy_cfg
     pattern out_dir;
+  let ef =
+    EditFunction.translate sym_diff
+      (Filename.concat out_dir "1036_sol.map")
+      buggy_maps patch_node_id
+  in
+  let is_patched, patch_file = Patch.apply sym_diff patch_ast ef in
+  let out_chan = Filename.concat out_dir "patch.c" |> Out_channel.create in
+  if is_patched then
+    Cil.dumpFile Cil.defaultCilPrinter out_chan "patch.c" patch_file;
   L.info "Done."

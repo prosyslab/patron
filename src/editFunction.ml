@@ -23,9 +23,11 @@ let rec translate_lval model_map exp_map slval =
   let lval = slval.S.SElement.node in
   match lval with
   | S.SElement.SLval (sym, cil) ->
-      if H.StrMap.mem id model_map then
-        let new_id = H.StrMap.find id model_map in
-        let new_exp_str = H.StrMap.find new_id exp_map in
+      if List.exists (fun (k, _) -> String.equal id k) model_map then
+        let new_id =
+          List.find (fun (k, _) -> String.equal id k) model_map |> snd
+        in
+        let new_exp_str = Hashtbl.find exp_map new_id in
         match (sym, cil) with
         | S.SElement.SLNull, _ -> failwith "translate_lval:Lval is null"
         | S.SElement.Lval (S.SElement.SVar _, _), (Cil.Var v, offset) ->
@@ -36,16 +38,18 @@ let rec translate_lval model_map exp_map slval =
       else cil
   | _ -> failwith "translate_lval: translation target is not an lvalue"
 
-and translate_exp model_map exp_map sexp =
+and translate_exp (model_map : (string * string) list) exp_map sexp =
   let id = sexp.S.SElement.id in
   let exp = sexp.S.SElement.node in
   match exp with
   | S.SElement.SExp (sym, cil) -> (
       match (sym, cil) with
       | S.SElement.SConst c, Cil.Const _ ->
-          if H.StrMap.mem id model_map then
-            let new_id = H.StrMap.find id model_map in
-            let new_exp_str = H.StrMap.find new_id exp_map in
+          if List.exists (fun (k, _) -> String.equal id k) model_map then
+            let new_id =
+              List.find (fun (k, _) -> String.equal id k) model_map |> snd
+            in
+            let new_exp_str = Hashtbl.find exp_map new_id in
             match c with
             | S.SElement.SIntConst i ->
                 Cil.Const
@@ -62,14 +66,19 @@ and translate_exp model_map exp_map sexp =
       | S.SElement.SELval l, Cil.Lval _ ->
           let lval = translate_lval model_map exp_map l in
           Cil.Lval lval
-      | S.SElement.SBinOp (_, l, r, t), Cil.BinOp (op, _, _, _) ->
-          failwith "translate_exp: not implemented"
+      | S.SElement.SBinOp (_, l, r, _), Cil.BinOp (op', _, _, t') ->
+          let lval = translate_exp model_map exp_map l in
+          let rval = translate_exp model_map exp_map r in
+          Cil.BinOp (op', lval, rval, t')
+      | S.SElement.SCastE (_, e), Cil.CastE (t, _) ->
+          let exp = translate_exp model_map exp_map e in
+          Cil.CastE (t, exp)
       | S.SElement.SUnOp _, Cil.UnOp _
       | S.SElement.SSizeOf _, Cil.SizeOf _
       | S.SElement.SSizeOfE _, Cil.SizeOfE _
       | S.SElement.SSizeOfStr _, Cil.SizeOfStr _
-      | S.SElement.SCastE _, Cil.CastE _
       | _ ->
+          Utils.print_ekind cil;
           failwith "translate_exp: not implemented")
   | _ -> failwith "translate_exp: ranslation target is not an expression"
 
@@ -139,33 +148,48 @@ let rec translate_stmt model_map cfg exp_map stmt =
       | _ -> failwith "translate_stmt: not implemented")
   | _ -> failwith "translate_stmt: translation target is not a statement type"
 
-let translate sparrow_path sym_diff ast_map model =
-  let sparrow_dir = Filename.concat sparrow_path "sparrow-out" in
-  let cfg, exp_map = H.parse_sparrow sparrow_dir in
-  let model_map : string H.StrMap.t = H.parse_model model in
+let translate sym_diff model_path maps patch_node_id =
+  let cfg = maps.Maps.cfg_map in
+  let exp_map = maps.Maps.exp_map in
+  let model_map = H.parse_model model_path in
+  let ast_map = maps.Maps.ast_map in
   let translated =
     List.fold_left
       (fun acc diff ->
         match diff with
         | S.SDiff.SInsertStmt (context, stmt) ->
-            let patch_node = context.S.SDiff.patch_node in
-            let new_patch_id = H.StrMap.find_opt patch_node.id model_map in
+            (* let patch_node = context.S.SDiff.patch_node in *)
+            let new_patch_id =
+              List.find
+                (fun (k, _) ->
+                  String.equal k
+                    (String.concat "-" [ "AstNode"; patch_node_id ]))
+                model_map
+              |> snd
+            in
             let new_parent_node =
-              match new_patch_id with
-              | None -> (
-                  match patch_node.node with
-                  | S.SElement.SStmt (_, s) -> Stmt s
-                  | S.SElement.SGlob (_, g) -> Fun g
-                  | _ -> failwith "translate: not implemented")
-              | Some id ->
-                  (* TODO: case where parent is global *)
-                  let translated_stmt =
-                    Parser.ASTMap.M.fold
-                      (fun k v acc -> if v = id then k :: acc else acc)
-                      ast_map []
-                    |> List.hd
-                  in
-                  Stmt translated_stmt
+              (* match new_patch_id with
+                 | None -> (
+                     match patch_node.node with
+                     | S.SElement.SStmt (_, s) -> Stmt s
+                     | S.SElement.SGlob (_, g) -> Fun g
+                     | _ -> failwith "translate: not implemented")
+                 | Some id -> *)
+              (* TODO: case where parent is global *)
+              let translated_stmt =
+                (* Parser.ASTMap.M.fold
+                     (fun k v acc -> if v = id then k :: acc else acc)
+                     ast_map []
+                   |> List.hd *)
+                Hashtbl.fold
+                  (fun k v acc ->
+                    if "AstNode-" ^ string_of_int v |> String.equal new_patch_id
+                    then k :: acc
+                    else acc)
+                  ast_map []
+                |> List.hd
+              in
+              Stmt translated_stmt
             in
             InsertStmt
               (new_parent_node, translate_stmt model_map cfg exp_map stmt)

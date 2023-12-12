@@ -33,12 +33,12 @@ let check_stmt stmt stmt_list =
 let check_exp exp exp_list =
   List.exists (fun x -> H.string_of_exp x = H.string_of_exp exp) exp_list
 
-let check_parent_stmt sibling stmt_list =
-  match sibling with
-  | D.CilElement.EStmt s ->
-      List.exists (fun x -> H.eq_stmt x.Cil.skind s.skind) stmt_list
-  | D.CilElement.Null -> false
-  | _ -> failwith "check_parent_stmt: parent is not a stmt"
+(* let check_parent_stmt parent node =
+   match parent.Cil.skind with
+   | Cil.Loop (b, _, _, _) -> H.eq_block b node
+   | Cil.Block b -> H.eq_block b node
+   | Cil.If (_, b1, b2, _) -> H.eq_block b1 node || H.eq_block b2 node
+   | _ -> failwith "check_parent_stmt: parent is not a stmt" *)
 
 let get_sibling_exp sibling exp_list =
   match sibling with
@@ -193,13 +193,32 @@ let get_sibling_stmt sibling stmt_list =
          else DoChildren
      end *)
 
-class stmtInsertVisitor parent stmt =
+let rec iter_body stmts parent patch =
+  List.fold_left
+    (fun acc x ->
+      match (x.Cil.skind, parent) with
+      | Cil.Loop (b, loc, t1, t2), Cil.Loop (b', loc', _, _) ->
+          if loc.Cil.line = loc'.Cil.line then
+            let new_body = patch :: b.bstmts in
+            let new_block = { b with bstmts = new_body } in
+            let new_stmt =
+              { x with skind = Cil.Loop (new_block, loc, t1, t2) }
+            in
+            new_stmt :: acc
+          else x :: acc
+      | _ -> x :: acc)
+    [] stmts
+  |> List.rev
+
+class stmtInsertVisitor target_func parent stmt =
   object
     inherit Cil.nopCilVisitor
 
-    method! vblock (b : Cil.block) =
-      if check_parent_stmt parent b.bstmts then
-        ChangeTo { b with bstmts = stmt :: b.bstmts }
+    method! vfunc (f : Cil.fundec) =
+      if f.svar.vname = target_func then
+        let stmts = f.sbody.bstmts in
+        let new_stmts = iter_body stmts parent stmt in
+        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
       else DoChildren
   end
 
@@ -213,16 +232,17 @@ class stmtDeleteVisitor stmt =
       else DoChildren
   end
 
-let apply_action donee action =
-  match action with
-  | EF.InsertStmt (parent, stmt) -> (
+let apply_action diff donee action =
+  match (action, diff) with
+  | EF.InsertStmt (parent, stmt), SymDiff.SDiff.SInsertStmt (context, _) -> (
+      let target_func = context.SymDiff.SDiff.func_name in
       match parent with
       | Fun g -> failwith "InsertStmt: not implemented"
       | Stmt s ->
-          let vis = new stmtInsertVisitor parent stmt in
+          let vis = new stmtInsertVisitor target_func s.Cil.skind stmt in
           ignore (Cil.visitCilFile vis donee)
       | _ -> failwith "InsertStmt: Incorrect parent type")
-  | DeleteStmt stmt ->
+  | DeleteStmt stmt, _ ->
       let vis = new stmtDeleteVisitor stmt in
       ignore (Cil.visitCilFile vis donee)
   (* | InsertExp (context, exp) ->
@@ -245,7 +265,9 @@ let apply_action donee action =
          ignore (Cil.visitCilFile vis donee) *)
   | _ -> failwith "Not implemented"
 
-let apply donee edit_function =
+let apply sym_diff donee edit_function =
   let donee_backup = donee in
-  List.iter (fun action -> apply_action donee action) edit_function;
+  List.iter2
+    (fun action diff -> apply_action diff donee action)
+    edit_function sym_diff;
   if H.compare_files donee_backup donee then (true, donee) else (false, donee)

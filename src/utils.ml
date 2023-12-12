@@ -75,8 +75,7 @@ let print_ekind exp =
 
 let summarize_pp str =
   let sp = Str.split (Str.regexp "\n") str in
-  (* let line_num = sp |> List.length in *)
-  try List.hd sp with _ -> ""
+  try List.hd sp with _ -> str
 
 let string_of_file file = Cil.dumpFile !Cil.printerForMaincil stdout "" file
 
@@ -737,3 +736,13 @@ let get_target_file target_dir =
   Sys.readdir target_dir |> Array.to_list
   |> List.filter (fun x -> Filename.check_suffix x ".c")
   |> List.hd |> Filename.concat target_dir
+
+let parse_model path =
+  let lines = read_lines path in
+  List.fold_left
+    (fun map line ->
+      let splited = Str.split (Str.regexp "\t") line in
+      let key = List.hd splited in
+      let value = List.hd (List.tl splited) in
+      (key, value) :: map)
+    [] lines

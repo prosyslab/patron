@@ -277,44 +277,51 @@ let match_eq_nodes ast_node maps =
   let cfg = maps.Maps.cfg_map in
   let ast_map = maps.Maps.ast_map in
   let node_map = maps.Maps.node_map in
-  let ast_id = Hashtbl.find ast_map ast_node |> string_of_int in
-  let cfg_id =
-    Hashtbl.fold
-      (fun cnode id acc ->
-        let bool =
-          match (ast_node.Cil.skind, cnode) with
-          | Cil.Instr i, cn -> (
-              if List.length i = 0 then false
-              else
-                match (List.hd_exn i, cn) with
-                | Cil.Call (_, _, _, loc), Maps.CfgNode.CCall (_, _, cloc) ->
-                    SymDiff.SDiff.eq_line loc cloc
-                | Cil.Set (_, _, loc), Maps.CfgNode.CSet (_, _, cloc)
-                | Cil.Set (_, _, loc), Maps.CfgNode.CAlloc (_, _, cloc)
-                | Cil.Set (_, _, loc), Maps.CfgNode.CSalloc (_, _, cloc)
-                | Cil.Set (_, _, loc), Maps.CfgNode.CFalloc (_, _, cloc) ->
-                    SymDiff.SDiff.eq_line loc cloc
-                | _ -> false)
-          | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc ->
-              SymDiff.SDiff.eq_line loc cloc
-          | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc)
-          | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
-              SymDiff.SDiff.eq_line loc cloc
-          | _ -> false
-        in
-        if bool then id :: acc else acc)
-      cfg []
-    |> fun x -> if List.length x = 0 then None else Some (List.hd_exn x)
+  let ast_id =
+    if Hashtbl.mem ast_map ast_node then
+      Some (Hashtbl.find ast_map ast_node |> string_of_int)
+    else None
   in
-  if Option.is_none cfg_id then None
-  else (
-    Hashtbl.add node_map (Option.value_exn cfg_id) ast_id;
-    Some
-      (Chc.Elt.FuncApply
-         ( "EqNode",
-           [
-             FDNumeral (Option.value_exn cfg_id); FDNumeral ("AstNode-" ^ ast_id);
-           ] )))
+  if Option.is_none ast_id then None
+  else
+    let cfg_id =
+      Hashtbl.fold
+        (fun cnode id acc ->
+          let bool =
+            match (ast_node.Cil.skind, cnode) with
+            | Cil.Instr i, cn -> (
+                if List.length i = 0 then false
+                else
+                  match (List.hd_exn i, cn) with
+                  | Cil.Call (_, _, _, loc), Maps.CfgNode.CCall (_, _, cloc) ->
+                      SymDiff.SDiff.eq_line loc cloc
+                  | Cil.Set (_, _, loc), Maps.CfgNode.CSet (_, _, cloc)
+                  | Cil.Set (_, _, loc), Maps.CfgNode.CAlloc (_, _, cloc)
+                  | Cil.Set (_, _, loc), Maps.CfgNode.CSalloc (_, _, cloc)
+                  | Cil.Set (_, _, loc), Maps.CfgNode.CFalloc (_, _, cloc) ->
+                      SymDiff.SDiff.eq_line loc cloc
+                  | _ -> false)
+            | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc ->
+                SymDiff.SDiff.eq_line loc cloc
+            | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc)
+            | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
+                SymDiff.SDiff.eq_line loc cloc
+            | _ -> false
+          in
+          if bool then id :: acc else acc)
+        cfg []
+      |> fun x -> if List.length x = 0 then None else Some (List.hd_exn x)
+    in
+    if Option.is_none cfg_id then None
+    else (
+      Hashtbl.add node_map (Option.value_exn cfg_id) (Option.value_exn ast_id);
+      Some
+        (Chc.Elt.FuncApply
+           ( "EqNode",
+             [
+               FDNumeral (Option.value_exn cfg_id);
+               FDNumeral ("AstNode-" ^ Option.value_exn ast_id);
+             ] )))
 
 let make_ast_facts (maps : Maps.t) stmts =
   let parent_tups =
@@ -328,15 +335,18 @@ let make_ast_facts (maps : Maps.t) stmts =
         | _ -> acc)
       stmts
     |> List.fold_left ~init:[] ~f:(fun acc (parent, child) ->
-           let parent =
-             Hashtbl.find maps.ast_map parent |> string_of_int |> fun n ->
-             [ "AstNode"; n ] |> String.concat ~sep:"-"
-           in
-           let child =
-             Hashtbl.find maps.ast_map child |> string_of_int |> fun n ->
-             [ "AstNode"; n ] |> String.concat ~sep:"-"
-           in
-           (parent, child) :: acc)
+           if Hashtbl.mem maps.ast_map child && Hashtbl.mem maps.ast_map parent
+           then
+             let parent =
+               Hashtbl.find maps.ast_map parent |> string_of_int |> fun n ->
+               [ "AstNode"; n ] |> String.concat ~sep:"-"
+             in
+             let child =
+               Hashtbl.find maps.ast_map child |> string_of_int |> fun n ->
+               [ "AstNode"; n ] |> String.concat ~sep:"-"
+             in
+             (parent, child) :: acc
+           else acc)
   in
   let parent_rel =
     List.fold_left ~init:[]

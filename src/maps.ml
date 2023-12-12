@@ -85,9 +85,12 @@ let reset_maps maps =
 let make_ast_map stmts ast_map =
   List.fold_left ~init:1
     ~f:(fun id stmt ->
-      let next_id = id + 1 in
-      Hashtbl.add ast_map stmt id;
-      next_id)
+      if Utils.string_of_stmt stmt |> Utils.summarize_pp |> String.equal "" then
+        id
+      else
+        let next_id = id + 1 in
+        Hashtbl.add ast_map stmt id;
+        next_id)
     stmts
   |> ignore
 
