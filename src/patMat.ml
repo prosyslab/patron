@@ -126,7 +126,6 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   let ast_map = maps.Maps.ast_map in
   let node_map = maps.Maps.node_map in
   L.info "Compute AST pattern...";
-  List.iter ~f:(fun n -> L.info "%s" n) ast_node_lst;
   let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
   let parent_tups =
     List.fold_left ~init:[]
@@ -270,11 +269,13 @@ let abstract_bug_pattern buggy src snk aexps maps ctx ast =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
+  Z3env.buggy_src := src;
+  Z3env.buggy_snk := snk;
   Chc.Elt.Implies (deps @ smallest_ast_pattern, errtrace)
   |> Chc.Elt.numer2var |> Chc.singleton
 
 let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
-    out_dir =
+    out_dir patch_id diff =
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
@@ -290,7 +291,19 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
     Maps.dump target_alarm target_maps out_dir;
     if Option.is_some status then
       Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
-    L.info "Matching with %s is done" target_alarm
+    L.info "Matching with %s is done" target_alarm;
+    let ef =
+      EditFunction.translate ast diff
+        (Filename.concat out_dir "1036_sol.map")
+        target_maps patch_id
+    in
+    L.info "Applying patch on the target file ...";
+    let is_patched, patch_file = Patch.apply diff ast ef in
+    let out_file = String.concat [ out_dir; "/patch_"; target_alarm; ".c" ] in
+    let out_chan = Out_channel.create out_file in
+    if is_patched then
+      Cil.dumpFile Cil.defaultCilPrinter out_chan "patch.c" patch_file;
+    L.info "Patch for %s is done, written at %s" target_alarm out_file
   with Parser.Not_impl_aexp -> L.info "PASS"
 
 let is_new_alarm dir ta a =
@@ -298,12 +311,12 @@ let is_new_alarm dir ta a =
   && Sys.is_directory (Filename.concat dir ("sparrow-out/taint/datalog/" ^ a))
 
 let match_with_new_alarms buggy_dir true_alarm buggy_maps buggy_ast buggy_cfg
-    pattern out_dir =
+    pattern out_dir patch_id diff =
   Sys.readdir (Filename.concat buggy_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
          if is_new_alarm buggy_dir true_alarm ta then
            match_bug_for_one_prj pattern buggy_maps buggy_dir ta buggy_ast
-             buggy_cfg out_dir)
+             buggy_cfg out_dir patch_id diff)
 
 let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   let buggy_maps = Maps.create_maps () in
@@ -344,15 +357,6 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
       pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
-  match_with_new_alarms buggy_dir true_alarm buggy_maps buggy_ast buggy_cfg
-    pattern out_dir;
-  let ef =
-    EditFunction.translate sym_diff
-      (Filename.concat out_dir "1036_sol.map")
-      buggy_maps patch_node_id
-  in
-  let is_patched, patch_file = Patch.apply sym_diff patch_ast ef in
-  let out_chan = Filename.concat out_dir "patch.c" |> Out_channel.create in
-  if is_patched then
-    Cil.dumpFile Cil.defaultCilPrinter out_chan "patch.c" patch_file;
+  match_with_new_alarms buggy_dir true_alarm buggy_maps patch_ast buggy_cfg
+    pattern out_dir patch_node_id sym_diff;
   L.info "Done."

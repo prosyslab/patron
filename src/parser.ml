@@ -173,7 +173,6 @@ let mk_term s =
         incr sort_size;
         Chc.Elt.FDNumeral s)
 
-(* TODO: Add Assume.facts *)
 let file2func = function
   | "AllocExp.facts" -> "Alloc"
   | "Arg.facts" -> "Arg"
@@ -211,7 +210,6 @@ let parse_cf_facts datalog_dir fact_file =
   in
   List.rev elt_lst |> Chc.of_list
 
-(* TODO: combine symdiff making process and make_cf_facts wrt the file IO *)
 let make_cf_facts work_dir cfg map =
   let cf_facts =
     List.fold_left ~init:Chc.empty
@@ -412,6 +410,7 @@ let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
   let alarm_dir =
     Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
   in
+  L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
   Utils.parse_map alarm_dir maps.exp_map;
   let stmts = Utils.extract_stmts ast in
   Maps.make_ast_map stmts maps.ast_map;

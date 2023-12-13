@@ -18,7 +18,93 @@ type t =
 let of_exp node =
   match node with Exp e -> e | _ -> failwith "extract_cil: not exp"
 
-let rec translate_lval model_map exp_map slval =
+let swap_exp = ref []
+
+class expVisitor target =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vstmt (s : Cil.stmt) =
+      let is_found =
+        match s.Cil.skind with
+        | Cil.Instr i -> (
+            if List.length i = 0 then false
+            else
+              let i = List.hd i in
+              match i with
+              | Cil.Call (Some lval, f, args, _) ->
+                  let l_str = Utils.SparrowParser.s_lv lval in
+                  if String.equal l_str target then (
+                    swap_exp := Cil.Lval lval :: !swap_exp;
+                    true)
+                  else
+                    let f_str = Utils.SparrowParser.s_exp f in
+                    if String.equal f_str target then (
+                      swap_exp := f :: !swap_exp;
+                      true)
+                    else
+                      let args_str = List.map Utils.SparrowParser.s_exp args in
+                      if
+                        List.exists
+                          (fun arg -> String.equal arg target)
+                          args_str
+                      then (
+                        ( List.find (fun arg -> String.equal arg target) args_str
+                        |> fun x ->
+                          List.find
+                            (fun arg ->
+                              Utils.SparrowParser.s_exp arg |> String.equal x)
+                            args )
+                        |> fun x ->
+                        swap_exp := x :: !swap_exp;
+                        true)
+                      else false
+              | Cil.Call (None, f, args, _) ->
+                  let f_str = Utils.SparrowParser.s_exp f in
+                  if String.equal f_str target then (
+                    swap_exp := f :: !swap_exp;
+                    true)
+                  else
+                    let args_str = List.map Utils.SparrowParser.s_exp args in
+                    if List.exists (fun arg -> String.equal arg target) args_str
+                    then (
+                      ( List.find (fun arg -> String.equal arg target) args_str
+                      |> fun x ->
+                        List.find
+                          (fun arg ->
+                            Utils.SparrowParser.s_exp arg |> String.equal x)
+                          args )
+                      |> fun x ->
+                      swap_exp := x :: !swap_exp;
+                      true)
+                    else false
+              | Cil.Set (lval, exp, _) -> (
+                  let l_str = Utils.SparrowParser.s_lv lval in
+                  if String.equal l_str target then (
+                    swap_exp := Cil.Lval lval :: !swap_exp;
+                    true)
+                  else
+                    let exp_str = Utils.SparrowParser.s_exp exp in
+                    if String.equal exp_str target then true
+                    else
+                      match exp with
+                      | Cil.CastE (_, e) ->
+                          let e_str = Utils.SparrowParser.s_exp e in
+                          if String.equal e_str target then (
+                            swap_exp := e :: !swap_exp;
+                            true)
+                          else false
+                      | _ -> false)
+              | _ -> false)
+        | Cil.Return (Some exp, _) ->
+            let exp_str = Utils.SparrowParser.s_exp exp in
+            String.equal exp_str target
+        | _ -> false
+      in
+      if is_found then SkipChildren else DoChildren
+  end
+
+let rec translate_lval ast model_map exp_map slval =
   let id = slval.S.SElement.id in
   let lval = slval.S.SElement.node in
   match lval with
@@ -30,15 +116,19 @@ let rec translate_lval model_map exp_map slval =
         let new_exp_str = Hashtbl.find exp_map new_id in
         match (sym, cil) with
         | S.SElement.SLNull, _ -> failwith "translate_lval:Lval is null"
-        | S.SElement.Lval (S.SElement.SVar _, _), (Cil.Var v, offset) ->
-            let var = Cil.Var (Cil.makeGlobalVar new_exp_str v.vtype) in
-            (var, offset)
-        (* | S.SElement.Lval ((S.SElement.SMem se), _), (Cil.Mem e, offset) *)
+        | S.SElement.Lval (S.SElement.SVar _, _), (Cil.Var _, _) -> (
+            let vis = new expVisitor new_exp_str in
+            ignore (Cil.visitCilFile vis ast);
+            match List.hd !swap_exp with Cil.Lval lval -> lval | _ -> cil)
+        | S.SElement.Lval (S.SElement.SMem _, _), (Cil.Mem _, _) -> (
+            let vis = new expVisitor new_exp_str in
+            ignore (Cil.visitCilFile vis ast);
+            match List.hd !swap_exp with Cil.Lval lval -> lval | _ -> cil)
         | _ -> failwith "translate_lval: not implemented"
       else cil
   | _ -> failwith "translate_lval: translation target is not an lvalue"
 
-and translate_exp (model_map : (string * string) list) exp_map sexp =
+and translate_exp ast (model_map : (string * string) list) exp_map sexp =
   let id = sexp.S.SElement.id in
   let exp = sexp.S.SElement.node in
   match exp with
@@ -62,16 +152,15 @@ and translate_exp (model_map : (string * string) list) exp_map sexp =
             | S.SElement.SStringConst s -> Cil.Const (Cil.CStr new_exp_str)
           else (* TODO: casting within constant*)
             cil
-            (* S.SElement.SConst (H.StrMap.find conv_id exp_map, conv_id) |> translate_const *)
       | S.SElement.SELval l, Cil.Lval _ ->
-          let lval = translate_lval model_map exp_map l in
+          let lval = translate_lval ast model_map exp_map l in
           Cil.Lval lval
       | S.SElement.SBinOp (_, l, r, _), Cil.BinOp (op', _, _, t') ->
-          let lval = translate_exp model_map exp_map l in
-          let rval = translate_exp model_map exp_map r in
+          let lval = translate_exp ast model_map exp_map l in
+          let rval = translate_exp ast model_map exp_map r in
           Cil.BinOp (op', lval, rval, t')
       | S.SElement.SCastE (_, e), Cil.CastE (t, _) ->
-          let exp = translate_exp model_map exp_map e in
+          let exp = translate_exp ast model_map exp_map e in
           Cil.CastE (t, exp)
       | S.SElement.SUnOp _, Cil.UnOp _
       | S.SElement.SSizeOf _, Cil.SizeOf _
@@ -82,23 +171,23 @@ and translate_exp (model_map : (string * string) list) exp_map sexp =
           failwith "translate_exp: not implemented")
   | _ -> failwith "translate_exp: ranslation target is not an expression"
 
-let rec translate_stmt model_map cfg exp_map stmt =
+let rec translate_stmt ast model_map cfg exp_map stmt =
   let id = stmt.S.SElement.id in
   let node = stmt.S.SElement.node in
   match node with
   | S.SElement.SStmt (sym, cil) -> (
       match (sym, cil.Cil.skind) with
       | S.SElement.SIf (scond, sthen_block, selse_block), Cil.If _ ->
-          let cond = translate_exp model_map exp_map scond in
+          let cond = translate_exp ast model_map exp_map scond in
           let then_block =
             List.fold_left
-              (fun acc ss -> translate_stmt model_map cfg exp_map ss :: acc)
+              (fun acc ss -> translate_stmt ast model_map cfg exp_map ss :: acc)
               [] sthen_block
             |> List.rev
           in
           let else_block =
             List.fold_left
-              (fun acc ss -> translate_stmt model_map cfg exp_map ss :: acc)
+              (fun acc ss -> translate_stmt ast model_map cfg exp_map ss :: acc)
               [] selse_block
             |> List.rev
           in
@@ -109,7 +198,7 @@ let rec translate_stmt model_map cfg exp_map stmt =
                  Cil.mkBlock else_block,
                  Cil.locUnknown ))
       | S.SElement.SReturn (Some sym), Cil.Return _ ->
-          let exp = translate_exp model_map exp_map sym in
+          let exp = translate_exp ast model_map exp_map sym in
           Cil.mkStmt (Cil.Return (Some exp, Cil.locUnknown))
       | S.SElement.SReturn None, Cil.Return _ ->
           Cil.mkStmt (Cil.Return (None, Cil.locUnknown))
@@ -117,15 +206,16 @@ let rec translate_stmt model_map cfg exp_map stmt =
       | a, Cil.Instr i -> (
           match (a, List.hd i) with
           | S.SElement.SSet (l, r), Cil.Set _ ->
-              let lval = translate_lval model_map exp_map l in
-              let rval = translate_exp model_map exp_map r in
+              let lval = translate_lval ast model_map exp_map l in
+              let rval = translate_exp ast model_map exp_map r in
               Cil.mkStmt (Cil.Instr [ Cil.Set (lval, rval, Cil.locUnknown) ])
           | S.SElement.SCall (Some l, f, args), Cil.Call _ ->
-              let lval = translate_lval model_map exp_map l in
-              let fun_exp = translate_exp model_map exp_map f in
+              let lval = translate_lval ast model_map exp_map l in
+              let fun_exp = translate_exp ast model_map exp_map f in
               let args =
                 List.fold_left
-                  (fun acc arg -> translate_exp model_map exp_map arg :: acc)
+                  (fun acc arg ->
+                    translate_exp ast model_map exp_map arg :: acc)
                   [] args
                 |> List.rev
               in
@@ -133,10 +223,11 @@ let rec translate_stmt model_map cfg exp_map stmt =
                 (Cil.Instr
                    [ Cil.Call (Some lval, fun_exp, args, Cil.locUnknown) ])
           | S.SElement.SCall (None, f, args), Cil.Call _ ->
-              let fun_exp = translate_exp model_map exp_map f in
+              let fun_exp = translate_exp ast model_map exp_map f in
               let args =
                 List.fold_left
-                  (fun acc arg -> translate_exp model_map exp_map arg :: acc)
+                  (fun acc arg ->
+                    translate_exp ast model_map exp_map arg :: acc)
                   [] args
                 |> List.rev
               in
@@ -148,7 +239,8 @@ let rec translate_stmt model_map cfg exp_map stmt =
       | _ -> failwith "translate_stmt: not implemented")
   | _ -> failwith "translate_stmt: translation target is not a statement type"
 
-let translate sym_diff model_path maps patch_node_id =
+let translate ast sym_diff model_path maps patch_node_id =
+  Logger.info "Translating patch...";
   let cfg = maps.Maps.cfg_map in
   let exp_map = maps.Maps.exp_map in
   let model_map = H.parse_model model_path in
@@ -192,10 +284,10 @@ let translate sym_diff model_path maps patch_node_id =
               Stmt translated_stmt
             in
             InsertStmt
-              (new_parent_node, translate_stmt model_map cfg exp_map stmt)
+              (new_parent_node, translate_stmt ast model_map cfg exp_map stmt)
             :: acc
         | S.SDiff.SDeleteStmt (_, stmt) ->
-            let stmt = translate_stmt model_map cfg exp_map stmt in
+            let stmt = translate_stmt ast model_map cfg exp_map stmt in
             DeleteStmt stmt :: acc
         | _ -> failwith "translate: not implemented")
       [] sym_diff

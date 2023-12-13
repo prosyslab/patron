@@ -326,20 +326,20 @@ let print_ikind instr =
   | Cil.Set _ -> print_endline "Set"
   | Cil.Asm _ -> print_endline "Asm"
 
-let print_skind sk =
+let pp_skind sk =
   match sk with
-  | Cil.Instr _ -> print_endline "Instr"
-  | Cil.Return _ -> print_endline "Return"
-  | Cil.Goto _ -> print_endline "Goto"
-  | Cil.ComputedGoto _ -> print_endline "ComputedGoto"
-  | Cil.Break _ -> print_endline "Break"
-  | Cil.Continue _ -> print_endline "Continue"
-  | Cil.If _ -> print_endline "If"
-  | Cil.Loop _ -> print_endline "Loop"
-  | Cil.Block _ -> print_endline "Block"
-  | Cil.TryExcept _ -> print_endline "TryExcept"
-  | Cil.TryFinally _ -> print_endline "TryFinally"
-  | Cil.Switch _ -> print_endline "Switch"
+  | Cil.Instr _ -> "Instr"
+  | Cil.Return _ -> "Return"
+  | Cil.Goto _ -> "Goto"
+  | Cil.ComputedGoto _ -> "ComputedGoto"
+  | Cil.Break _ -> "Break"
+  | Cil.Continue _ -> "Continue"
+  | Cil.If _ -> "If"
+  | Cil.Loop _ -> "Loop"
+  | Cil.Block _ -> "Block"
+  | Cil.TryExcept _ -> "TryExcept"
+  | Cil.TryFinally _ -> "TryFinally"
+  | Cil.Switch _ -> "Switch"
 
 let rec parse_strmap file map =
   match file with
@@ -746,3 +746,66 @@ let parse_model path =
       let value = List.hd (List.tl splited) in
       (key, value) :: map)
     [] lines
+
+module SparrowParser = struct
+  open Cil
+
+  let tostring s = Escape.escape_string (Pretty.sprint ~width:0 s)
+
+  let rec s_exps es = string_of_list ~first:"(" ~last:")" ~sep:", " s_exp es
+
+  and s_exp = function
+    | Const c -> s_const c
+    | Lval l -> s_lv l
+    | SizeOf t -> "SizeOf(" ^ s_type t ^ ")"
+    | SizeOfE e -> "SizeOfE(" ^ s_exp e ^ ")"
+    | SizeOfStr s -> "SizeOfStr(" ^ s ^ ")"
+    | AlignOf t -> "AlignOf(" ^ s_type t ^ ")"
+    | AlignOfE e -> "AlignOfE(" ^ s_exp e ^ ")"
+    | UnOp (u, e, _) -> s_uop u ^ s_exp_paren e
+    | BinOp (b, e1, e2, _) -> s_exp_paren e1 ^ s_bop b ^ s_exp_paren e2
+    | Question (c, e1, e2, _) ->
+        s_exp_paren c ^ " ? " ^ s_exp_paren e1 ^ " : " ^ s_exp_paren e2
+    | CastE (t, e) -> "(" ^ s_type t ^ ")" ^ s_exp_paren e
+    | AddrOf l -> "&" ^ s_lv l
+    | AddrOfLabel _ -> invalid_arg "AddrOfLabel is not supported."
+    | StartOf l -> "StartOf(" ^ s_lv l ^ ")"
+
+  and s_exp_paren e =
+    match e with
+    | UnOp _ | BinOp _ | Question _ | CastE _ -> "(" ^ s_exp e ^ ")"
+    | _ -> s_exp e
+
+  and s_const c = tostring (d_const () c)
+  and s_type typ = tostring (d_type () typ)
+  and s_stmt s = tostring (d_stmt () s)
+  and s_lv (lh, offset) = s_lhost lh ^ s_offset offset
+
+  and s_lhost = function
+    | Var vi -> (if vi.vglob then "@" else "") ^ vi.vname
+    | Mem e -> "*" ^ s_exp_paren2 e
+
+  and s_exp_paren2 e =
+    match e with
+    | Lval (_, NoOffset) -> s_exp e
+    | Lval _ | UnOp _ | BinOp _ | Question _ | CastE _ -> "(" ^ s_exp e ^ ")"
+    | _ -> s_exp e
+
+  and s_offset = function
+    | NoOffset -> ""
+    | Field (fi, offset) -> "." ^ fi.fname ^ s_offset offset
+    | Index (e, offset) -> "[" ^ s_exp e ^ "]" ^ s_offset offset
+
+  and s_uop u = tostring (d_unop () u)
+  and s_bop b = tostring (d_binop () b)
+
+  and s_instr i =
+    match i with
+    | Set (lv, exp, _) -> "Set(" ^ s_lv lv ^ "," ^ s_exp exp ^ ")"
+    | Call (Some lv, fexp, params, _) ->
+        s_lv lv ^ ":= Call(" ^ s_exp fexp ^ s_exps params ^ ")"
+    | Call (None, fexp, params, _) -> "Call(" ^ s_exp fexp ^ s_exps params ^ ")"
+    | Asm _ -> "Asm"
+
+  and s_instrs instrs = List.fold_left (fun s i -> s ^ s_instr i) "" instrs
+end

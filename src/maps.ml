@@ -80,7 +80,8 @@ let reset_maps maps =
   Hashtbl.reset maps.sym_map;
   Hashtbl.reset maps.numeral_map;
   Hashtbl.reset maps.cfg_map;
-  Hashtbl.reset maps.node_map
+  Hashtbl.reset maps.node_map;
+  Hashtbl.reset maps.exp_map
 
 let make_ast_map stmts ast_map =
   List.fold_left ~init:1
