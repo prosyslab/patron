@@ -294,7 +294,7 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
     L.info "Matching with %s is done" target_alarm;
     let ef =
       EditFunction.translate ast diff
-        (Filename.concat out_dir "1036_sol.map")
+        (Filename.concat out_dir (target_alarm ^ "_sol.map"))
         target_maps patch_id
     in
     L.info "Applying patch on the target file ...";
