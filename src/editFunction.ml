@@ -5,10 +5,15 @@ module H = Utils
 
 type ast_node = Fun of Cil.global | Stmt of Cil.stmt | Exp of Cil.exp
 
+type ctx = {
+  parent_node : ast_node;
+  patch_between : Cil.stmt option * Cil.stmt option;
+}
+
 type t =
-  | InsertStmt of ast_node * Cil.stmt
+  | InsertStmt of ctx * Cil.stmt
   | DeleteStmt of Cil.stmt
-  | InsertExp of ast_node * Cil.exp
+  | InsertExp of ctx * Cil.exp
   | DeleteExp of Cil.exp
   (* TODO *)
   | UpdateExp of D.CilElement.t * D.CilElement.t * D.CilElement.t
@@ -239,12 +244,26 @@ let rec translate_stmt ast model_map cfg exp_map stmt =
       | _ -> failwith "translate_stmt: not implemented")
   | _ -> failwith "translate_stmt: translation target is not a statement type"
 
-let translate ast sym_diff model_path maps patch_node_id =
+let translate ast sym_diff model_path maps patch_node_id patch_nodes =
   Logger.info "Translating patch...";
   let cfg = maps.Maps.cfg_map in
   let exp_map = maps.Maps.exp_map in
   let model_map = H.parse_model model_path in
   let ast_map = maps.Maps.ast_map in
+  let node_map = maps.Maps.node_map in
+  (* ToDO: make the order of hashtbl proper so that it will optimize *)
+  let patch_nodes =
+    List.fold_left
+      (fun lst x ->
+        try
+          (Hashtbl.fold
+             (fun k v acc -> if v = x then k :: acc else acc)
+             node_map []
+          |> List.hd)
+          :: lst
+        with _ -> lst)
+      [] patch_nodes
+  in
   let translated =
     List.fold_left
       (fun acc diff ->
@@ -269,10 +288,6 @@ let translate ast sym_diff model_path maps patch_node_id =
                  | Some id -> *)
               (* TODO: case where parent is global *)
               let translated_stmt =
-                (* Parser.ASTMap.M.fold
-                     (fun k v acc -> if v = id then k :: acc else acc)
-                     ast_map []
-                   |> List.hd *)
                 Hashtbl.fold
                   (fun k v acc ->
                     if "AstNode-" ^ string_of_int v |> String.equal new_patch_id
@@ -283,12 +298,48 @@ let translate ast sym_diff model_path maps patch_node_id =
               in
               Stmt translated_stmt
             in
-            InsertStmt
-              (new_parent_node, translate_stmt ast model_map cfg exp_map stmt)
+            let before, after = context.S.SDiff.patch_between in
+            let before =
+              if before = [] then None
+              else
+                List.fold_left
+                  (fun acc s ->
+                    try Some (List.find (fun x -> String.equal s x) patch_nodes)
+                    with _ -> acc)
+                  None before
+                |> fun x ->
+                if x = None then None
+                else
+                  Option.get x |> Hashtbl.find node_map |> fun x ->
+                  Hashtbl.fold
+                    (fun k v acc -> if string_of_int v = x then Some k else acc)
+                    ast_map None
+            in
+            let after =
+              if after = [] then None
+              else
+                List.fold_left
+                  (fun acc s ->
+                    try Some (List.find (fun x -> String.equal s x) patch_nodes)
+                    with _ -> acc)
+                  None after
+                |> fun x ->
+                if x = None then None
+                else
+                  Option.get x |> Hashtbl.find node_map |> fun x ->
+                  Hashtbl.fold
+                    (fun k v acc -> if string_of_int v = x then Some k else acc)
+                    ast_map None
+            in
+            let ctx =
+              { parent_node = new_parent_node; patch_between = (before, after) }
+            in
+            InsertStmt (ctx, translate_stmt ast model_map cfg exp_map stmt)
             :: acc
-        | S.SDiff.SDeleteStmt (_, stmt) ->
-            let stmt = translate_stmt ast model_map cfg exp_map stmt in
-            DeleteStmt stmt :: acc
+            (* | S.SDiff.SDeleteStmt (_, stmt) -> *)
+            (* failwith "translate: not implemented" *)
+            (* let stmt = translate_stmt ast model_map cfg exp_map stmt in
+               DeleteStmt stmt :: acc *)
         | _ -> failwith "translate: not implemented")
       [] sym_diff
   in

@@ -264,6 +264,7 @@ module SDiff = struct
   type sym_context = {
     parent : sym_node list;
     patch_node : sym_node;
+    patch_between : string list * string list;
     func_name : string;
   }
 
@@ -889,7 +890,7 @@ module SDiff = struct
     | _ -> failwith "not supported"
 end
 
-let get_parent_lst diff =
+let get_ctx diff =
   match diff with
   | D.Diff.InsertGlobal (ctx, _)
   | DeleteGlobal (ctx, _)
@@ -901,7 +902,7 @@ let get_parent_lst diff =
   | InsertLval (ctx, _)
   | DeleteLval (ctx, _)
   | UpdateLval (ctx, _, _) ->
-      ctx.parent
+      ctx
 
 let get_parent_fun parent_lst =
   let check_fun g = match g with Cil.GFun _ -> true | _ -> false in
@@ -947,21 +948,84 @@ let get_gvars ast =
          if vname = func_name then H.CfgMap.M.add k v acc else acc)
        cfg H.CfgMap.M.empty *)
 
+let get_patch_range siblings patch_loc node_map ast_map =
+  if patch_loc = -1 then ([], [])
+  else
+    let before, after =
+      List.fold_left
+        (fun ((bf, af), cnt) s ->
+          if cnt < patch_loc then ((s :: bf, af), cnt + 1)
+          else ((bf, s :: af), cnt + 1))
+        (([], []), 0)
+        siblings
+      |> fst
+    in
+    let left_lim =
+      if patch_loc = 0 then []
+      else
+        List.fold_left
+          (fun acc s ->
+            try (Hashtbl.find ast_map s |> string_of_int) :: acc with _ -> acc)
+          [] before
+        |> List.fold_left
+             (fun acc s ->
+               try
+                 (Hashtbl.fold
+                    (fun k v acc -> if v = s then k :: acc else acc)
+                    node_map []
+                 |> List.hd)
+                 :: acc
+               with _ -> acc)
+             []
+    in
+    let right_lim =
+      List.fold_left
+        (fun acc s ->
+          try (Hashtbl.find ast_map s |> string_of_int) :: acc with _ -> acc)
+        [] after
+      |> List.fold_left
+           (fun acc s ->
+             try
+               (Hashtbl.fold
+                  (fun k v acc -> if v = s then k :: acc else acc)
+                  node_map []
+               |> List.hd)
+               :: acc
+             with _ -> acc)
+           []
+    in
+    (left_lim, right_lim)
+
 let define_sym_diff (maps : Maps.t) buggy diff =
   get_gvars buggy;
   let cfg = maps.cfg_map in
   let exp_map = maps.exp_map in
   List.fold_left
     (fun acc d ->
-      let root_path = get_parent_lst d |> List.rev in
+      let ctx = get_ctx d in
+      let root_path = ctx.D.Diff.parent |> List.rev in
       let s_root_path = SDiff.match_context cfg exp_map root_path in
       let rest_path = List.tl s_root_path in
       let parent_fun = get_parent_fun root_path in
-      (* H.cfg := reduce_cfg cfg parent_fun.vname; *)
+      let patch_node = List.hd rest_path in
+      let siblings =
+        match patch_node.node with
+        | SStmt (_, s) -> (
+            match s.Cil.skind with
+            | Cil.Block lst -> lst.bstmts
+            | Cil.Loop (b, _, _, _) -> b.bstmts
+            | Cil.If _ -> failwith "define_sym_diff: not implemented"
+            | _ -> failwith "define_sym_diff: not implemented")
+        | _ -> failwith "define_sym_diff: not implemented"
+      in
+      let patch_bw =
+        get_patch_range siblings ctx.patch_loc maps.node_map maps.ast_map
+      in
       let s_context : SDiff.sym_context =
         {
           parent = rest_path;
-          patch_node = List.hd rest_path;
+          patch_node;
+          patch_between = patch_bw;
           func_name = parent_fun.vname;
         }
       in

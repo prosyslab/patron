@@ -192,14 +192,35 @@ let get_sibling_stmt sibling stmt_list =
            | _ -> DoChildren
          else DoChildren
      end *)
+let insert_patch new_stmt patch_block before after =
+  if before = None && after = None then new_stmt :: patch_block
+  else if before = None then
+    let after = Option.get after in
+    List.fold_left
+      (fun acc s ->
+        if Utils.eq_stmt_line after.Cil.skind s.Cil.skind then
+          s :: new_stmt :: acc
+        else s :: acc)
+      [] patch_block
+    |> List.rev
+  else
+    let before = Option.get before in
+    List.fold_left
+      (fun acc s ->
+        if Utils.eq_stmt_line before.Cil.skind s.Cil.skind then
+          new_stmt :: s :: acc
+        else s :: acc)
+      [] patch_block
+    |> List.rev
 
-let rec iter_body stmts parent patch =
+let rec iter_body stmts parent patch_bw patch =
+  let before, after = patch_bw in
   List.fold_left
     (fun acc x ->
       match (x.Cil.skind, parent) with
       | Cil.Loop (b, loc, t1, t2), Cil.Loop (b', loc', _, _) ->
           if loc.Cil.line = loc'.Cil.line then
-            let new_body = patch :: b.bstmts in
+            let new_body = insert_patch patch b.bstmts before after in
             let new_block = { b with bstmts = new_body } in
             let new_stmt =
               { x with skind = Cil.Loop (new_block, loc, t1, t2) }
@@ -210,14 +231,14 @@ let rec iter_body stmts parent patch =
     [] stmts
   |> List.rev
 
-class stmtInsertVisitor target_func parent stmt =
+class stmtInsertVisitor target_func parent patch_bw stmt =
   object
     inherit Cil.nopCilVisitor
 
     method! vfunc (f : Cil.fundec) =
       if f.svar.vname = target_func then
         let stmts = f.sbody.bstmts in
-        let new_stmts = iter_body stmts parent stmt in
+        let new_stmts = iter_body stmts parent patch_bw stmt in
         ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
       else DoChildren
   end
@@ -234,12 +255,16 @@ class stmtDeleteVisitor stmt =
 
 let apply_action diff donee action =
   match (action, diff) with
-  | EF.InsertStmt (parent, stmt), SymDiff.SDiff.SInsertStmt (context, _) -> (
+  | EF.InsertStmt (ctx, stmt), SymDiff.SDiff.SInsertStmt (context, _) -> (
+      let parent = ctx.EF.parent_node in
       let target_func = context.SymDiff.SDiff.func_name in
       match parent with
       | Fun g -> failwith "InsertStmt: not implemented"
       | Stmt s ->
-          let vis = new stmtInsertVisitor target_func s.Cil.skind stmt in
+          let patch_bw = ctx.EF.patch_between in
+          let vis =
+            new stmtInsertVisitor target_func s.Cil.skind patch_bw stmt
+          in
           ignore (Cil.visitCilFile vis donee)
       | _ -> failwith "InsertStmt: Incorrect parent type")
   | DeleteStmt stmt, _ ->

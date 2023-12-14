@@ -271,11 +271,12 @@ let abstract_bug_pattern buggy src snk aexps maps ctx ast =
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  Chc.Elt.Implies (deps @ smallest_ast_pattern, errtrace)
-  |> Chc.Elt.numer2var |> Chc.singleton
+  ( Chc.Elt.Implies (deps @ smallest_ast_pattern, errtrace)
+    |> Chc.Elt.numer2var |> Chc.singleton,
+    ast_node_lst )
 
 let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
-    out_dir patch_id diff =
+    out_dir patch_id patch_nodes diff =
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
@@ -295,7 +296,7 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
     let ef =
       EditFunction.translate ast diff
         (Filename.concat out_dir (target_alarm ^ "_sol.map"))
-        target_maps patch_id
+        target_maps patch_id patch_nodes
     in
     L.info "Applying patch on the target file ...";
     let is_patched, patch_file = Patch.apply diff ast ef in
@@ -311,12 +312,12 @@ let is_new_alarm dir ta a =
   && Sys.is_directory (Filename.concat dir ("sparrow-out/taint/datalog/" ^ a))
 
 let match_with_new_alarms buggy_dir true_alarm buggy_maps buggy_ast buggy_cfg
-    pattern out_dir patch_id diff =
+    pattern out_dir patch_id patch_nodes diff =
   Sys.readdir (Filename.concat buggy_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
          if is_new_alarm buggy_dir true_alarm ta then
            match_bug_for_one_prj pattern buggy_maps buggy_dir ta buggy_ast
-             buggy_cfg out_dir patch_id diff)
+             buggy_cfg out_dir patch_id patch_nodes diff)
 
 let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   let buggy_maps = Maps.create_maps () in
@@ -345,7 +346,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
     |> List.hd_exn
   in
   let patch_node_id, _ = extract_parent ctx buggy_maps.Maps.ast_map in
-  let pattern =
+  let pattern, nodes_in_pat =
     abstract_bug_pattern buggy_facts src snk aexps buggy_maps ctx buggy_ast
   in
   L.info "Make Bug Pattern done";
@@ -358,5 +359,5 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
   match_with_new_alarms buggy_dir true_alarm buggy_maps patch_ast buggy_cfg
-    pattern out_dir patch_node_id sym_diff;
+    pattern out_dir patch_node_id nodes_in_pat sym_diff;
   L.info "Done."

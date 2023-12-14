@@ -191,6 +191,31 @@ let rec eq_stmt skind1 skind2 =
       true
   | _ -> false
 
+let eq_stmt_line sk1 sk2 =
+  match (sk1, sk2) with
+  | Cil.Instr i1, Cil.Instr i2 -> (
+      if i1 = [] || i2 = [] then false
+      else
+        match (List.hd i1, List.hd i2) with
+        | Cil.Set (_, _, loc), Cil.Set (_, _, loc2) -> loc.line = loc2.line
+        | Cil.Call (_, _, _, loc), Cil.Call (_, _, _, loc2) ->
+            loc.line = loc2.line
+        | _ -> false)
+  | Cil.Return (_, loc), Cil.Return (_, loc') -> loc.line = loc'.line
+  | Cil.Goto (_, loc), Cil.Goto (_, loc') -> loc.line = loc'.line
+  | Cil.If (_, _, _, loc), Cil.If (_, _, _, loc') -> loc.line = loc'.line
+  | Cil.Loop (_, loc, _, _), Cil.Loop (_, loc', _, _) -> loc.line = loc'.line
+  | Cil.ComputedGoto (_, loc), Cil.ComputedGoto (_, loc') ->
+      loc.line = loc'.line
+  | Cil.Block _, Cil.Block _ -> false
+  | Cil.TryExcept (_, _, _, loc), Cil.TryExcept (_, _, _, loc') ->
+      loc.line = loc'.line
+  | Cil.TryFinally (_, _, loc), Cil.TryFinally (_, _, loc') ->
+      loc.line = loc'.line
+  | Cil.Break loc, Cil.Break loc' -> loc.line = loc'.line
+  | Cil.Continue loc, Cil.Continue loc' -> loc.line = loc'.line
+  | _ -> false
+
 let eq_global glob1 glob2 =
   match (glob1, glob2) with
   | Cil.GFun (func_info1, _), Cil.GFun (func_info2, _) ->
