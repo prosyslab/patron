@@ -292,18 +292,18 @@ let match_eq_nodes ast_node maps =
                 else
                   match (List.hd_exn i, cn) with
                   | Cil.Call (_, _, _, loc), Maps.CfgNode.CCall (_, _, cloc) ->
-                      SymDiff.SDiff.eq_line loc cloc
+                      SymDiff.eq_line loc cloc
                   | Cil.Set (_, _, loc), Maps.CfgNode.CSet (_, _, cloc)
                   | Cil.Set (_, _, loc), Maps.CfgNode.CAlloc (_, _, cloc)
                   | Cil.Set (_, _, loc), Maps.CfgNode.CSalloc (_, _, cloc)
                   | Cil.Set (_, _, loc), Maps.CfgNode.CFalloc (_, _, cloc) ->
-                      SymDiff.SDiff.eq_line loc cloc
+                      SymDiff.eq_line loc cloc
                   | _ -> false)
             | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc ->
-                SymDiff.SDiff.eq_line loc cloc
+                SymDiff.eq_line loc cloc
             | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc)
             | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
-                SymDiff.SDiff.eq_line loc cloc
+                SymDiff.eq_line loc cloc
             | _ -> false
           in
           if bool then id :: acc else acc)

@@ -255,9 +255,9 @@ class stmtDeleteVisitor stmt =
 
 let apply_action diff donee action =
   match (action, diff) with
-  | EF.InsertStmt (ctx, stmt), SymDiff.SDiff.SInsertStmt (context, _) -> (
+  | EF.InsertStmt (ctx, stmt), SymDiff.SInsertStmt (context, _) -> (
       let parent = ctx.EF.parent_node in
-      let target_func = context.SymDiff.SDiff.func_name in
+      let target_func = context.SymDiff.func_name in
       match parent with
       | Fun g -> failwith "InsertStmt: not implemented"
       | Stmt s ->

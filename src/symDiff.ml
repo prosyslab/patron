@@ -258,641 +258,633 @@ module SElement = struct
   let compare = compare
 end
 
-module SDiff = struct
-  include SElement
+include SElement
 
-  type sym_context = {
-    parent : sym_node list;
-    patch_node : sym_node;
-    patch_between : string list * string list;
-    func_name : string;
-  }
+type sym_context = {
+  parent : sym_node list;
+  patch_node : sym_node;
+  patch_between : string list * string list;
+  func_name : string;
+}
 
-  type t =
-    | SInsertStmt of sym_context * sym_node
-    | SDeleteStmt of sym_context * sym_node
-    | SInsertExp of sym_context * sym_node
-    | SDeleteExp of sym_context * sym_node
-    | SUpdateExp of sym_context * sym_node * sym_node
-    | SInsertLval of sym_context * sym_node
-    | SDeleteLval of sym_context * sym_node
-    | SUpdateLval of sym_context * sym_node * sym_node
+type t =
+  | SInsertStmt of sym_context * sym_node
+  | SDeleteStmt of sym_context * sym_node
+  | SInsertExp of sym_context * sym_node
+  | SDeleteExp of sym_context * sym_node
+  | SUpdateExp of sym_context * sym_node * sym_node
+  | SInsertLval of sym_context * sym_node
+  | SDeleteLval of sym_context * sym_node
+  | SUpdateLval of sym_context * sym_node * sym_node
 
-  let extract_func_name sdiff =
-    match sdiff with
-    | SInsertStmt (ctx, _) | SDeleteStmt (ctx, _) -> ctx.func_name
-    | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) ->
-        ctx.func_name
-    | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) ->
-        ctx.func_name
+let extract_func_name sdiff =
+  match sdiff with
+  | SInsertStmt (ctx, _) | SDeleteStmt (ctx, _) -> ctx.func_name
+  | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) ->
+      ctx.func_name
+  | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) ->
+      ctx.func_name
 
-  let extract_context sdiff =
-    match sdiff with
-    | SInsertStmt (ctx, _) | SDeleteStmt (ctx, _) -> ctx
-    | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) -> ctx
-    | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) ->
-        ctx
+let extract_context sdiff =
+  match sdiff with
+  | SInsertStmt (ctx, _) | SDeleteStmt (ctx, _) -> ctx
+  | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) -> ctx
+  | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) -> ctx
 
-  let rec mk_sdiff ctx cfg exp_map diff =
-    match diff with
-    | D.Diff.InsertStmt (_, s) ->
-        SInsertStmt
-          ( ctx,
-            {
-              node = SStmt (match_stmt cfg exp_map s, s);
-              id = match_stmt_id cfg s.Cil.skind;
-              literal = H.string_of_stmt s;
-            } )
-    | D.Diff.DeleteStmt (_, s) ->
-        SDeleteStmt
-          ( ctx,
-            {
-              node = SStmt (match_stmt cfg exp_map s, s);
-              id = match_stmt_id cfg s.Cil.skind;
-              literal = H.string_of_stmt s;
-            } )
-    | _ -> failwith "mk_sdiff: not implemented"
+let rec mk_sdiff ctx cfg exp_map diff =
+  match diff with
+  | D.InsertStmt (_, s) ->
+      SInsertStmt
+        ( ctx,
+          {
+            node = SStmt (match_stmt cfg exp_map s, s);
+            id = match_stmt_id cfg s.Cil.skind;
+            literal = H.string_of_stmt s;
+          } )
+  | D.DeleteStmt (_, s) ->
+      SDeleteStmt
+        ( ctx,
+          {
+            node = SStmt (match_stmt cfg exp_map s, s);
+            id = match_stmt_id cfg s.Cil.skind;
+            literal = H.string_of_stmt s;
+          } )
+  | _ -> failwith "mk_sdiff: not implemented"
 
-  and match_stmt cfg exp_map s =
-    match s.Cil.skind with
-    | Cil.If (e, s1, s2, _) ->
-        SElement.SIf
-          ( {
-              node = SExp (match_exp cfg exp_map e, e);
-              id = match_exp_id exp_map e;
-              literal = H.string_of_exp e;
-            },
-            List.map
-              (fun s ->
+and match_stmt cfg exp_map s =
+  match s.Cil.skind with
+  | Cil.If (e, s1, s2, _) ->
+      SElement.SIf
+        ( {
+            node = SExp (match_exp cfg exp_map e, e);
+            id = match_exp_id exp_map e;
+            literal = H.string_of_exp e;
+          },
+          List.map
+            (fun s ->
+              {
+                SElement.node = SStmt (match_stmt cfg exp_map s, s);
+                id = match_stmt_id cfg s.Cil.skind;
+                literal = H.string_of_stmt s;
+              })
+            s1.Cil.bstmts,
+          List.map
+            (fun s ->
+              {
+                SElement.node = SStmt (match_stmt cfg exp_map s, s);
+                id = match_stmt_id cfg s.Cil.skind;
+                literal = H.string_of_stmt s;
+              })
+            s2.Cil.bstmts )
+  | Cil.Instr i -> (
+      let i = List.hd i in
+      match i with
+      | Cil.Set (l, e, _) ->
+          SElement.SSet
+            ( {
+                node = SLval (match_lval cfg exp_map l, l);
+                id = match_lval_id exp_map l;
+                literal = H.string_of_lval l;
+              },
+              {
+                node = SExp (match_exp cfg exp_map e, e);
+                id = match_exp_id exp_map e;
+                literal = H.string_of_exp e;
+              } )
+      | Cil.Call (Some l, e, es, _) ->
+          SElement.SCall
+            ( Some
                 {
-                  SElement.node = SStmt (match_stmt cfg exp_map s, s);
-                  id = match_stmt_id cfg s.Cil.skind;
-                  literal = H.string_of_stmt s;
-                })
-              s1.Cil.bstmts,
-            List.map
-              (fun s ->
-                {
-                  SElement.node = SStmt (match_stmt cfg exp_map s, s);
-                  id = match_stmt_id cfg s.Cil.skind;
-                  literal = H.string_of_stmt s;
-                })
-              s2.Cil.bstmts )
-    | Cil.Instr i -> (
-        let i = List.hd i in
-        match i with
-        | Cil.Set (l, e, _) ->
-            SElement.SSet
-              ( {
                   node = SLval (match_lval cfg exp_map l, l);
                   id = match_lval_id exp_map l;
                   literal = H.string_of_lval l;
                 },
-                {
-                  node = SExp (match_exp cfg exp_map e, e);
-                  id = match_exp_id exp_map e;
-                  literal = H.string_of_exp e;
-                } )
-        | Cil.Call (Some l, e, es, _) ->
-            SElement.SCall
-              ( Some
-                  {
-                    node = SLval (match_lval cfg exp_map l, l);
-                    id = match_lval_id exp_map l;
-                    literal = H.string_of_lval l;
-                  },
-                {
-                  node = SExp (match_exp cfg exp_map e, e);
-                  id = match_exp_id exp_map e;
-                  literal = H.string_of_exp e;
-                },
-                List.map
-                  (fun e ->
-                    {
-                      SElement.node = SExp (match_exp cfg exp_map e, e);
-                      id = match_exp_id exp_map e;
-                      literal = H.string_of_exp e;
-                    })
-                  es )
-        | Cil.Call (None, e, es, _) ->
-            SElement.SCall
-              ( None,
-                {
-                  node = SExp (match_exp cfg exp_map e, e);
-                  id = match_exp_id exp_map e;
-                  literal = H.string_of_exp e;
-                },
-                List.map
-                  (fun e ->
-                    {
-                      SElement.node = SExp (match_exp cfg exp_map e, e);
-                      id = match_exp_id exp_map e;
-                      literal = H.string_of_exp e;
-                    })
-                  es )
-        | _ -> failwith "match_stmt: not supported")
-    | Cil.Block b ->
-        let bl =
-          List.fold_left
-            (fun (acc : SElement.sym_node list) s ->
               {
-                node = SStmt (match_stmt cfg exp_map s, s);
-                id = match_stmt_id cfg s.Cil.skind;
-                literal = H.string_of_stmt s;
-              }
-              :: acc)
-            [] b.bstmts
-          |> List.rev
-        in
-        SElement.SBlock bl
-    | Cil.Return (Some e, _) ->
-        SElement.SReturn
-          (Some
-             {
-               node = SExp (match_exp cfg exp_map e, e);
-               id = match_exp_id exp_map e;
-               literal = H.string_of_exp e;
-             })
-    | Cil.Return (None, _) -> SElement.SReturn None
-    | Cil.Goto (s, _) ->
-        SElement.SGoto
-          {
-            node = SStmt (match_stmt cfg exp_map !s, !s);
-            id = match_stmt_id cfg !s.Cil.skind;
-            literal = H.string_of_stmt !s;
-          }
-    | _ -> failwith "match_stmt: not implemented"
-
-  and match_exp cfg exp_map e =
-    match e with
-    | Cil.Const c -> SElement.SConst (to_sconst c)
-    | Cil.Lval l ->
-        SELval
-          {
-            node = SLval (match_lval cfg exp_map l, l);
-            id = match_lval_id exp_map l;
-            literal = H.string_of_lval l;
-          }
-    | Cil.SizeOf t -> SSizeOf (to_styp t)
-    | Cil.SizeOfE e' ->
-        SSizeOfE
-          {
-            node = SExp (match_exp cfg exp_map e', e');
-            id = match_exp_id exp_map e';
-            literal = H.string_of_exp e';
-          }
-    | Cil.SizeOfStr s -> SSizeOfStr s
-    | Cil.BinOp (op, e1, e2, t) ->
-        SBinOp
-          ( to_sbinop op,
+                node = SExp (match_exp cfg exp_map e, e);
+                id = match_exp_id exp_map e;
+                literal = H.string_of_exp e;
+              },
+              List.map
+                (fun e ->
+                  {
+                    SElement.node = SExp (match_exp cfg exp_map e, e);
+                    id = match_exp_id exp_map e;
+                    literal = H.string_of_exp e;
+                  })
+                es )
+      | Cil.Call (None, e, es, _) ->
+          SElement.SCall
+            ( None,
+              {
+                node = SExp (match_exp cfg exp_map e, e);
+                id = match_exp_id exp_map e;
+                literal = H.string_of_exp e;
+              },
+              List.map
+                (fun e ->
+                  {
+                    SElement.node = SExp (match_exp cfg exp_map e, e);
+                    id = match_exp_id exp_map e;
+                    literal = H.string_of_exp e;
+                  })
+                es )
+      | _ -> failwith "match_stmt: not supported")
+  | Cil.Block b ->
+      let bl =
+        List.fold_left
+          (fun (acc : SElement.sym_node list) s ->
             {
-              node = SExp (match_exp cfg exp_map e1, e1);
-              id = match_exp_id exp_map e1;
-              literal = H.string_of_exp e1;
-            },
-            {
-              node = SExp (match_exp cfg exp_map e2, e2);
-              id = match_exp_id exp_map e2;
-              literal = H.string_of_exp e2;
-            },
-            to_styp t )
-    | Cil.UnOp (op, e, t) ->
-        SUnOp
-          ( to_sunop op,
-            {
-              node = SExp (match_exp cfg exp_map e, e);
-              id = match_exp_id exp_map e;
-              literal = H.string_of_exp e;
-            },
-            to_styp t )
-    | Cil.CastE (t, e) ->
-        SCastE
-          ( to_styp t,
-            {
-              node = SExp (match_exp cfg exp_map e, e);
-              id = match_exp_id exp_map e;
-              literal = H.string_of_exp e;
-            } )
-    | Cil.Question (e1, e2, e3, t) ->
-        SQuestion
-          ( {
-              node = SExp (match_exp cfg exp_map e1, e1);
-              id = match_exp_id exp_map e1;
-              literal = H.string_of_exp e1;
-            },
-            {
-              node = SExp (match_exp cfg exp_map e2, e2);
-              id = match_exp_id exp_map e2;
-              literal = H.string_of_exp e2;
-            },
-            {
-              node = SExp (match_exp cfg exp_map e3, e3);
-              id = match_exp_id exp_map e3;
-              literal = H.string_of_exp e3;
-            },
-            to_styp t )
-    | Cil.AddrOf l ->
-        SAddrOf
-          {
-            node = SLval (match_lval cfg exp_map l, l);
-            id = match_lval_id exp_map l;
-            literal = H.string_of_lval l;
-          }
-    | Cil.StartOf l ->
-        SStartOf
-          {
-            node = SLval (match_lval cfg exp_map l, l);
-            id = match_lval_id exp_map l;
-            literal = H.string_of_lval l;
-          }
-    | Cil.AddrOfLabel stmt ->
-        SAddrOfLabel
-          {
-            node = SStmt (match_stmt cfg exp_map !stmt, !stmt);
-            id = match_stmt_id cfg !stmt.Cil.skind;
-            literal = H.string_of_stmt !stmt;
-          }
-    | _ -> failwith "match_exp: not implemented"
-
-  and match_lval cfg exp_map l =
-    let lhost, offset = l in
-    let slhost =
-      match lhost with
-      | Cil.Var v -> SElement.SVar { vname = v.vname; vtype = to_styp v.vtype }
-      | Cil.Mem e ->
-          SElement.SMem
-            {
-              node = SExp (match_exp cfg exp_map e, e);
-              id = match_exp_id exp_map e;
-              literal = H.string_of_exp e;
-            }
-    in
-    let soffset = match_offset cfg exp_map offset in
-    Lval (slhost, soffset)
-
-  and match_offset cfg exp_map o =
-    match o with
-    | Cil.NoOffset -> SElement.SNoOffset
-    | Cil.Field (f, o) ->
-        SElement.SField
-          ( {
-              fcomp = { cname = f.fcomp.cname; cstruct = true };
-              fname = f.fname;
-              ftype = to_styp f.ftype;
-            },
-            match_offset cfg exp_map o )
-    | Cil.Index (e, o) ->
-        SElement.SIndex
-          ( {
-              node = SExp (match_exp cfg exp_map e, e);
-              id = match_exp_id exp_map e;
-              literal = H.string_of_exp e;
-            },
-            match_offset cfg exp_map o )
-
-  and match_fieldinfo f =
-    {
-      SElement.fcomp = match_compinfo f.Cil.fcomp;
-      SElement.fname = f.Cil.fname;
-      SElement.ftype = to_styp f.Cil.ftype;
-    }
-
-  and match_compinfo c =
-    {
-      SElement.cname = c.Cil.cname;
-      (* SElement.cfields = List.map match_fieldinfo c.Cil.cfields; *)
-      SElement.cstruct = c.Cil.cstruct;
-    }
-
-  and extract_fun_name g =
-    match g with
-    | Cil.GFun (f, _) -> f.Cil.svar.Cil.vname
-    | _ -> failwith "extract_fun_name: not a function"
-
-  and match_context cfg exp_map lst =
-    match lst with
-    | [] -> []
-    | hd :: tl -> (
-        match hd with
-        | D.CilElement.EStmt s ->
-            {
+              node = SStmt (match_stmt cfg exp_map s, s);
               id = match_stmt_id cfg s.Cil.skind;
-              node = SStmt (SSNull, s);
               literal = H.string_of_stmt s;
             }
-            :: match_context cfg exp_map tl
-        | D.CilElement.EExp e ->
-            {
-              id = match_exp_id exp_map e;
-              node = SExp (SENULL, e);
-              literal = H.string_of_exp e;
-            }
-            :: match_context cfg exp_map tl
-        | D.CilElement.ELval l ->
-            {
-              id = match_lval_id exp_map l;
-              node = SLval (SLNull, l);
-              literal = H.string_of_lval l;
-            }
-            :: match_context cfg exp_map tl
-        | D.CilElement.EGlobal g ->
-            {
-              id = extract_fun_name g;
-              node = SGlob (SGNull, g);
-              literal = H.string_of_global g;
-            }
-            :: match_context cfg exp_map tl
-        | _ -> failwith "match_context: not implemented")
-
-  and match_exp_id exp_map e =
-    let candidate =
-      match e with
-      | Cil.Const c -> match_const c exp_map
-      | Cil.Lval l ->
-          Hashtbl.fold
-            (fun k v acc ->
-              if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
-            exp_map []
-      | Cil.SizeOf t -> match_sizeof t exp_map
-      | Cil.BinOp _ ->
-          Hashtbl.fold
-            (fun k v acc ->
-              if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
-            exp_map []
-      | Cil.UnOp _ ->
-          Hashtbl.fold
-            (fun k v acc ->
-              if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
-            exp_map []
-      | Cil.CastE _ ->
-          Hashtbl.fold
-            (fun k v acc ->
-              if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
-            exp_map []
-      | Cil.Question _ ->
-          Hashtbl.fold
-            (fun k v acc ->
-              if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
-            exp_map []
-      | _ ->
-          H.print_ekind e;
-          failwith "match_exp: not implemented"
-    in
-    let id, _ =
-      let outmap =
-        List.fold_left
-          (fun acc (k, v) ->
-            if acc = [] then (k, v) :: acc
-            else if
-              let _, prev = List.hd acc in
-              String.length prev >= String.length v
-            then (k, v) :: List.tl acc
-            else acc)
-          candidate []
+            :: acc)
+          [] b.bstmts
         |> List.rev
       in
-      if outmap = [] then ("None", "") else List.hd outmap
-    in
-    id
+      SElement.SBlock bl
+  | Cil.Return (Some e, _) ->
+      SElement.SReturn
+        (Some
+           {
+             node = SExp (match_exp cfg exp_map e, e);
+             id = match_exp_id exp_map e;
+             literal = H.string_of_exp e;
+           })
+  | Cil.Return (None, _) -> SElement.SReturn None
+  | Cil.Goto (s, _) ->
+      SElement.SGoto
+        {
+          node = SStmt (match_stmt cfg exp_map !s, !s);
+          id = match_stmt_id cfg !s.Cil.skind;
+          literal = H.string_of_stmt !s;
+        }
+  | _ -> failwith "match_stmt: not implemented"
 
-  and match_sizeof t exp_map =
+and match_exp cfg exp_map e =
+  match e with
+  | Cil.Const c -> SElement.SConst (to_sconst c)
+  | Cil.Lval l ->
+      SELval
+        {
+          node = SLval (match_lval cfg exp_map l, l);
+          id = match_lval_id exp_map l;
+          literal = H.string_of_lval l;
+        }
+  | Cil.SizeOf t -> SSizeOf (to_styp t)
+  | Cil.SizeOfE e' ->
+      SSizeOfE
+        {
+          node = SExp (match_exp cfg exp_map e', e');
+          id = match_exp_id exp_map e';
+          literal = H.string_of_exp e';
+        }
+  | Cil.SizeOfStr s -> SSizeOfStr s
+  | Cil.BinOp (op, e1, e2, t) ->
+      SBinOp
+        ( to_sbinop op,
+          {
+            node = SExp (match_exp cfg exp_map e1, e1);
+            id = match_exp_id exp_map e1;
+            literal = H.string_of_exp e1;
+          },
+          {
+            node = SExp (match_exp cfg exp_map e2, e2);
+            id = match_exp_id exp_map e2;
+            literal = H.string_of_exp e2;
+          },
+          to_styp t )
+  | Cil.UnOp (op, e, t) ->
+      SUnOp
+        ( to_sunop op,
+          {
+            node = SExp (match_exp cfg exp_map e, e);
+            id = match_exp_id exp_map e;
+            literal = H.string_of_exp e;
+          },
+          to_styp t )
+  | Cil.CastE (t, e) ->
+      SCastE
+        ( to_styp t,
+          {
+            node = SExp (match_exp cfg exp_map e, e);
+            id = match_exp_id exp_map e;
+            literal = H.string_of_exp e;
+          } )
+  | Cil.Question (e1, e2, e3, t) ->
+      SQuestion
+        ( {
+            node = SExp (match_exp cfg exp_map e1, e1);
+            id = match_exp_id exp_map e1;
+            literal = H.string_of_exp e1;
+          },
+          {
+            node = SExp (match_exp cfg exp_map e2, e2);
+            id = match_exp_id exp_map e2;
+            literal = H.string_of_exp e2;
+          },
+          {
+            node = SExp (match_exp cfg exp_map e3, e3);
+            id = match_exp_id exp_map e3;
+            literal = H.string_of_exp e3;
+          },
+          to_styp t )
+  | Cil.AddrOf l ->
+      SAddrOf
+        {
+          node = SLval (match_lval cfg exp_map l, l);
+          id = match_lval_id exp_map l;
+          literal = H.string_of_lval l;
+        }
+  | Cil.StartOf l ->
+      SStartOf
+        {
+          node = SLval (match_lval cfg exp_map l, l);
+          id = match_lval_id exp_map l;
+          literal = H.string_of_lval l;
+        }
+  | Cil.AddrOfLabel stmt ->
+      SAddrOfLabel
+        {
+          node = SStmt (match_stmt cfg exp_map !stmt, !stmt);
+          id = match_stmt_id cfg !stmt.Cil.skind;
+          literal = H.string_of_stmt !stmt;
+        }
+  | _ -> failwith "match_exp: not implemented"
+
+and match_lval cfg exp_map l =
+  let lhost, offset = l in
+  let slhost =
+    match lhost with
+    | Cil.Var v -> SElement.SVar { vname = v.vname; vtype = to_styp v.vtype }
+    | Cil.Mem e ->
+        SElement.SMem
+          {
+            node = SExp (match_exp cfg exp_map e, e);
+            id = match_exp_id exp_map e;
+            literal = H.string_of_exp e;
+          }
+  in
+  let soffset = match_offset cfg exp_map offset in
+  Lval (slhost, soffset)
+
+and match_offset cfg exp_map o =
+  match o with
+  | Cil.NoOffset -> SElement.SNoOffset
+  | Cil.Field (f, o) ->
+      SElement.SField
+        ( {
+            fcomp = { cname = f.fcomp.cname; cstruct = true };
+            fname = f.fname;
+            ftype = to_styp f.ftype;
+          },
+          match_offset cfg exp_map o )
+  | Cil.Index (e, o) ->
+      SElement.SIndex
+        ( {
+            node = SExp (match_exp cfg exp_map e, e);
+            id = match_exp_id exp_map e;
+            literal = H.string_of_exp e;
+          },
+          match_offset cfg exp_map o )
+
+and match_fieldinfo f =
+  {
+    SElement.fcomp = match_compinfo f.Cil.fcomp;
+    SElement.fname = f.Cil.fname;
+    SElement.ftype = to_styp f.Cil.ftype;
+  }
+
+and match_compinfo c =
+  {
+    SElement.cname = c.Cil.cname;
+    (* SElement.cfields = List.map match_fieldinfo c.Cil.cfields; *)
+    SElement.cstruct = c.Cil.cstruct;
+  }
+
+and extract_fun_name g =
+  match g with
+  | Cil.GFun (f, _) -> f.Cil.svar.Cil.vname
+  | _ -> failwith "extract_fun_name: not a function"
+
+and match_context cfg exp_map lst =
+  match lst with
+  | [] -> []
+  | hd :: tl -> (
+      match hd with
+      | D.CilElement.EStmt s ->
+          {
+            id = match_stmt_id cfg s.Cil.skind;
+            node = SStmt (SSNull, s);
+            literal = H.string_of_stmt s;
+          }
+          :: match_context cfg exp_map tl
+      | D.CilElement.EExp e ->
+          {
+            id = match_exp_id exp_map e;
+            node = SExp (SENULL, e);
+            literal = H.string_of_exp e;
+          }
+          :: match_context cfg exp_map tl
+      | D.CilElement.ELval l ->
+          {
+            id = match_lval_id exp_map l;
+            node = SLval (SLNull, l);
+            literal = H.string_of_lval l;
+          }
+          :: match_context cfg exp_map tl
+      | D.CilElement.EGlobal g ->
+          {
+            id = extract_fun_name g;
+            node = SGlob (SGNull, g);
+            literal = H.string_of_global g;
+          }
+          :: match_context cfg exp_map tl
+      | _ -> failwith "match_context: not implemented")
+
+and match_exp_id exp_map e =
+  let candidate =
+    match e with
+    | Cil.Const c -> match_const c exp_map
+    | Cil.Lval l ->
+        Hashtbl.fold
+          (fun k v acc ->
+            if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
+          exp_map []
+    | Cil.SizeOf t -> match_sizeof t exp_map
+    | Cil.BinOp _ ->
+        Hashtbl.fold
+          (fun k v acc ->
+            if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
+          exp_map []
+    | Cil.UnOp _ ->
+        Hashtbl.fold
+          (fun k v acc ->
+            if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
+          exp_map []
+    | Cil.CastE _ ->
+        Hashtbl.fold
+          (fun k v acc ->
+            if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
+          exp_map []
+    | Cil.Question _ ->
+        Hashtbl.fold
+          (fun k v acc ->
+            if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
+          exp_map []
+    | _ ->
+        H.print_ekind e;
+        failwith "match_exp: not implemented"
+  in
+  let id, _ =
+    let outmap =
+      List.fold_left
+        (fun acc (k, v) ->
+          if acc = [] then (k, v) :: acc
+          else if
+            let _, prev = List.hd acc in
+            String.length prev >= String.length v
+          then (k, v) :: List.tl acc
+          else acc)
+        candidate []
+      |> List.rev
+    in
+    if outmap = [] then ("None", "") else List.hd outmap
+  in
+  id
+
+and match_sizeof t exp_map =
+  Hashtbl.fold
+    (fun k v acc ->
+      if H.string_of_typ t |> H.subset v then (k, v) :: acc else acc)
+    exp_map []
+
+and match_lval_id exp_map l =
+  let candidate =
     Hashtbl.fold
       (fun k v acc ->
-        if H.string_of_typ t |> H.subset v then (k, v) :: acc else acc)
+        if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
       exp_map []
+  in
+  let id, _ =
+    let outmap =
+      List.fold_left
+        (fun acc (k, v) ->
+          if acc = [] then (k, v) :: acc
+          else if
+            let _, prev = List.hd acc in
+            String.length prev >= String.length v
+          then (k, v) :: List.tl acc
+          else acc)
+        candidate []
+      |> List.rev
+    in
+    if outmap = [] then ("None", "") else List.hd outmap
+  in
+  id
 
-  and match_lval_id exp_map l =
-    let candidate =
+and eq_line loc cloc =
+  let file_name = loc.Cil.file |> Filename.basename in
+  if loc.Cil.line = cloc.Maps.CfgNode.line && file_name = cloc.file then true
+  else false
+
+and match_set_id cfg loc =
+  Hashtbl.fold
+    (fun k v acc ->
+      match k with
+      | Maps.CfgNode.CSet (_, _, cloc)
+      | Maps.CfgNode.CAlloc (_, _, cloc)
+      | Maps.CfgNode.CFalloc (_, _, cloc)
+      | Maps.CfgNode.CSalloc (_, _, cloc) ->
+          if eq_line loc cloc then v :: acc else acc
+      | _ -> acc)
+    cfg []
+
+and match_call_id cfg loc =
+  Hashtbl.fold
+    (fun k v acc ->
+      match k with
+      | Maps.CfgNode.CCall (_, _, cloc) ->
+          if eq_line loc cloc then v :: acc else acc
+      | _ -> acc)
+    cfg []
+
+and match_return_id cfg loc =
+  Hashtbl.fold
+    (fun k v acc ->
+      match k with
+      | Maps.CfgNode.CReturn1 (_, cloc) ->
+          if eq_line loc cloc then v :: acc else acc
+      | Maps.CfgNode.CReturn2 cloc -> if eq_line loc cloc then v :: acc else acc
+      | _ -> acc)
+    cfg []
+
+and match_assume_id cfg loc cond =
+  Hashtbl.fold
+    (fun k v acc ->
+      match k with
+      | Maps.CfgNode.CAssume (ccond, cloc) ->
+          if eq_line loc cloc && H.string_of_exp cond |> H.subset ccond then
+            v :: acc
+          else acc
+      | _ -> acc)
+    cfg []
+
+and match_loop_id cfg loc =
+  Hashtbl.fold
+    (fun k v acc ->
+      match k with
+      | Maps.CfgNode.CSkip cloc -> if eq_line loc cloc then v :: acc else acc
+      | _ -> acc)
+    cfg []
+
+and match_stmt_id cfg s =
+  (*TODO: tighten the string match of stmt by subset*)
+  match s with
+  | Cil.Instr i -> (
+      let instr = List.hd i in
+      match instr with
+      | Cil.Set (_, _, loc) ->
+          let matched = match_set_id cfg loc in
+          if List.length matched >= 1 then List.hd matched else "None"
+      | Cil.Call (_, _, _, loc) ->
+          let matched = match_call_id cfg loc in
+          if List.length matched >= 1 then List.hd matched else "None"
+      | _ -> failwith "unexpected")
+  | Cil.Return (_, loc) ->
+      let matched = match_return_id cfg loc in
+      if List.length matched >= 1 then List.hd matched else "None"
+  | Cil.If (cond, _, _, loc) ->
+      let matched = match_assume_id cfg loc cond in
+      if List.length matched >= 1 then List.hd matched else "None"
+  | Cil.Loop (_, loc, _, _) ->
+      let matched = match_loop_id cfg loc in
+      if List.length matched >= 1 then List.hd matched else "None"
+  | _ -> "None"
+
+and match_const c exp_map =
+  match c with
+  | Cil.CInt64 (i, _, _) ->
       Hashtbl.fold
         (fun k v acc ->
-          if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
+          if Int64.to_string i |> H.subset v then (k, v) :: acc else acc)
         exp_map []
-    in
-    let id, _ =
-      let outmap =
-        List.fold_left
-          (fun acc (k, v) ->
-            if acc = [] then (k, v) :: acc
-            else if
-              let _, prev = List.hd acc in
-              String.length prev >= String.length v
-            then (k, v) :: List.tl acc
-            else acc)
-          candidate []
-        |> List.rev
+  | Cil.CStr s ->
+      Hashtbl.fold
+        (fun k v acc -> if s |> H.subset v then (k, v) :: acc else acc)
+        exp_map []
+  | Cil.CChr c ->
+      Hashtbl.fold
+        (fun k v acc ->
+          if Char.escaped c |> H.subset v then (k, v) :: acc else acc)
+        exp_map []
+  | Cil.CReal (f, _, _) ->
+      Hashtbl.fold
+        (fun k v acc ->
+          if string_of_float f |> H.subset v then (k, v) :: acc else acc)
+        exp_map []
+  | _ -> failwith "match_const: not implemented"
+
+and to_styp t =
+  match t with
+  | Cil.TVoid _ -> SVoid
+  | Cil.TInt _ -> SInt
+  | Cil.TFloat _ -> SFloat
+  | Cil.TPtr (t', _) -> SPtr (to_styp t')
+  | Cil.TArray (t', _, _) -> SArray (to_styp t')
+  | Cil.TNamed (t', _) ->
+      SNamed { sym_tname = t'.Cil.tname; sym_ttype = to_styp t'.ttype }
+  | Cil.TFun (t, lst, b, _) ->
+      let slist =
+        match lst with
+        | Some lst -> Some (List.map (fun (s, ty, _) -> (s, to_styp ty)) lst)
+        | None -> None
       in
-      if outmap = [] then ("None", "") else List.hd outmap
-    in
-    id
+      SFun (to_styp t, slist, b)
+  | Cil.TComp (c, _) -> SComp (to_scompinfo c)
+  | Cil.TEnum _ -> failwith "TEnum: not implemented"
+  | Cil.TBuiltin_va_list _ -> failwith "not supported"
 
-  and eq_line loc cloc =
-    let file_name = loc.Cil.file |> Filename.basename in
-    if loc.Cil.line = cloc.Maps.CfgNode.line && file_name = cloc.file then true
-    else false
+and to_scompinfo c =
+  {
+    cname = c.Cil.cname;
+    (* cfields =
+       List.fold_left (fun acc f -> to_sfieldinfo f :: acc) [] c.cfields; *)
+    cstruct = c.cstruct;
+  }
 
-  and match_set_id cfg loc =
-    Hashtbl.fold
-      (fun k v acc ->
-        match k with
-        | Maps.CfgNode.CSet (_, _, cloc)
-        | Maps.CfgNode.CAlloc (_, _, cloc)
-        | Maps.CfgNode.CFalloc (_, _, cloc)
-        | Maps.CfgNode.CSalloc (_, _, cloc) ->
-            if eq_line loc cloc then v :: acc else acc
-        | _ -> acc)
-      cfg []
+and to_sfieldinfo f =
+  { fcomp = to_scompinfo f.Cil.fcomp; fname = f.fname; ftype = to_styp f.ftype }
 
-  and match_call_id cfg loc =
-    Hashtbl.fold
-      (fun k v acc ->
-        match k with
-        | Maps.CfgNode.CCall (_, _, cloc) ->
-            if eq_line loc cloc then v :: acc else acc
-        | _ -> acc)
-      cfg []
+and to_sbinop op =
+  match op with
+  | Cil.PlusA -> SPlusA
+  | Cil.PlusPI -> SPlusPI
+  | Cil.IndexPI -> SIndexPI
+  | Cil.MinusA -> SMinusA
+  | Cil.MinusPI -> SMinusPI
+  | Cil.MinusPP -> SMinusPP
+  | Cil.Mod -> SMod
+  | Cil.Shiftlt -> SShiftlt
+  | Cil.Shiftrt -> SShiftrt
+  | Cil.BAnd -> SAnd
+  | Cil.BXor -> SXor
+  | Cil.BOr -> SOr
+  | Cil.Mult -> SMult
+  | Cil.Div -> SDiv
+  | Cil.Eq -> SEq
+  | Cil.Ne -> SNe
+  | Cil.Lt -> SLt
+  | Cil.Le -> SLe
+  | Cil.Gt -> SGt
+  | Cil.Ge -> SGe
+  | Cil.LAnd -> SLAnd
+  | Cil.LOr -> SLOr
 
-  and match_return_id cfg loc =
-    Hashtbl.fold
-      (fun k v acc ->
-        match k with
-        | Maps.CfgNode.CReturn1 (_, cloc) ->
-            if eq_line loc cloc then v :: acc else acc
-        | Maps.CfgNode.CReturn2 cloc ->
-            if eq_line loc cloc then v :: acc else acc
-        | _ -> acc)
-      cfg []
+and to_binop sop =
+  match sop with
+  | SPlusA -> Cil.PlusA
+  | SPlusPI -> Cil.PlusPI
+  | SIndexPI -> Cil.IndexPI
+  | SMinusA -> Cil.MinusA
+  | SMinusPI -> Cil.MinusPI
+  | SMinusPP -> Cil.MinusPP
+  | SMod -> Cil.Mod
+  | SShiftlt -> Cil.Shiftlt
+  | SShiftrt -> Cil.Shiftrt
+  | SAnd -> Cil.BAnd
+  | SXor -> Cil.BXor
+  | SOr -> Cil.BOr
+  | SMult -> Cil.Mult
+  | SDiv -> Cil.Div
+  | SEq -> Cil.Eq
+  | SNe -> Cil.Ne
+  | SLt -> Cil.Lt
+  | SLe -> Cil.Le
+  | SGt -> Cil.Gt
+  | SGe -> Cil.Ge
+  | SLAnd -> Cil.LAnd
+  | SLOr -> Cil.LOr
 
-  and match_assume_id cfg loc cond =
-    Hashtbl.fold
-      (fun k v acc ->
-        match k with
-        | Maps.CfgNode.CAssume (ccond, cloc) ->
-            if eq_line loc cloc && H.string_of_exp cond |> H.subset ccond then
-              v :: acc
-            else acc
-        | _ -> acc)
-      cfg []
+and to_unop sop = match sop with SNot -> Cil.LNot | SNeg -> Cil.Neg
 
-  and match_loop_id cfg loc =
-    Hashtbl.fold
-      (fun k v acc ->
-        match k with
-        | Maps.CfgNode.CSkip cloc -> if eq_line loc cloc then v :: acc else acc
-        | _ -> acc)
-      cfg []
+and to_sunop op =
+  match op with
+  | Cil.LNot -> SNot
+  | Cil.Neg -> SNeg
+  | _ -> failwith "not supported"
 
-  and match_stmt_id cfg s =
-    (*TODO: tighten the string match of stmt by subset*)
-    match s with
-    | Cil.Instr i -> (
-        let instr = List.hd i in
-        match instr with
-        | Cil.Set (_, _, loc) ->
-            let matched = match_set_id cfg loc in
-            if List.length matched >= 1 then List.hd matched else "None"
-        | Cil.Call (_, _, _, loc) ->
-            let matched = match_call_id cfg loc in
-            if List.length matched >= 1 then List.hd matched else "None"
-        | _ -> failwith "unexpected")
-    | Cil.Return (_, loc) ->
-        let matched = match_return_id cfg loc in
-        if List.length matched >= 1 then List.hd matched else "None"
-    | Cil.If (cond, _, _, loc) ->
-        let matched = match_assume_id cfg loc cond in
-        if List.length matched >= 1 then List.hd matched else "None"
-    | Cil.Loop (_, loc, _, _) ->
-        let matched = match_loop_id cfg loc in
-        if List.length matched >= 1 then List.hd matched else "None"
-    | _ -> "None"
-
-  and match_const c exp_map =
-    match c with
-    | Cil.CInt64 (i, _, _) ->
-        Hashtbl.fold
-          (fun k v acc ->
-            if Int64.to_string i |> H.subset v then (k, v) :: acc else acc)
-          exp_map []
-    | Cil.CStr s ->
-        Hashtbl.fold
-          (fun k v acc -> if s |> H.subset v then (k, v) :: acc else acc)
-          exp_map []
-    | Cil.CChr c ->
-        Hashtbl.fold
-          (fun k v acc ->
-            if Char.escaped c |> H.subset v then (k, v) :: acc else acc)
-          exp_map []
-    | Cil.CReal (f, _, _) ->
-        Hashtbl.fold
-          (fun k v acc ->
-            if string_of_float f |> H.subset v then (k, v) :: acc else acc)
-          exp_map []
-    | _ -> failwith "match_const: not implemented"
-
-  and to_styp t =
-    match t with
-    | Cil.TVoid _ -> SVoid
-    | Cil.TInt _ -> SInt
-    | Cil.TFloat _ -> SFloat
-    | Cil.TPtr (t', _) -> SPtr (to_styp t')
-    | Cil.TArray (t', _, _) -> SArray (to_styp t')
-    | Cil.TNamed (t', _) ->
-        SNamed { sym_tname = t'.Cil.tname; sym_ttype = to_styp t'.ttype }
-    | Cil.TFun (t, lst, b, _) ->
-        let slist =
-          match lst with
-          | Some lst -> Some (List.map (fun (s, ty, _) -> (s, to_styp ty)) lst)
-          | None -> None
-        in
-        SFun (to_styp t, slist, b)
-    | Cil.TComp (c, _) -> SComp (to_scompinfo c)
-    | Cil.TEnum _ -> failwith "TEnum: not implemented"
-    | Cil.TBuiltin_va_list _ -> failwith "not supported"
-
-  and to_scompinfo c =
-    {
-      cname = c.Cil.cname;
-      (* cfields =
-         List.fold_left (fun acc f -> to_sfieldinfo f :: acc) [] c.cfields; *)
-      cstruct = c.cstruct;
-    }
-
-  and to_sfieldinfo f =
-    {
-      fcomp = to_scompinfo f.Cil.fcomp;
-      fname = f.fname;
-      ftype = to_styp f.ftype;
-    }
-
-  and to_sbinop op =
-    match op with
-    | Cil.PlusA -> SPlusA
-    | Cil.PlusPI -> SPlusPI
-    | Cil.IndexPI -> SIndexPI
-    | Cil.MinusA -> SMinusA
-    | Cil.MinusPI -> SMinusPI
-    | Cil.MinusPP -> SMinusPP
-    | Cil.Mod -> SMod
-    | Cil.Shiftlt -> SShiftlt
-    | Cil.Shiftrt -> SShiftrt
-    | Cil.BAnd -> SAnd
-    | Cil.BXor -> SXor
-    | Cil.BOr -> SOr
-    | Cil.Mult -> SMult
-    | Cil.Div -> SDiv
-    | Cil.Eq -> SEq
-    | Cil.Ne -> SNe
-    | Cil.Lt -> SLt
-    | Cil.Le -> SLe
-    | Cil.Gt -> SGt
-    | Cil.Ge -> SGe
-    | Cil.LAnd -> SLAnd
-    | Cil.LOr -> SLOr
-
-  and to_binop sop =
-    match sop with
-    | SPlusA -> Cil.PlusA
-    | SPlusPI -> Cil.PlusPI
-    | SIndexPI -> Cil.IndexPI
-    | SMinusA -> Cil.MinusA
-    | SMinusPI -> Cil.MinusPI
-    | SMinusPP -> Cil.MinusPP
-    | SMod -> Cil.Mod
-    | SShiftlt -> Cil.Shiftlt
-    | SShiftrt -> Cil.Shiftrt
-    | SAnd -> Cil.BAnd
-    | SXor -> Cil.BXor
-    | SOr -> Cil.BOr
-    | SMult -> Cil.Mult
-    | SDiv -> Cil.Div
-    | SEq -> Cil.Eq
-    | SNe -> Cil.Ne
-    | SLt -> Cil.Lt
-    | SLe -> Cil.Le
-    | SGt -> Cil.Gt
-    | SGe -> Cil.Ge
-    | SLAnd -> Cil.LAnd
-    | SLOr -> Cil.LOr
-
-  and to_unop sop = match sop with SNot -> Cil.LNot | SNeg -> Cil.Neg
-
-  and to_sunop op =
-    match op with
-    | Cil.LNot -> SNot
-    | Cil.Neg -> SNeg
-    | _ -> failwith "not supported"
-
-  and to_sconst c =
-    match c with
-    | Cil.CInt64 (i, _, _) -> SIntConst (Int64.to_int i)
-    | Cil.CReal (f, _, _) -> SFloatConst f
-    | Cil.CChr c -> SCharConst c
-    | Cil.CStr s -> SStringConst s
-    | _ -> failwith "not supported"
-end
+and to_sconst c =
+  match c with
+  | Cil.CInt64 (i, _, _) -> SIntConst (Int64.to_int i)
+  | Cil.CReal (f, _, _) -> SFloatConst f
+  | Cil.CChr c -> SCharConst c
+  | Cil.CStr s -> SStringConst s
+  | _ -> failwith "not supported"
 
 let get_ctx diff =
   match diff with
-  | D.Diff.InsertGlobal (ctx, _)
+  | D.InsertGlobal (ctx, _)
   | DeleteGlobal (ctx, _)
   | InsertStmt (ctx, _)
   | DeleteStmt (ctx, _)
@@ -1003,8 +995,8 @@ let define_sym_diff (maps : Maps.t) buggy diff =
   List.fold_left
     (fun acc d ->
       let ctx = get_ctx d in
-      let root_path = ctx.D.Diff.parent |> List.rev in
-      let s_root_path = SDiff.match_context cfg exp_map root_path in
+      let root_path = ctx.D.parent |> List.rev in
+      let s_root_path = match_context cfg exp_map root_path in
       let rest_path = List.tl s_root_path in
       let parent_fun = get_parent_fun root_path in
       let patch_node = List.hd rest_path in
@@ -1021,7 +1013,7 @@ let define_sym_diff (maps : Maps.t) buggy diff =
       let patch_bw =
         get_patch_range siblings ctx.patch_loc maps.node_map maps.ast_map
       in
-      let s_context : SDiff.sym_context =
+      let s_context : sym_context =
         {
           parent = rest_path;
           patch_node;
@@ -1029,13 +1021,12 @@ let define_sym_diff (maps : Maps.t) buggy diff =
           func_name = parent_fun.vname;
         }
       in
-      SDiff.mk_sdiff s_context cfg exp_map d :: acc)
+      mk_sdiff s_context cfg exp_map d :: acc)
     [] diff
 
 (* json area *)
 module DiffJson = struct
   open SElement
-  open SDiff
 
   type t = Yojson.Safe.t
 
@@ -1109,8 +1100,8 @@ module DiffJson = struct
 
   let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
 
-  let rec mk_json_obj (saction : SDiff.t) (caction : D.Diff.t) =
-    let context_json (context : SDiff.sym_context) =
+  let rec mk_json_obj saction (caction : D.t) =
+    let context_json (context : sym_context) =
       ( "context",
         `Assoc
           [

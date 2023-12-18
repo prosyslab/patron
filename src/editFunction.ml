@@ -268,7 +268,7 @@ let translate ast sym_diff model_path maps patch_node_id patch_nodes =
     List.fold_left
       (fun acc diff ->
         match diff with
-        | S.SDiff.SInsertStmt (context, stmt) ->
+        | S.SInsertStmt (context, stmt) ->
             (* let patch_node = context.S.SDiff.patch_node in *)
             let new_patch_id =
               List.find
@@ -298,7 +298,7 @@ let translate ast sym_diff model_path maps patch_node_id patch_nodes =
               in
               Stmt translated_stmt
             in
-            let before, after = context.S.SDiff.patch_between in
+            let before, after = context.S.patch_between in
             let before =
               if before = [] then None
               else

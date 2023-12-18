@@ -114,8 +114,8 @@ let collect_nodes deps node_map =
          | _ -> acc)
 
 let extract_parent diff ast_map =
-  let patch_node = diff.SymDiff.SDiff.patch_node.node in
-  let func_name = diff.SymDiff.SDiff.func_name in
+  let patch_node = diff.SymDiff.patch_node.node in
+  let func_name = diff.SymDiff.func_name in
   match patch_node with
   | SymDiff.SElement.SGlob _ -> ("", func_name)
   | SymDiff.SElement.SStmt (_, s) ->
@@ -341,7 +341,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
     SymDiff.to_json sym_diff ast_diff out_dir);
   let ctx =
     List.fold_left ~init:[]
-      ~f:(fun acc diff -> SymDiff.SDiff.extract_context diff :: acc)
+      ~f:(fun acc diff -> SymDiff.extract_context diff :: acc)
       sym_diff
     |> List.hd_exn
   in
