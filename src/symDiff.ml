@@ -607,81 +607,26 @@ and match_exp_id exp_map e =
     match e with
     | Cil.Const c -> match_const c exp_map
     | Cil.Lval l ->
-        Hashtbl.fold
-          (fun k v acc ->
-            if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
-          exp_map []
+        Utils.SparrowParser.s_lv l |> Hashtbl.find_opt exp_map
+        (* Hashtbl.fold
+           (fun k v acc ->
+             if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
+           exp_map [] *)
     | Cil.SizeOf t -> match_sizeof t exp_map
-    | Cil.BinOp _ ->
-        Hashtbl.fold
-          (fun k v acc ->
-            if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
-          exp_map []
-    | Cil.UnOp _ ->
-        Hashtbl.fold
-          (fun k v acc ->
-            if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
-          exp_map []
-    | Cil.CastE _ ->
-        Hashtbl.fold
-          (fun k v acc ->
-            if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
-          exp_map []
-    | Cil.Question _ ->
-        Hashtbl.fold
-          (fun k v acc ->
-            if H.string_of_exp e |> H.subset v then (k, v) :: acc else acc)
-          exp_map []
+    | Cil.SizeOfE _ | Cil.BinOp _ | Cil.UnOp _ | Cil.CastE _ | Cil.Question _ ->
+        Utils.SparrowParser.s_exp e |> Hashtbl.find_opt exp_map
     | _ ->
         H.print_ekind e;
         failwith "match_exp: not implemented"
   in
-  let id, _ =
-    let outmap =
-      List.fold_left
-        (fun acc (k, v) ->
-          if acc = [] then (k, v) :: acc
-          else if
-            let _, prev = List.hd acc in
-            String.length prev >= String.length v
-          then (k, v) :: List.tl acc
-          else acc)
-        candidate []
-      |> List.rev
-    in
-    if outmap = [] then ("None", "") else List.hd outmap
-  in
-  id
+  if Option.is_none candidate then "None" else Option.get candidate
 
 and match_sizeof t exp_map =
-  Hashtbl.fold
-    (fun k v acc ->
-      if H.string_of_typ t |> H.subset v then (k, v) :: acc else acc)
-    exp_map []
+  Utils.SparrowParser.s_type t |> Hashtbl.find_opt exp_map
 
 and match_lval_id exp_map l =
-  let candidate =
-    Hashtbl.fold
-      (fun k v acc ->
-        if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
-      exp_map []
-  in
-  let id, _ =
-    let outmap =
-      List.fold_left
-        (fun acc (k, v) ->
-          if acc = [] then (k, v) :: acc
-          else if
-            let _, prev = List.hd acc in
-            String.length prev >= String.length v
-          then (k, v) :: List.tl acc
-          else acc)
-        candidate []
-      |> List.rev
-    in
-    if outmap = [] then ("None", "") else List.hd outmap
-  in
-  id
+  let candidate = Hashtbl.find_opt exp_map (Utils.SparrowParser.s_lv l) in
+  if Option.is_none candidate then "None" else Option.get candidate
 
 and eq_line loc cloc =
   let file_name = loc.Cil.file |> Filename.basename in
@@ -763,27 +708,7 @@ and match_stmt_id cfg s =
   | _ -> "None"
 
 and match_const c exp_map =
-  match c with
-  | Cil.CInt64 (i, _, _) ->
-      Hashtbl.fold
-        (fun k v acc ->
-          if Int64.to_string i |> H.subset v then (k, v) :: acc else acc)
-        exp_map []
-  | Cil.CStr s ->
-      Hashtbl.fold
-        (fun k v acc -> if s |> H.subset v then (k, v) :: acc else acc)
-        exp_map []
-  | Cil.CChr c ->
-      Hashtbl.fold
-        (fun k v acc ->
-          if Char.escaped c |> H.subset v then (k, v) :: acc else acc)
-        exp_map []
-  | Cil.CReal (f, _, _) ->
-      Hashtbl.fold
-        (fun k v acc ->
-          if string_of_float f |> H.subset v then (k, v) :: acc else acc)
-        exp_map []
-  | _ -> failwith "match_const: not implemented"
+  Utils.SparrowParser.s_const c |> Hashtbl.find_opt exp_map
 
 and to_styp t =
   match t with
@@ -960,14 +885,7 @@ let get_patch_range siblings patch_loc node_map ast_map =
             try (Hashtbl.find ast_map s |> string_of_int) :: acc with _ -> acc)
           [] before
         |> List.fold_left
-             (fun acc s ->
-               try
-                 (Hashtbl.fold
-                    (fun k v acc -> if v = s then k :: acc else acc)
-                    node_map []
-                 |> List.hd)
-                 :: acc
-               with _ -> acc)
+             (fun acc s -> try Hashtbl.find node_map s :: acc with _ -> acc)
              []
     in
     let right_lim =
@@ -976,14 +894,7 @@ let get_patch_range siblings patch_loc node_map ast_map =
           try (Hashtbl.find ast_map s |> string_of_int) :: acc with _ -> acc)
         [] after
       |> List.fold_left
-           (fun acc s ->
-             try
-               (Hashtbl.fold
-                  (fun k v acc -> if v = s then k :: acc else acc)
-                  node_map []
-               |> List.hd)
-               :: acc
-             with _ -> acc)
+           (fun acc s -> try Hashtbl.find node_map s :: acc with _ -> acc)
            []
     in
     (left_lim, right_lim)
@@ -991,7 +902,8 @@ let get_patch_range siblings patch_loc node_map ast_map =
 let define_sym_diff (maps : Maps.t) buggy diff =
   get_gvars buggy;
   let cfg = maps.cfg_map in
-  let exp_map = maps.exp_map in
+  let exp_map = maps.exp_map |> Utils.reverse_hashtbl in
+  let node_map = maps.node_map |> Utils.reverse_hashtbl in
   List.fold_left
     (fun acc d ->
       let ctx = get_ctx d in
@@ -1011,7 +923,7 @@ let define_sym_diff (maps : Maps.t) buggy diff =
         | _ -> failwith "define_sym_diff: not implemented"
       in
       let patch_bw =
-        get_patch_range siblings ctx.patch_loc maps.node_map maps.ast_map
+        get_patch_range siblings ctx.patch_loc node_map maps.ast_map
       in
       let s_context : sym_context =
         {
@@ -1024,7 +936,6 @@ let define_sym_diff (maps : Maps.t) buggy diff =
       mk_sdiff s_context cfg exp_map d :: acc)
     [] diff
 
-(* json area *)
 module DiffJson = struct
   open SElement
 

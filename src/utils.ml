@@ -834,3 +834,8 @@ module SparrowParser = struct
 
   and s_instrs instrs = List.fold_left (fun s i -> s ^ s_instr i) "" instrs
 end
+
+let reverse_hashtbl tbl =
+  let rev_tbl_init = Hashtbl.create 1000 in
+  Hashtbl.iter (fun k v -> Hashtbl.add rev_tbl_init v k) tbl;
+  rev_tbl_init

@@ -218,7 +218,7 @@ let rec iter_body stmts parent patch_bw patch =
   List.fold_left
     (fun acc x ->
       match (x.Cil.skind, parent) with
-      | Cil.Loop (b, loc, t1, t2), Cil.Loop (b', loc', _, _) ->
+      | Cil.Loop (b, loc, t1, t2), Cil.Loop (_, loc', _, _) ->
           if loc.Cil.line = loc'.Cil.line then
             let new_body = insert_patch patch b.bstmts before after in
             let new_block = { b with bstmts = new_body } in
@@ -259,7 +259,7 @@ let apply_action diff donee action =
       let parent = ctx.EF.parent_node in
       let target_func = context.SymDiff.func_name in
       match parent with
-      | Fun g -> failwith "InsertStmt: not implemented"
+      | Fun _ -> failwith "InsertStmt: not implemented"
       | Stmt s ->
           let patch_bw = ctx.EF.patch_between in
           let vis =

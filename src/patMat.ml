@@ -124,7 +124,7 @@ let extract_parent diff ast_map =
 
 let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   let ast_map = maps.Maps.ast_map in
-  let node_map = maps.Maps.node_map in
+  let node_map = maps.Maps.node_map |> Utils.reverse_hashtbl in
   L.info "Compute AST pattern...";
   let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
   let parent_tups =
@@ -149,7 +149,7 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   let start =
     List.find_exn ~f:(fun (p, _) -> String.equal p patch_node) parent_tups
   in
-  let rec go_up (p, c) acc =
+  let rec go_up (p, _) acc =
     let rec go_down candidates acc =
       let rec aux (p, c) acc =
         let candidates =
@@ -223,18 +223,8 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   |> fun x ->
   List.fold_left ~init:x
     ~f:(fun acc (p, c) ->
-      let p_cfg =
-        Hashtbl.fold
-          (fun k v acc -> if String.equal v p then k :: acc else acc)
-          node_map []
-        |> List.hd
-      in
-      let c_cfg =
-        Hashtbl.fold
-          (fun k v acc -> if String.equal v c then k :: acc else acc)
-          node_map []
-        |> List.hd
-      in
+      let p_cfg = Hashtbl.find_opt node_map p in
+      let c_cfg = Hashtbl.find_opt node_map c in
       let p_ast = Chc.Elt.FDNumeral ("AstNode-" ^ p) in
       let c_ast = Chc.Elt.FDNumeral ("AstNode-" ^ c) in
       if Option.is_some p_cfg && Option.is_some c_cfg then

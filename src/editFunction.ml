@@ -146,15 +146,15 @@ and translate_exp ast (model_map : (string * string) list) exp_map sexp =
             in
             let new_exp_str = Hashtbl.find exp_map new_id in
             match c with
-            | S.SElement.SIntConst i ->
+            | S.SElement.SIntConst _ ->
                 Cil.Const
                   (Cil.CInt64 (Int64.of_string new_exp_str, Cil.IInt, None))
-            | S.SElement.SFloatConst f ->
+            | S.SElement.SFloatConst _ ->
                 Cil.Const
                   (Cil.CReal (float_of_string new_exp_str, Cil.FDouble, None))
-            | S.SElement.SCharConst c ->
+            | S.SElement.SCharConst _ ->
                 Cil.Const (Cil.CChr (String.get new_exp_str 0))
-            | S.SElement.SStringConst s -> Cil.Const (Cil.CStr new_exp_str)
+            | S.SElement.SStringConst _ -> Cil.Const (Cil.CStr new_exp_str)
           else (* TODO: casting within constant*)
             cil
       | S.SElement.SELval l, Cil.Lval _ ->
@@ -177,7 +177,7 @@ and translate_exp ast (model_map : (string * string) list) exp_map sexp =
   | _ -> failwith "translate_exp: ranslation target is not an expression"
 
 let rec translate_stmt ast model_map cfg exp_map stmt =
-  let id = stmt.S.SElement.id in
+  (* let id = stmt.S.SElement.id in *)
   let node = stmt.S.SElement.node in
   match node with
   | S.SElement.SStmt (sym, cil) -> (
@@ -250,18 +250,13 @@ let translate ast sym_diff model_path maps patch_node_id patch_nodes =
   let exp_map = maps.Maps.exp_map in
   let model_map = H.parse_model model_path in
   let ast_map = maps.Maps.ast_map in
+  let ast_map_rev = Utils.reverse_hashtbl ast_map in
   let node_map = maps.Maps.node_map in
+  let node_map_rev = Utils.reverse_hashtbl node_map in
   (* ToDO: make the order of hashtbl proper so that it will optimize *)
   let patch_nodes =
     List.fold_left
-      (fun lst x ->
-        try
-          (Hashtbl.fold
-             (fun k v acc -> if v = x then k :: acc else acc)
-             node_map []
-          |> List.hd)
-          :: lst
-        with _ -> lst)
+      (fun lst x -> try Hashtbl.find node_map_rev x :: lst with _ -> lst)
       [] patch_nodes
   in
   let translated =
@@ -269,7 +264,6 @@ let translate ast sym_diff model_path maps patch_node_id patch_nodes =
       (fun acc diff ->
         match diff with
         | S.SInsertStmt (context, stmt) ->
-            (* let patch_node = context.S.SDiff.patch_node in *)
             let new_patch_id =
               List.find
                 (fun (k, _) ->
@@ -277,25 +271,12 @@ let translate ast sym_diff model_path maps patch_node_id patch_nodes =
                     (String.concat "-" [ "AstNode"; patch_node_id ]))
                 model_map
               |> snd
+              |> Str.global_replace (Str.regexp "AstNode-") ""
+              |> int_of_string
             in
             let new_parent_node =
-              (* match new_patch_id with
-                 | None -> (
-                     match patch_node.node with
-                     | S.SElement.SStmt (_, s) -> Stmt s
-                     | S.SElement.SGlob (_, g) -> Fun g
-                     | _ -> failwith "translate: not implemented")
-                 | Some id -> *)
               (* TODO: case where parent is global *)
-              let translated_stmt =
-                Hashtbl.fold
-                  (fun k v acc ->
-                    if "AstNode-" ^ string_of_int v |> String.equal new_patch_id
-                    then k :: acc
-                    else acc)
-                  ast_map []
-                |> List.hd
-              in
+              let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
               Stmt translated_stmt
             in
             let before, after = context.S.patch_between in
@@ -311,9 +292,8 @@ let translate ast sym_diff model_path maps patch_node_id patch_nodes =
                 if x = None then None
                 else
                   Option.get x |> Hashtbl.find node_map |> fun x ->
-                  Hashtbl.fold
-                    (fun k v acc -> if string_of_int v = x then Some k else acc)
-                    ast_map None
+                  let x_int = int_of_string x in
+                  Hashtbl.find_opt ast_map_rev x_int
             in
             let after =
               if after = [] then None
@@ -327,9 +307,8 @@ let translate ast sym_diff model_path maps patch_node_id patch_nodes =
                 if x = None then None
                 else
                   Option.get x |> Hashtbl.find node_map |> fun x ->
-                  Hashtbl.fold
-                    (fun k v acc -> if string_of_int v = x then Some k else acc)
-                    ast_map None
+                  let x_int = int_of_string x in
+                  Hashtbl.find_opt ast_map_rev x_int
             in
             let ctx =
               { parent_node = new_parent_node; patch_between = (before, after) }
