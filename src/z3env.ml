@@ -25,7 +25,6 @@ type t = {
   loc : Z3.Sort.sort;
   value : Z3.Sort.sort;
   const : Z3.Sort.sort;
-  (* Functions for specifying source, sink *)
   ast_parent : Z3.FuncDecl.func_decl;
   eq_node : Z3.FuncDecl.func_decl;
   src : Z3.FuncDecl.func_decl;
@@ -36,6 +35,8 @@ type t = {
   salloc : Z3.FuncDecl.func_decl;
   lval_exp : Z3.FuncDecl.func_decl;
   var : Z3.FuncDecl.func_decl;
+  index : Z3.FuncDecl.func_decl;
+  deref : Z3.FuncDecl.func_decl;
   call : Z3.FuncDecl.func_decl;
   libcall : Z3.FuncDecl.func_decl;
   arg : Z3.FuncDecl.func_decl;
@@ -99,6 +100,8 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.salloc;
   Z3.Fixedpoint.register_relation solver env.lval_exp;
   Z3.Fixedpoint.register_relation solver env.var;
+  Z3.Fixedpoint.register_relation solver env.index;
+  Z3.Fixedpoint.register_relation solver env.deref;
   Z3.Fixedpoint.register_relation solver env.call;
   Z3.Fixedpoint.register_relation solver env.libcall;
   Z3.Fixedpoint.register_relation solver env.arg;
@@ -133,12 +136,16 @@ let fact_files =
     "Arg.facts";
     "BinOpExp.facts";
     "CallExp.facts";
-    "CFPath.facts";
+    (* "CFPath.facts"; *)
     "DetailedDUEdge.facts";
-    "DUEdge.facts";
+    (* "DUEdge.facts"; *)
     "DUPath.facts";
     "LibCallExp.facts";
     "LvalExp.facts";
+    (* "LocalVar.facts";
+       "GlobalVar.facts"; *)
+    "Index.facts";
+    "Mem.facts";
     "Return.facts";
     "Set.facts";
     "Skip.facts";
@@ -212,6 +219,12 @@ let mk_env () =
   in
   let var =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Var" [ lval; identifier ] boolean_sort
+  in
+  let index =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Index" [ lval; lval; expr ] boolean_sort
+  in
+  let deref =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Deref" [ lval; expr ] boolean_sort
   in
   let call =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Call" [ expr; expr; arg_list ]
@@ -333,6 +346,8 @@ let mk_env () =
       salloc;
       lval_exp;
       var;
+      index;
+      deref;
       call;
       libcall;
       arg;

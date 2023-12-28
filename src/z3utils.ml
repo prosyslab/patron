@@ -1,10 +1,10 @@
 open Core
-open Z3env
 module L = Logger
+module Hashtbl = Stdlib.Hashtbl
 
 let match_func z3env f =
   match f with
-  | "AstParent" -> z3env.ast_parent
+  | "AstParent" -> z3env.Z3env.ast_parent
   | "EqNode" -> z3env.eq_node
   | "Src" -> z3env.src
   | "Snk" -> z3env.snk
@@ -14,6 +14,8 @@ let match_func z3env f =
   | "SAlloc" -> z3env.salloc
   | "LvalExp" -> z3env.lval_exp
   | "Var" -> z3env.var
+  | "Index" -> z3env.index
+  | "Deref" -> z3env.deref
   | "Call" -> z3env.call
   | "LibCall" -> z3env.libcall
   | "Arg" -> z3env.arg
@@ -117,7 +119,7 @@ let match_sort z3env s =
   let sort_id = String.split ~on:'-' s in
   let name = List.hd_exn sort_id in
   if List.length sort_id = 1 then
-    if is_binop name then z3env.binop_sort
+    if is_binop name then z3env.Z3env.binop_sort
     else if is_unop name then z3env.unop_sort
     else if String.equal "l" s then z3env.loc
     else if String.is_prefix ~prefix:"v" s then z3env.value
@@ -141,7 +143,7 @@ let new_numer () =
   !numer_cnt
 
 let mk_numer z3env maps sym sort =
-  if Z3.Sort.equal sort z3env.binop_sort then
+  if Z3.Sort.equal sort z3env.Z3env.binop_sort then
     Z3.Expr.mk_numeral_int z3env.z3ctx (int_of_binop sym) sort
   else if Z3.Sort.equal sort z3env.unop_sort then
     Z3.Expr.mk_numeral_int z3env.z3ctx (int_of_unop sym) sort

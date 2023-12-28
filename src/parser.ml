@@ -1,5 +1,4 @@
 open Core
-open Z3env
 module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module L = Logger
@@ -170,7 +169,7 @@ let mk_term s =
       let splitted = String.split ~on:'-' s in
       if List.length splitted = 1 then Chc.Elt.Var s
       else (
-        incr sort_size;
+        incr Z3env.sort_size;
         Chc.Elt.FDNumeral s)
 
 let file2func = function
@@ -185,6 +184,8 @@ let file2func = function
   | "DUEdge.facts" -> "DUEdge"
   | "DUPath.facts" -> "DUPath"
   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
+  | "Index.facts" -> "Index"
+  | "Mem.facts" -> "Deref"
   | "LibCallExp.facts" -> "LibCall"
   | "LvalExp.facts" -> "LvalExp"
   | "Return.facts" -> "Return"
@@ -370,13 +371,30 @@ let read_and_split file =
 exception Not_impl_aexp
 
 let get_aexp alarm splited filename =
-  match Filename.basename filename |> Filename.chop_extension with
-  | "AlarmDivExp" -> (
-      match splited with
-      | [ a; _; divisor ] when String.equal a alarm ->
-          Chc.singleton (Chc.Elt.FDNumeral divisor)
-      | _ -> Chc.empty)
-  | f ->
+  match (Filename.basename filename |> Filename.chop_extension, splited) with
+  | "AlarmArrayExp", [ a; l; e ] when String.equal a alarm ->
+      Chc.of_list [ Chc.Elt.FDNumeral l; Chc.Elt.FDNumeral e ]
+  | "AlarmAllocSize", [ a; e ]
+  | "AlarmDerefExp", [ a; e ]
+  | "AlarmPrintf", [ a; e ]
+  | "AlarmDivExp", [ a; _; e ]
+    when String.equal a alarm ->
+      Chc.singleton (Chc.Elt.FDNumeral e)
+  | "AlarmIOExp", [ a; e1; e2 ]
+  | "AlarmMemchr", [ a; e1; e2 ]
+  | "AlarmSprintf", [ a; e1; e2 ]
+  | "AlarmStrcat", [ a; e1; e2 ]
+  | "AlarmStrcpy", [ a; e1; e2 ]
+    when String.equal a alarm ->
+      Chc.of_list [ Chc.Elt.FDNumeral e1; Chc.Elt.FDNumeral e2 ]
+  | "AlarmMemcpy", [ a; e1; e2; e3 ]
+  | "AlarmMemmove", [ a; e1; e2; e3 ]
+  | "AlarmStrncmp", [ a; e1; e2; e3 ]
+  | "AlarmStrncpy", [ a; e1; e2; e3 ]
+    when String.equal a alarm ->
+      Chc.of_list
+        [ Chc.Elt.FDNumeral e1; Chc.Elt.FDNumeral e2; Chc.Elt.FDNumeral e3 ]
+  | f, _ ->
       Logger.warn "get_aexp - not implemented: %s" f;
       raise Not_impl_aexp
 

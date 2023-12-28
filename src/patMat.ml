@@ -1,5 +1,4 @@
 open Core
-open Z3env
 module F = Format
 module L = Logger
 module Hashtbl = Stdlib.Hashtbl
@@ -151,7 +150,7 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   in
   let rec go_up (p, _) acc =
     let rec go_down candidates acc =
-      let rec aux (p, c) acc =
+      let aux (p, c) acc =
         let candidates =
           List.fold_left ~init:[]
             ~f:(fun acc' (p', c') ->
@@ -246,22 +245,22 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
 
 let abstract_bug_pattern buggy src snk aexps maps ctx ast =
   let node_map = maps.Maps.node_map in
-  let ast_map = maps.Maps.ast_map in
+  (* let ast_map = maps.Maps.ast_map in *)
   let deps = collect_deps src snk aexps buggy |> Chc.to_list in
   let ast_node_lst = collect_nodes deps node_map in
-  let patch_node, patch_func = extract_parent ctx ast_map in
-  let smallest_ast_pattern =
-    if String.equal patch_node "" then
-      failwith "not implemented for direct patch below the function"
-    else compute_ast_pattern ast_node_lst patch_node patch_func maps ast
-  in
+  (* let patch_node, patch_func = extract_parent ctx ast_map in
+     let smallest_ast_pattern =
+          if String.is_empty patch_node then
+            failwith "not implemented for direct patch below the function"
+          else compute_ast_pattern ast_node_lst patch_node patch_func maps ast
+        in *)
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  ( Chc.Elt.Implies (deps @ smallest_ast_pattern, errtrace)
+  ( Chc.Elt.Implies (deps (*@ smallest_ast_pattern*), errtrace)
     |> Chc.Elt.numer2var |> Chc.singleton,
     ast_node_lst )
 
@@ -273,7 +272,7 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
     let facts, (src, snk, _) =
       Parser.make_facts buggy_dir target_alarm ast cfg out_dir target_maps
     in
-    let z3env = get_env () in
+    let z3env = Z3env.get_env () in
     L.info "Try matching with %s..." target_alarm;
     let status =
       Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
@@ -342,7 +341,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
-  let z3env = get_env () in
+  let z3env = Z3env.get_env () in
   L.info "Try matching with buggy...";
   ( Chc.match_and_log z3env out_dir "buggy" buggy_maps buggy_facts src snk
       pattern

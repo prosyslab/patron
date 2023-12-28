@@ -1,5 +1,4 @@
 open Core
-open Z3env
 module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module Set = Stdlib.Set
@@ -213,7 +212,7 @@ module Elt = struct
   let rec to_z3 z3env maps t =
     match t with
     | Lt (e1, e2) ->
-        Z3.BitVector.mk_slt z3env.z3ctx (to_z3 z3env maps e1)
+        Z3.BitVector.mk_slt z3env.Z3env.z3ctx (to_z3 z3env maps e1)
           (to_z3 z3env maps e2)
     | Gt (e1, e2) ->
         Z3.BitVector.mk_sgt z3env.z3ctx (to_z3 z3env maps e1)
@@ -483,22 +482,25 @@ let prop_deps terms = function
       if mem dst terms then (true, add src terms) else (false, terms) *)
   | Elt.FuncApply ("CFPath", args) | FuncApply ("DUPath", args) ->
       if all_args_has_dep terms args then (true, terms) else (false, terms)
-  | FuncApply ("EvalLv", [ n; lval; loc ]) ->
-      if mem n terms && mem lval terms then (true, add loc terms)
+  | FuncApply ("EvalLv", [ n; lv; loc ]) ->
+      if mem n terms && mem lv terms then (true, add loc terms)
       else (false, terms)
-  | FuncApply ("Set", [ node; lval; exp ]) ->
-      if mem node terms || mem lval terms then (true, add exp terms)
-      else (false, terms)
-  | FuncApply ("Return", [ node; exp ]) ->
-      if mem node terms then (true, add exp terms) else (false, terms)
-  | FuncApply ("Arg", [ arg_list; _; exp ]) ->
-      if mem arg_list terms then (true, add exp terms) else (false, terms)
+  | FuncApply ("Set", [ n; lv; e ]) ->
+      if mem n terms && mem lv terms then (true, add e terms) else (false, terms)
+  | FuncApply ("Return", [ n; e ]) ->
+      if mem n terms then (true, add e terms) else (false, terms)
+  | FuncApply ("Arg", [ arg_list; _; e ]) ->
+      if mem arg_list terms then (true, add e terms) else (false, terms)
   | FuncApply ("BinOp", [ e; _; e1; e2 ]) ->
       if mem e terms then (true, terms |> add e1 |> add e2) else (false, terms)
   | FuncApply ("UnOp", [ e; _; e1 ]) ->
       if mem e terms then (true, add e1 terms) else (false, terms)
-  | FuncApply ("LvalExp", [ exp; lval ]) ->
-      if mem exp terms then (true, add lval terms) else (false, terms)
+  | FuncApply ("LvalExp", [ e; lv ]) ->
+      if mem e terms then (true, add lv terms) else (false, terms)
+  | FuncApply ("Index", [ lv; lv'; e ]) ->
+      if mem lv terms then (true, terms |> add lv' |> add e) else (false, terms)
+  | FuncApply ("Deref", [ lv; e ]) ->
+      if mem lv terms then (true, add e terms) else (false, terms)
   | FuncApply ("Call", [ e; _; arg_list ])
   | FuncApply ("LibCall", [ e; _; arg_list ]) ->
       (* Maybe not used *)
@@ -602,18 +604,18 @@ let add_all z3env maps solver =
 let subst_pattern_for_target src snk = map (Elt.subst src snk)
 
 let pattern_match z3env out_dir ver_name maps chc src snk pattern =
-  let solver = mk_fixedpoint z3env.z3ctx in
-  reg_rel_to_solver z3env solver;
+  let solver = Z3env.mk_fixedpoint z3env.Z3env.z3ctx in
+  Z3env.reg_rel_to_solver z3env solver;
   L.info "Start making Z3 instance from facts and rels";
   let pattern' = subst_pattern_for_target src snk pattern in
   add_all z3env maps solver (union chc pattern');
   L.info "Complete making Z3 instance from facts and rels";
+  Z3utils.dump_solver_to_smt (ver_name ^ "_formula") solver out_dir;
   let status =
     Z3.Fixedpoint.query solver
       (Z3.FuncDecl.apply z3env.errtrace
          [ Hashtbl.find maps.sym_map src; Hashtbl.find maps.sym_map snk ])
   in
-  Z3utils.dump_solver_to_smt (ver_name ^ "_formula") solver out_dir;
   match status with
   | Z3.Solver.UNSATISFIABLE -> None
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
