@@ -4,28 +4,7 @@ module Map = Stdlib.Map
 module L = Logger
 module Sys = Stdlib.Sys
 
-module ASTMap = struct
-  module Key = struct
-    type t = Cil.stmt
-
-    let compare x y =
-      String.compare (Utils.string_of_stmt x) (Utils.string_of_stmt y)
-  end
-
-  module M = Map.Make (Key)
-
-  type t = string M.t
-
-  let make_map stmts =
-    let _, map =
-      List.fold_left ~init:(1, M.empty)
-        ~f:(fun (id, map) stmt ->
-          let next_id = id + 1 in
-          (next_id, M.add stmt (id |> string_of_int) map))
-        stmts
-    in
-    map
-end
+let ast_node_cnt = ref 1
 
 let parse_loc loc =
   let parsed = Str.split (Str.regexp ":") loc in
@@ -124,11 +103,7 @@ let parse_sparrow nodes map chc =
                 CAlloc (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc))
         | "falloc" -> CNone
         | "salloc" -> CNone
-        | _ ->
-            print_endline "----------";
-            print_endline (List.hd_exn cmd);
-            print_endline "----------";
-            failwith "Unknown Command"
+        | _ -> L.error "parse_sparrow: unknown command %s" (List.hd_exn cmd)
       in
       match cmd with CNone | CSkip _ -> () | _ -> Hashtbl.add map cmd key)
     nodes
@@ -269,10 +244,46 @@ let parse_chc chc_file =
          try (Sexp.of_string rule |> sexp2chc) :: chc_list with _ -> chc_list)
   |> Chc.of_list
 
-let mk_parent_tuples parent stmts =
-  List.fold_left ~init:[] ~f:(fun acc s -> (parent, s) :: acc) stmts
+let mk_parent_tuples stmts =
+  let aux parent stmts =
+    List.fold_left ~init:[] ~f:(fun acc s -> (parent, s) :: acc) stmts
+  in
+  List.fold_left ~init:[]
+    ~f:(fun acc s ->
+      match s.Cil.skind with
+      | Cil.Block b | Cil.Loop (b, _, _, _) -> aux s b.bstmts @ acc
+      | Cil.If (_, tb, eb, _) -> aux s tb.bstmts @ aux s eb.bstmts @ acc
+      | _ -> acc)
+    stmts
 
-let match_eq_nodes ast_node maps =
+let eq_instrs ast_instr cfg_instr =
+  if List.length ast_instr = 0 then false
+  else
+    match (List.hd_exn ast_instr, cfg_instr) with
+    | Cil.Call (_, _, _, loc), Maps.CfgNode.CCall (_, _, cloc) ->
+        SymDiff.eq_line loc cloc
+    | Cil.Set (_, _, loc), Maps.CfgNode.CSet (_, _, cloc)
+    | Cil.Set (_, _, loc), Maps.CfgNode.CAlloc (_, _, cloc)
+    | Cil.Set (_, _, loc), Maps.CfgNode.CSalloc (_, _, cloc)
+    | Cil.Set (_, _, loc), Maps.CfgNode.CFalloc (_, _, cloc) ->
+        SymDiff.eq_line loc cloc
+    | _ -> false
+
+let lookup_eq_nodes ast_node cfg =
+  Hashtbl.fold
+    (fun cnode id acc ->
+      (match (ast_node.Cil.skind, cnode) with
+      | Cil.Instr i, cn -> eq_instrs i cn
+      | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc -> SymDiff.eq_line loc cloc
+      | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc)
+      | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
+          SymDiff.eq_line loc cloc
+      | _ -> false)
+      |> fun bool -> if bool then id :: acc else acc)
+    cfg []
+  |> fun x -> if List.length x = 0 then None else Some (List.hd_exn x)
+
+let match_eq_nodes ast_node term maps =
   let cfg = maps.Maps.cfg_map in
   let ast_map = maps.Maps.ast_map in
   let node_map = maps.Maps.node_map in
@@ -281,89 +292,47 @@ let match_eq_nodes ast_node maps =
       Some (Hashtbl.find ast_map ast_node |> string_of_int)
     else None
   in
-  if Option.is_none ast_id then None
+  if Option.is_none ast_id then []
   else
-    let cfg_id =
-      Hashtbl.fold
-        (fun cnode id acc ->
-          let bool =
-            match (ast_node.Cil.skind, cnode) with
-            | Cil.Instr i, cn -> (
-                if List.length i = 0 then false
-                else
-                  match (List.hd_exn i, cn) with
-                  | Cil.Call (_, _, _, loc), Maps.CfgNode.CCall (_, _, cloc) ->
-                      SymDiff.eq_line loc cloc
-                  | Cil.Set (_, _, loc), Maps.CfgNode.CSet (_, _, cloc)
-                  | Cil.Set (_, _, loc), Maps.CfgNode.CAlloc (_, _, cloc)
-                  | Cil.Set (_, _, loc), Maps.CfgNode.CSalloc (_, _, cloc)
-                  | Cil.Set (_, _, loc), Maps.CfgNode.CFalloc (_, _, cloc) ->
-                      SymDiff.eq_line loc cloc
-                  | _ -> false)
-            | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc ->
-                SymDiff.eq_line loc cloc
-            | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc)
-            | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
-                SymDiff.eq_line loc cloc
-            | _ -> false
-          in
-          if bool then id :: acc else acc)
-        cfg []
-      |> fun x -> if List.length x = 0 then None else Some (List.hd_exn x)
-    in
-    if Option.is_none cfg_id then None
+    let cfg_id = lookup_eq_nodes ast_node cfg in
+    if Option.is_none cfg_id then []
     else (
       Hashtbl.add node_map (Option.value_exn cfg_id) (Option.value_exn ast_id);
-      Some
-        (Chc.Elt.FuncApply
-           ( "EqNode",
-             [
-               FDNumeral (Option.value_exn cfg_id);
-               FDNumeral ("AstNode-" ^ Option.value_exn ast_id);
-             ] )))
+      [
+        Chc.Elt.FuncApply ("EqNode", [ mk_term (Option.value_exn cfg_id); term ]);
+      ])
+
+let stmt2str maps stmt =
+  if Hashtbl.mem maps.Maps.ast_map stmt then
+    Hashtbl.find maps.ast_map stmt |> string_of_int |> fun n ->
+    [ "AstNode"; n ] |> String.concat ~sep:"-"
+  else (
+    Hashtbl.add maps.Maps.ast_map stmt !ast_node_cnt;
+    incr ast_node_cnt;
+    [ "AstNode"; string_of_int !ast_node_cnt ] |> String.concat ~sep:"-")
+
+let mk_ast_rels maps acc (parent, child) (parent_str, child_str) =
+  let parent_term = mk_term parent_str in
+  let child_term = mk_term child_str in
+  let parent_rel =
+    Chc.Elt.FuncApply ("AstParent", [ parent_term; child_term ])
+  in
+  let eqnode_rels =
+    match_eq_nodes parent parent_term maps
+    @ match_eq_nodes child child_term maps
+  in
+  (parent_rel :: eqnode_rels) @ acc
 
 let make_ast_facts (maps : Maps.t) stmts =
-  let parent_tups =
-    List.fold_left ~init:[]
-      ~f:(fun acc s ->
-        match s.Cil.skind with
-        | Cil.Block b | Cil.Loop (b, _, _, _) ->
-            mk_parent_tuples s b.bstmts @ acc
-        | Cil.If (_, tb, eb, _) ->
-            mk_parent_tuples s tb.bstmts @ mk_parent_tuples s eb.bstmts @ acc
-        | _ -> acc)
-      stmts
-    |> List.fold_left ~init:[] ~f:(fun acc (parent, child) ->
-           if Hashtbl.mem maps.ast_map child && Hashtbl.mem maps.ast_map parent
-           then
-             let parent =
-               Hashtbl.find maps.ast_map parent |> string_of_int |> fun n ->
-               [ "AstNode"; n ] |> String.concat ~sep:"-"
-             in
-             let child =
-               Hashtbl.find maps.ast_map child |> string_of_int |> fun n ->
-               [ "AstNode"; n ] |> String.concat ~sep:"-"
-             in
-             (parent, child) :: acc
-           else acc)
-  in
-  let parent_rel =
-    List.fold_left ~init:[]
-      ~f:(fun acc (parent, child) ->
-        Chc.Elt.FuncApply ("AstParent", [ FDNumeral parent; FDNumeral child ])
-        :: acc)
-      parent_tups
-    |> Chc.of_list
-  in
-  let eqnode_rel =
-    List.fold_left ~init:[]
-      ~f:(fun acc stmt ->
-        match_eq_nodes stmt maps |> fun x ->
-        if Option.is_none x then acc else Option.value_exn x :: acc)
-      stmts
-    |> Chc.of_list
-  in
-  Chc.union parent_rel eqnode_rel
+  let parent_tups = mk_parent_tuples stmts in
+  List.fold_left ~init:[]
+    ~f:(fun acc (parent, child) ->
+      let parent_str = stmt2str maps parent in
+      let child_str = stmt2str maps child in
+      (parent_str, child_str) :: acc)
+    parent_tups
+  |> List.fold2_exn ~init:[] ~f:(mk_ast_rels maps) parent_tups
+  |> Chc.of_list
 
 let read_and_split file =
   In_channel.read_lines file |> List.map ~f:(fun l -> String.split ~on:'\t' l)
@@ -431,7 +400,6 @@ let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
   Utils.parse_map alarm_dir maps.exp_map;
   let stmts = Utils.extract_stmts ast in
-  Maps.make_ast_map stmts maps.ast_map;
   let facts =
     make_cf_facts alarm_dir cfg maps.cfg_map
     |> Chc.union (make_ast_facts maps stmts)

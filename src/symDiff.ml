@@ -293,223 +293,137 @@ let extract_context sdiff =
 
 let rec mk_sdiff ctx cfg exp_map diff =
   match diff with
-  | D.InsertStmt (_, s) ->
-      SInsertStmt
-        ( ctx,
-          {
-            node = SStmt (match_stmt cfg exp_map s, s);
-            id = match_stmt_id cfg s.Cil.skind;
-            literal = H.string_of_stmt s;
-          } )
-  | D.DeleteStmt (_, s) ->
-      SDeleteStmt
-        ( ctx,
-          {
-            node = SStmt (match_stmt cfg exp_map s, s);
-            id = match_stmt_id cfg s.Cil.skind;
-            literal = H.string_of_stmt s;
-          } )
+  | D.InsertStmt (_, s) -> SInsertStmt (ctx, mk_stmt cfg exp_map s)
+  | D.DeleteStmt (_, s) -> SDeleteStmt (ctx, mk_stmt cfg exp_map s)
   | _ -> failwith "mk_sdiff: not implemented"
+
+and mk_exp cfg exp_map e =
+  {
+    node = SExp (match_exp cfg exp_map e, e);
+    id = match_exp_id exp_map e;
+    literal = H.string_of_exp e;
+  }
+
+and mk_lval cfg exp_map l =
+  {
+    node = SLval (match_lval cfg exp_map l, l);
+    id = match_lval_id exp_map l;
+    literal = H.string_of_lval l;
+  }
+
+and mk_exps cfg exp_map exps = List.map (fun e -> mk_exp cfg exp_map e) exps
+
+and mk_stmt cfg exp_map s =
+  {
+    node = SStmt (match_stmt cfg exp_map s, s);
+    id = match_stmt_id cfg s.Cil.skind;
+    literal = H.string_of_stmt s;
+  }
+
+and mk_stmts cfg exp_map stmts = List.map (fun s -> mk_stmt cfg exp_map s) stmts
+
+and match_instr cfg exp_map i =
+  let i = List.hd i in
+  match i with
+  | Cil.Set (l, e, _) ->
+      SElement.SSet (mk_lval cfg exp_map l, mk_exp cfg exp_map e)
+  | Cil.Call (Some l, e, es, _) ->
+      SElement.SCall
+        ( Some (mk_lval cfg exp_map l),
+          mk_exp cfg exp_map e,
+          mk_exps cfg exp_map es )
+  | Cil.Call (None, e, es, _) ->
+      SElement.SCall (None, mk_exp cfg exp_map e, mk_exps cfg exp_map es)
+  | _ -> failwith "match_stmt: not supported"
 
 and match_stmt cfg exp_map s =
   match s.Cil.skind with
   | Cil.If (e, s1, s2, _) ->
+      let node = SExp (match_exp cfg exp_map e, e) in
+      let id = match_exp_id exp_map e in
+      let literal = H.string_of_exp e in
       SElement.SIf
-        ( {
-            node = SExp (match_exp cfg exp_map e, e);
-            id = match_exp_id exp_map e;
-            literal = H.string_of_exp e;
-          },
-          List.map
-            (fun s ->
-              {
-                SElement.node = SStmt (match_stmt cfg exp_map s, s);
-                id = match_stmt_id cfg s.Cil.skind;
-                literal = H.string_of_stmt s;
-              })
-            s1.Cil.bstmts,
-          List.map
-            (fun s ->
-              {
-                SElement.node = SStmt (match_stmt cfg exp_map s, s);
-                id = match_stmt_id cfg s.Cil.skind;
-                literal = H.string_of_stmt s;
-              })
-            s2.Cil.bstmts )
-  | Cil.Instr i -> (
-      let i = List.hd i in
-      match i with
-      | Cil.Set (l, e, _) ->
-          SElement.SSet
-            ( {
-                node = SLval (match_lval cfg exp_map l, l);
-                id = match_lval_id exp_map l;
-                literal = H.string_of_lval l;
-              },
-              {
-                node = SExp (match_exp cfg exp_map e, e);
-                id = match_exp_id exp_map e;
-                literal = H.string_of_exp e;
-              } )
-      | Cil.Call (Some l, e, es, _) ->
-          SElement.SCall
-            ( Some
-                {
-                  node = SLval (match_lval cfg exp_map l, l);
-                  id = match_lval_id exp_map l;
-                  literal = H.string_of_lval l;
-                },
-              {
-                node = SExp (match_exp cfg exp_map e, e);
-                id = match_exp_id exp_map e;
-                literal = H.string_of_exp e;
-              },
-              List.map
-                (fun e ->
-                  {
-                    SElement.node = SExp (match_exp cfg exp_map e, e);
-                    id = match_exp_id exp_map e;
-                    literal = H.string_of_exp e;
-                  })
-                es )
-      | Cil.Call (None, e, es, _) ->
-          SElement.SCall
-            ( None,
-              {
-                node = SExp (match_exp cfg exp_map e, e);
-                id = match_exp_id exp_map e;
-                literal = H.string_of_exp e;
-              },
-              List.map
-                (fun e ->
-                  {
-                    SElement.node = SExp (match_exp cfg exp_map e, e);
-                    id = match_exp_id exp_map e;
-                    literal = H.string_of_exp e;
-                  })
-                es )
-      | _ -> failwith "match_stmt: not supported")
+        ( { node; id; literal },
+          mk_stmts cfg exp_map s1.Cil.bstmts,
+          mk_stmts cfg exp_map s2.Cil.bstmts )
+  | Cil.Instr i -> match_instr cfg exp_map i
   | Cil.Block b ->
       let bl =
         List.fold_left
           (fun (acc : SElement.sym_node list) s ->
-            {
-              node = SStmt (match_stmt cfg exp_map s, s);
-              id = match_stmt_id cfg s.Cil.skind;
-              literal = H.string_of_stmt s;
-            }
-            :: acc)
+            mk_stmt cfg exp_map s :: acc)
           [] b.bstmts
         |> List.rev
       in
       SElement.SBlock bl
   | Cil.Return (Some e, _) ->
-      SElement.SReturn
-        (Some
-           {
-             node = SExp (match_exp cfg exp_map e, e);
-             id = match_exp_id exp_map e;
-             literal = H.string_of_exp e;
-           })
+      let node = SExp (match_exp cfg exp_map e, e) in
+      let id = match_exp_id exp_map e in
+      let literal = H.string_of_exp e in
+      SElement.SReturn (Some { node; id; literal })
   | Cil.Return (None, _) -> SElement.SReturn None
   | Cil.Goto (s, _) ->
-      SElement.SGoto
-        {
-          node = SStmt (match_stmt cfg exp_map !s, !s);
-          id = match_stmt_id cfg !s.Cil.skind;
-          literal = H.string_of_stmt !s;
-        }
+      let node = SStmt (match_stmt cfg exp_map !s, !s) in
+      let id = match_stmt_id cfg !s.Cil.skind in
+      let literal = H.string_of_stmt !s in
+      SElement.SGoto { node; id; literal }
   | _ -> failwith "match_stmt: not implemented"
+
+and mk_sexp cfg exp_map e =
+  let node = SExp (match_exp cfg exp_map e, e) in
+  let id = match_exp_id exp_map e in
+  let literal = H.string_of_exp e in
+  { node; id; literal }
 
 and match_exp cfg exp_map e =
   match e with
   | Cil.Const c -> SElement.SConst (to_sconst c)
   | Cil.Lval l ->
-      SELval
-        {
-          node = SLval (match_lval cfg exp_map l, l);
-          id = match_lval_id exp_map l;
-          literal = H.string_of_lval l;
-        }
+      let node = SLval (match_lval cfg exp_map l, l) in
+      let id = match_lval_id exp_map l in
+      let literal = H.string_of_lval l in
+      SELval { node; id; literal }
   | Cil.SizeOf t -> SSizeOf (to_styp t)
   | Cil.SizeOfE e' ->
-      SSizeOfE
-        {
-          node = SExp (match_exp cfg exp_map e', e');
-          id = match_exp_id exp_map e';
-          literal = H.string_of_exp e';
-        }
+      let node = SExp (match_exp cfg exp_map e', e') in
+      let id = match_exp_id exp_map e' in
+      let literal = H.string_of_exp e' in
+      SSizeOfE { node; id; literal }
   | Cil.SizeOfStr s -> SSizeOfStr s
   | Cil.BinOp (op, e1, e2, t) ->
       SBinOp
-        ( to_sbinop op,
-          {
-            node = SExp (match_exp cfg exp_map e1, e1);
-            id = match_exp_id exp_map e1;
-            literal = H.string_of_exp e1;
-          },
-          {
-            node = SExp (match_exp cfg exp_map e2, e2);
-            id = match_exp_id exp_map e2;
-            literal = H.string_of_exp e2;
-          },
-          to_styp t )
+        (to_sbinop op, mk_sexp cfg exp_map e1, mk_sexp cfg exp_map e2, to_styp t)
   | Cil.UnOp (op, e, t) ->
-      SUnOp
-        ( to_sunop op,
-          {
-            node = SExp (match_exp cfg exp_map e, e);
-            id = match_exp_id exp_map e;
-            literal = H.string_of_exp e;
-          },
-          to_styp t )
+      let node = SExp (match_exp cfg exp_map e, e) in
+      let id = match_exp_id exp_map e in
+      let literal = H.string_of_exp e in
+      SUnOp (to_sunop op, { node; id; literal }, to_styp t)
   | Cil.CastE (t, e) ->
-      SCastE
-        ( to_styp t,
-          {
-            node = SExp (match_exp cfg exp_map e, e);
-            id = match_exp_id exp_map e;
-            literal = H.string_of_exp e;
-          } )
+      let node = SExp (match_exp cfg exp_map e, e) in
+      let id = match_exp_id exp_map e in
+      let literal = H.string_of_exp e in
+      SCastE (to_styp t, { node; id; literal })
   | Cil.Question (e1, e2, e3, t) ->
       SQuestion
-        ( {
-            node = SExp (match_exp cfg exp_map e1, e1);
-            id = match_exp_id exp_map e1;
-            literal = H.string_of_exp e1;
-          },
-          {
-            node = SExp (match_exp cfg exp_map e2, e2);
-            id = match_exp_id exp_map e2;
-            literal = H.string_of_exp e2;
-          },
-          {
-            node = SExp (match_exp cfg exp_map e3, e3);
-            id = match_exp_id exp_map e3;
-            literal = H.string_of_exp e3;
-          },
+        ( mk_sexp cfg exp_map e1,
+          mk_sexp cfg exp_map e2,
+          mk_sexp cfg exp_map e3,
           to_styp t )
   | Cil.AddrOf l ->
-      SAddrOf
-        {
-          node = SLval (match_lval cfg exp_map l, l);
-          id = match_lval_id exp_map l;
-          literal = H.string_of_lval l;
-        }
+      let node = SLval (match_lval cfg exp_map l, l) in
+      let id = match_lval_id exp_map l in
+      let literal = H.string_of_lval l in
+      SAddrOf { node; id; literal }
   | Cil.StartOf l ->
-      SStartOf
-        {
-          node = SLval (match_lval cfg exp_map l, l);
-          id = match_lval_id exp_map l;
-          literal = H.string_of_lval l;
-        }
+      let node = SLval (match_lval cfg exp_map l, l) in
+      let id = match_lval_id exp_map l in
+      let literal = H.string_of_lval l in
+      SStartOf { node; id; literal }
   | Cil.AddrOfLabel stmt ->
-      SAddrOfLabel
-        {
-          node = SStmt (match_stmt cfg exp_map !stmt, !stmt);
-          id = match_stmt_id cfg !stmt.Cil.skind;
-          literal = H.string_of_stmt !stmt;
-        }
+      let node = SStmt (match_stmt cfg exp_map !stmt, !stmt) in
+      let id = match_stmt_id cfg !stmt.Cil.skind in
+      let literal = H.string_of_stmt !stmt in
+      SAddrOfLabel { node; id; literal }
   | _ -> failwith "match_exp: not implemented"
 
 and match_lval cfg exp_map l =
@@ -518,12 +432,10 @@ and match_lval cfg exp_map l =
     match lhost with
     | Cil.Var v -> SElement.SVar { vname = v.vname; vtype = to_styp v.vtype }
     | Cil.Mem e ->
-        SElement.SMem
-          {
-            node = SExp (match_exp cfg exp_map e, e);
-            id = match_exp_id exp_map e;
-            literal = H.string_of_exp e;
-          }
+        let node = SExp (match_exp cfg exp_map e, e) in
+        let id = match_exp_id exp_map e in
+        let literal = H.string_of_exp e in
+        SElement.SMem { node; id; literal }
   in
   let soffset = match_offset cfg exp_map offset in
   Lval (slhost, soffset)
@@ -532,21 +444,15 @@ and match_offset cfg exp_map o =
   match o with
   | Cil.NoOffset -> SElement.SNoOffset
   | Cil.Field (f, o) ->
-      SElement.SField
-        ( {
-            fcomp = { cname = f.fcomp.cname; cstruct = true };
-            fname = f.fname;
-            ftype = to_styp f.ftype;
-          },
-          match_offset cfg exp_map o )
+      let fcomp = { cname = f.fcomp.cname; cstruct = true } in
+      let fname = f.fname in
+      let ftype = to_styp f.ftype in
+      SElement.SField ({ fcomp; fname; ftype }, match_offset cfg exp_map o)
   | Cil.Index (e, o) ->
-      SElement.SIndex
-        ( {
-            node = SExp (match_exp cfg exp_map e, e);
-            id = match_exp_id exp_map e;
-            literal = H.string_of_exp e;
-          },
-          match_offset cfg exp_map o )
+      let node = SExp (match_exp cfg exp_map e, e) in
+      let id = match_exp_id exp_map e in
+      let literal = H.string_of_exp e in
+      SElement.SIndex ({ node; id; literal }, match_offset cfg exp_map o)
 
 and match_fieldinfo f =
   {
@@ -556,11 +462,7 @@ and match_fieldinfo f =
   }
 
 and match_compinfo c =
-  {
-    SElement.cname = c.Cil.cname;
-    (* SElement.cfields = List.map match_fieldinfo c.Cil.cfields; *)
-    SElement.cstruct = c.Cil.cstruct;
-  }
+  { SElement.cname = c.Cil.cname; SElement.cstruct = c.Cil.cstruct }
 
 and extract_fun_name g =
   match g with
@@ -573,51 +475,36 @@ and match_context cfg exp_map lst =
   | hd :: tl -> (
       match hd with
       | D.CilElement.EStmt s ->
-          {
-            id = match_stmt_id cfg s.Cil.skind;
-            node = SStmt (SSNull, s);
-            literal = H.string_of_stmt s;
-          }
-          :: match_context cfg exp_map tl
+          let id = match_stmt_id cfg s.Cil.skind in
+          let node = SStmt (SSNull, s) in
+          let literal = H.string_of_stmt s in
+          { id; node; literal } :: match_context cfg exp_map tl
       | D.CilElement.EExp e ->
-          {
-            id = match_exp_id exp_map e;
-            node = SExp (SENULL, e);
-            literal = H.string_of_exp e;
-          }
-          :: match_context cfg exp_map tl
+          let id = match_exp_id exp_map e in
+          let node = SExp (SENULL, e) in
+          let literal = H.string_of_exp e in
+          { id; node; literal } :: match_context cfg exp_map tl
       | D.CilElement.ELval l ->
-          {
-            id = match_lval_id exp_map l;
-            node = SLval (SLNull, l);
-            literal = H.string_of_lval l;
-          }
-          :: match_context cfg exp_map tl
+          let id = match_lval_id exp_map l in
+          let node = SLval (SLNull, l) in
+          let literal = H.string_of_lval l in
+          { id; node; literal } :: match_context cfg exp_map tl
       | D.CilElement.EGlobal g ->
-          {
-            id = extract_fun_name g;
-            node = SGlob (SGNull, g);
-            literal = H.string_of_global g;
-          }
-          :: match_context cfg exp_map tl
+          let id = extract_fun_name g in
+          let node = SGlob (SGNull, g) in
+          let literal = H.string_of_global g in
+          { id; node; literal } :: match_context cfg exp_map tl
       | _ -> failwith "match_context: not implemented")
 
 and match_exp_id exp_map e =
   let candidate =
     match e with
     | Cil.Const c -> match_const c exp_map
-    | Cil.Lval l ->
-        Utils.SparrowParser.s_lv l |> Hashtbl.find_opt exp_map
-        (* Hashtbl.fold
-           (fun k v acc ->
-             if H.string_of_lval l |> H.subset v then (k, v) :: acc else acc)
-           exp_map [] *)
+    | Cil.Lval l -> Utils.SparrowParser.s_lv l |> Hashtbl.find_opt exp_map
     | Cil.SizeOf t -> match_sizeof t exp_map
     | Cil.SizeOfE _ | Cil.BinOp _ | Cil.UnOp _ | Cil.CastE _ | Cil.Question _ ->
         Utils.SparrowParser.s_exp e |> Hashtbl.find_opt exp_map
-    | _ ->
-        H.print_ekind e;
-        failwith "match_exp: not implemented"
+    | _ -> failwith "match_exp: not implemented"
   in
   if Option.is_none candidate then "None" else Option.get candidate
 
@@ -730,13 +617,7 @@ and to_styp t =
   | Cil.TEnum _ -> failwith "TEnum: not implemented"
   | Cil.TBuiltin_va_list _ -> failwith "not supported"
 
-and to_scompinfo c =
-  {
-    cname = c.Cil.cname;
-    (* cfields =
-       List.fold_left (fun acc f -> to_sfieldinfo f :: acc) [] c.cfields; *)
-    cstruct = c.cstruct;
-  }
+and to_scompinfo c = { cname = c.Cil.cname; cstruct = c.cstruct }
 
 and to_sfieldinfo f =
   { fcomp = to_scompinfo f.Cil.fcomp; fname = f.fname; ftype = to_styp f.ftype }
@@ -857,13 +738,6 @@ class globVisitor =
 let get_gvars ast =
   let gv = new globVisitor in
   Cil.visitCilFile gv ast
-(*
-   let reduce_cfg cfg func_name =
-     Hashtbl.fold
-       (fun k v acc ->
-         let vname = Str.split (Str.regexp_string "-") v |> List.hd in
-         if vname = func_name then H.CfgMap.M.add k v acc else acc)
-       cfg H.CfgMap.M.empty *)
 
 let get_patch_range siblings patch_loc node_map ast_map =
   if patch_loc = -1 then ([], [])
@@ -974,72 +848,62 @@ module DiffJson = struct
     | SPtr t -> `Assoc [ ("ptr", styp_to_sym t) ]
     | SArray t -> `Assoc [ ("array", styp_to_sym t) ]
     | SNamed t ->
-        `Assoc
-          [
-            ( "named",
-              `Assoc
-                [
-                  ("tname", `String t.sym_tname);
-                  ("typ", styp_to_sym t.sym_ttype);
-                ] );
-          ]
+        let tname_json = ("tname", `String t.sym_tname) in
+        let typ_json = ("typ", styp_to_sym t.sym_ttype) in
+        `Assoc [ ("named", `Assoc [ tname_json; typ_json ]) ]
     | SFun (t, lst, b) ->
         let slist = match lst with Some lst -> lst | None -> [] in
-        `Assoc
-          [
-            ( "fun",
-              `Assoc
-                [
-                  ("typ", styp_to_sym t);
-                  ( "args",
-                    `List
-                      (List.fold_left
-                         (fun acc (s, ty) -> `String s :: styp_to_sym ty :: acc)
-                         [] slist
-                      |> List.rev) );
-                  ("body", `Bool b);
-                ] );
-          ]
+        let typ_json = ("typ", styp_to_sym t) in
+        let args_lst =
+          List.fold_left
+            (fun acc (s, ty) -> `String s :: styp_to_sym ty :: acc)
+            [] slist
+          |> List.rev
+        in
+        let args_json = ("args", `List args_lst) in
+        let body_json = ("body", `Bool b) in
+        `Assoc [ ("fun", `Assoc [ typ_json; args_json; body_json ]) ]
     | SComp c ->
-        `Assoc
-          [
-            ( "comp",
-              `Assoc [ ("cname", `String c.cname); ("struct", `Bool c.cstruct) ]
-            );
-          ]
+        let cname_json = ("cname", `String c.cname) in
+        let struct_json = ("struct", `Bool c.cstruct) in
+        let comp_json = ("comp", `Assoc [ cname_json; struct_json ]) in
+        `Assoc [ comp_json ]
     | _ -> failwith "styp_to_sym: not implemented"
 
   let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
 
   let rec mk_json_obj saction (caction : D.t) =
     let context_json (context : sym_context) =
-      ( "context",
-        `Assoc
-          [
-            ("func_name", `String context.func_name);
-            ( "parent",
-              `List
-                (List.fold_left
-                   (fun acc node -> `String node.id :: acc)
-                   [] context.parent) );
-          ] )
+      let func_name_json = ("func_name", `String context.func_name) in
+      let sid_lst =
+        `List
+          (List.fold_left
+             (fun acc node -> `String node.id :: acc)
+             [] context.parent)
+      in
+      let parent_json = ("parent", sid_lst) in
+      ("context", `Assoc [ func_name_json; parent_json ])
     in
     match (saction, caction) with
     | SInsertStmt (context1, snode), InsertStmt _ ->
-        `Assoc
-          [
-            ("action", `String "insert_stmt");
-            context_json context1;
-            ("change", sstmt_to_json snode);
-          ]
+        let action_json = ("action", `String "insert_stmt") in
+        let ctx_json = context_json context1 in
+        let change_json = ("change", sstmt_to_json snode) in
+        `Assoc [ action_json; ctx_json; change_json ]
     | SDeleteStmt (context1, snode), DeleteStmt _ ->
-        `Assoc
-          [
-            ("action", `String "delete_stmt");
-            context_json context1;
-            ("change", sstmt_to_json snode);
-          ]
+        let action_json = ("action", `String "delete_stmt") in
+        let ctx_json = context_json context1 in
+        let change_json = ("change", sstmt_to_json snode) in
+        `Assoc [ action_json; ctx_json; change_json ]
     | _ -> failwith "mk_json_obj: not implemented"
+
+  and sexps_to_json lst =
+    `List
+      (List.fold_left (fun acc x -> sexp_to_json x :: acc) [] lst |> List.rev)
+
+  and sstmts_to_json lst =
+    `List
+      (List.fold_left (fun acc x -> sstmt_to_json x :: acc) [] lst |> List.rev)
 
   and sstmt_to_json (sstmt : sym_node) =
     let node = sstmt.node in
@@ -1050,123 +914,65 @@ module DiffJson = struct
     in
     match stmt with
     | SIf (exp1, tb1, eb1) ->
-        `Assoc
-          [
-            ( "if",
-              `Assoc
-                [
-                  ( "node",
-                    `Assoc
-                      [
-                        ("cond", sexp_to_json exp1);
-                        ( "then",
-                          `List
-                            (List.rev
-                               (List.fold_left
-                                  (fun acc x -> sstmt_to_json x :: acc)
-                                  [] tb1)) );
-                        ( "else",
-                          `List
-                            (List.rev
-                               (List.fold_left
-                                  (fun acc x -> sstmt_to_json x :: acc)
-                                  [] eb1)) );
-                      ] );
-                  ("id", `String sstmt.id);
-                  ("literal", `String sstmt.literal);
-                ] );
-          ]
+        let cond_json = ("cond", sexp_to_json exp1) in
+        let then_json = ("then", sstmts_to_json tb1) in
+        let else_json = ("else", sstmts_to_json eb1) in
+        let node_json = ("node", `Assoc [ cond_json; then_json; else_json ]) in
+        let id_json = ("id", `String sstmt.id) in
+        let literal_json = ("literal", `String sstmt.literal) in
+        let if_json = ("if", `Assoc [ node_json; id_json; literal_json ]) in
+        `Assoc [ if_json ]
     | SSet (lv1, e1) ->
-        `Assoc
-          [
-            ( "set",
-              `Assoc
-                [
-                  ( "node",
-                    `Assoc
-                      [ ("lval", slval_to_json lv1); ("exp", sexp_to_json e1) ]
-                  );
-                  ("id", `String sstmt.id);
-                  ("literal", `String sstmt.literal);
-                ] );
-          ]
+        let lval_json = ("lval", slval_to_json lv1) in
+        let exp_json = ("exp", sexp_to_json e1) in
+        let node_json = ("node", `Assoc [ lval_json; exp_json ]) in
+        let id_json = ("id", `String sstmt.id) in
+        let literal_json = ("literal", `String sstmt.literal) in
+        let set_json = ("set", `Assoc [ node_json; id_json; literal_json ]) in
+        `Assoc [ set_json ]
     | SCall (Some lv1, e1, es1) ->
-        `Assoc
-          [
-            ( "call",
-              `Assoc
-                [
-                  ( "node",
-                    `Assoc
-                      [
-                        ("lval", slval_to_json lv1);
-                        ("exp", sexp_to_json e1);
-                        ( "exps",
-                          `List
-                            (List.rev
-                               (List.fold_left
-                                  (fun acc x -> sexp_to_json x :: acc)
-                                  [] es1)) );
-                      ] );
-                  ("id", `String sstmt.id);
-                  ("literal", `String sstmt.literal);
-                ] );
-          ]
+        let lval_json = ("lval", slval_to_json lv1) in
+        let exp_json = ("exp", sexp_to_json e1) in
+        let exps_json = ("exps", sexps_to_json es1) in
+        let node_json = ("node", `Assoc [ lval_json; exp_json; exps_json ]) in
+        let id_json = ("id", `String sstmt.id) in
+        let literal_json = ("literal", `String sstmt.literal) in
+        let call_json = ("call", `Assoc [ node_json; id_json; literal_json ]) in
+        `Assoc [ call_json ]
     | SCall (None, e1, es1) ->
-        `Assoc
-          [
-            ( "call",
-              `Assoc
-                [
-                  ( "node",
-                    `Assoc
-                      [
-                        ("lval", `String "None");
-                        ("exp", sexp_to_json e1);
-                        ( "exps",
-                          `List
-                            (List.rev
-                               (List.fold_left
-                                  (fun acc x -> sexp_to_json x :: acc)
-                                  [] es1)) );
-                      ] );
-                  ("id", `String sstmt.id);
-                  ("literal", `String sstmt.literal);
-                ] );
-          ]
+        let lval_json = ("lval", `String "None") in
+        let exp_json = ("exp", sexp_to_json e1) in
+        let exps_json = ("exps", sexps_to_json es1) in
+        let node_json = ("node", `Assoc [ lval_json; exp_json; exps_json ]) in
+        let id_json = ("id", `String sstmt.id) in
+        let literal_json = ("literal", `String sstmt.literal) in
+        let call_json = ("call", `Assoc [ node_json; id_json; literal_json ]) in
+        `Assoc [ call_json ]
     | SReturn (Some e1) ->
-        `Assoc
-          [
-            ( "return",
-              `Assoc
-                [
-                  ("node", `Assoc [ ("exp", sexp_to_json e1) ]);
-                  ("id", `String sstmt.id);
-                  ("literal", `String sstmt.literal);
-                ] );
-          ]
+        let exp_json = ("exp", sexp_to_json e1) in
+        let node_json = ("node", `Assoc [ exp_json ]) in
+        let id_json = ("id", `String sstmt.id) in
+        let literal_json = ("literal", `String sstmt.literal) in
+        let return_json =
+          ("return", `Assoc [ node_json; id_json; literal_json ])
+        in
+        `Assoc [ return_json ]
     | SReturn None ->
-        `Assoc
-          [
-            ( "return",
-              `Assoc
-                [
-                  ("node", `Assoc [ ("exp", `String "None") ]);
-                  ("id", `String sstmt.id);
-                  ("literal", `String sstmt.literal);
-                ] );
-          ]
+        let exp_json = ("exp", `String "None") in
+        let node_json = ("node", `Assoc [ exp_json ]) in
+        let id_json = ("id", `String sstmt.id) in
+        let literal_json = ("literal", `String sstmt.literal) in
+        let return_json =
+          ("return", `Assoc [ node_json; id_json; literal_json ])
+        in
+        `Assoc [ return_json ]
     | SGoto s1 ->
-        `Assoc
-          [
-            ( "goto",
-              `Assoc
-                [
-                  ("node", `Assoc [ ("stmt", sstmt_to_json s1) ]);
-                  ("id", `String sstmt.id);
-                  ("literal", `String sstmt.literal);
-                ] );
-          ]
+        let stmt_json = ("stmt", sstmt_to_json s1) in
+        let node_json = ("node", `Assoc [ stmt_json ]) in
+        let id_json = ("id", `String sstmt.id) in
+        let literal_json = ("literal", `String sstmt.literal) in
+        let goto_json = ("goto", `Assoc [ node_json; id_json; literal_json ]) in
+        `Assoc [ goto_json ]
     | _ ->
         (* SElement.pp_sstmt Format.std_formatter sstmt; *)
         `Null
@@ -1180,68 +986,48 @@ module DiffJson = struct
     in
     match exp with
     | SConst const ->
-        `Assoc
-          [
-            ("node", `Assoc [ ("const", sconst_to_json const) ]);
-            ("id", `String sexp.id);
-            ("literal", `String sexp.literal);
-          ]
+        let const_json = ("const", sconst_to_json const) in
+        let node_json = ("node", `Assoc [ const_json ]) in
+        let id_json = ("id", `String sexp.id) in
+        let literal_json = ("literal", `String sexp.literal) in
+        `Assoc [ node_json; id_json; literal_json ]
     | SELval l -> `Assoc [ ("lval", slval_to_json l) ]
     | SSizeOfE e1 ->
-        `Assoc
-          [
-            ("node", `Assoc [ ("sizeof", `Assoc [ ("e", sexp_to_json e1) ]) ]);
-            ("id", `String sexp.id);
-            ("literal", `String sexp.literal);
-          ]
+        let e_json = ("exp", sexp_to_json e1) in
+        let sizeof_json = ("sizeof", `Assoc [ e_json ]) in
+        let node_json = ("node", `Assoc [ sizeof_json ]) in
+        let id_json = ("id", `String sexp.id) in
+        let literal_json = ("literal", `String sexp.literal) in
+        `Assoc [ node_json; id_json; literal_json ]
     | SBinOp (op1, e1_1, e2_1, typ1) ->
-        `Assoc
-          [
-            ( "node",
-              `Assoc
-                [
-                  ( "binop",
-                    `Assoc
-                      [
-                        ("op", `String (sbinop_to_sym op1));
-                        ("typ", styp_to_sym typ1);
-                        ("e1", sexp_to_json e1_1);
-                        ("e2", sexp_to_json e2_1);
-                      ] );
-                ] );
-            ("id", `String sexp.id);
-            ("literal", `String sexp.literal);
-          ]
+        let op_json = ("op", `String (sbinop_to_sym op1)) in
+        let typ_json = ("typ", styp_to_sym typ1) in
+        let e1_json = ("e1", sexp_to_json e1_1) in
+        let e2_json = ("e2", sexp_to_json e2_1) in
+        let binop_json =
+          ("binop", `Assoc [ op_json; typ_json; e1_json; e2_json ])
+        in
+        let node_json = ("node", `Assoc [ binop_json ]) in
+        let id_json = ("id", `String sexp.id) in
+        let literal_json = ("literal", `String sexp.literal) in
+        `Assoc [ node_json; id_json; literal_json ]
     | SCastE (typ, e1) ->
-        `Assoc
-          [
-            ( "node",
-              `Assoc
-                [
-                  ( "cast",
-                    `Assoc [ ("typ", styp_to_sym typ); ("e", sexp_to_json e1) ]
-                  );
-                ] );
-            ("id", `String sexp.id);
-            ("literal", `String sexp.literal);
-          ]
+        let typ_json = ("typ", styp_to_sym typ) in
+        let e_json = ("e", sexp_to_json e1) in
+        let cast_json = ("cast", `Assoc [ typ_json; e_json ]) in
+        let node_json = ("node", `Assoc [ cast_json ]) in
+        let id_json = ("id", `String sexp.id) in
+        let literal_json = ("literal", `String sexp.literal) in
+        `Assoc [ node_json; id_json; literal_json ]
     | SUnOp (op1, e1_1, typ1) ->
-        `Assoc
-          [
-            ( "node",
-              `Assoc
-                [
-                  ( "unop",
-                    `Assoc
-                      [
-                        ("op", `String (sunop_to_sym op1));
-                        ("typ", styp_to_sym typ1);
-                        ("e", sexp_to_json e1_1);
-                      ] );
-                ] );
-            ("id", `String sexp.id);
-            ("literal", `String sexp.literal);
-          ]
+        let op_json = ("op", `String (sunop_to_sym op1)) in
+        let typ_json = ("typ", styp_to_sym typ1) in
+        let e_json = ("e", sexp_to_json e1_1) in
+        let unop_json = ("unop", `Assoc [ op_json; typ_json; e_json ]) in
+        let node_json = ("node", `Assoc [ unop_json ]) in
+        let id_json = ("id", `String sexp.id) in
+        let literal_json = ("literal", `String sexp.literal) in
+        `Assoc [ node_json; id_json; literal_json ]
     | _ ->
         SElement.pp_sexp Format.std_formatter exp;
         failwith "sexp_to_json: undefined sexp"
@@ -1256,86 +1042,63 @@ module DiffJson = struct
     match lval with
     | SLNull -> `Null
     | Lval (lhost, offset) ->
-        `Assoc
-          [
-            ( "node",
-              `Assoc
-                [
-                  ( "lval",
-                    `Assoc
-                      [
-                        ("lhost", slhost_to_json lhost);
-                        ("offset", soffset_to_json offset);
-                      ] );
-                ] );
-            ("id", `String slval.id);
-            ("literal", `String slval.literal);
-          ]
+        let lhost_json = ("lhost", slhost_to_json lhost) in
+        let offset_json = ("offset", soffset_to_json offset) in
+        let lval_json = ("lval", `Assoc [ lhost_json; offset_json ]) in
+        let node_json = ("node", `Assoc [ lval_json ]) in
+        let id_json = ("id", `String slval.id) in
+        let literal_json = ("literal", `String slval.literal) in
+        `Assoc [ node_json; id_json; literal_json ]
 
   and slhost_to_json lhost =
     match lhost with
     | SVar v ->
-        `Assoc
-          [
-            ( "var",
-              `Assoc [ ("name", `String v.vname); ("typ", styp_to_sym v.vtype) ]
-            );
-          ]
+        let name_json = ("name", `String v.vname) in
+        let typ_json = ("typ", styp_to_sym v.vtype) in
+        `Assoc [ ("var", `Assoc [ name_json; typ_json ]) ]
     | SMem e -> `Assoc [ ("mem", `Assoc [ ("exp", sexp_to_json e) ]) ]
 
   and soffset_to_json offset =
     match offset with
     | SNoOffset -> `String "nooffset"
     | SField (f, o) ->
-        `Assoc
-          [
-            ( "field",
-              `Assoc
-                [ ("field", sfield_to_json f); ("offset", soffset_to_json o) ]
-            );
-          ]
+        let field_json = ("field", sfield_to_json f) in
+        let offset_json = ("offset", soffset_to_json o) in
+        `Assoc [ ("field", `Assoc [ field_json; offset_json ]) ]
     | SIndex (e, o) ->
-        `Assoc
-          [
-            ( "index",
-              `Assoc [ ("exp", sexp_to_json e); ("offset", soffset_to_json o) ]
-            );
-          ]
+        let exp_json = ("exp", sexp_to_json e) in
+        let offset_json = ("offset", soffset_to_json o) in
+        `Assoc [ ("index", `Assoc [ exp_json; offset_json ]) ]
 
   and sfield_to_json f =
-    `Assoc
-      [
-        ( "field",
-          `Assoc
-            [
-              ("comp", scomp_to_json f.fcomp);
-              ("name", `String f.fname);
-              ("typ", styp_to_sym f.ftype);
-            ] );
-      ]
+    let comp_json = ("comp", scomp_to_json f.fcomp) in
+    let name_json = ("name", `String f.fname) in
+    let typ_json = ("typ", styp_to_sym f.ftype) in
+    `Assoc [ ("field", `Assoc [ comp_json; name_json; typ_json ]) ]
 
   and scomp_to_json c =
-    `Assoc
-      [
-        ( "comp",
-          `Assoc [ ("name", `String c.cname); ("struct", `Bool c.cstruct) ] );
-      ]
+    let name_json = ("name", `String c.cname) in
+    let struct_json = ("struct", `Bool c.cstruct) in
+    `Assoc [ ("comp", `Assoc [ name_json; struct_json ]) ]
 
   and sconst_to_json (sconst : SElement.sym_const) =
     match sconst with
     | SIntConst i ->
-        `Assoc
-          [ ("type", `String "int"); ("literal", `String (Int.to_string i)) ]
+        let type_json = ("type", `String "int") in
+        let literal_json = ("literal", `String (Int.to_string i)) in
+        `Assoc [ type_json; literal_json ]
     | SFloatConst f ->
-        `Assoc
-          [
-            ("type", `String "float"); ("literal", `String (Float.to_string f));
-          ]
+        let type_json = ("type", `String "float") in
+        let literal_json = ("literal", `String (Float.to_string f)) in
+        `Assoc [ type_json; literal_json ]
     | SStringConst s ->
-        `Assoc [ ("type", `String "str"); ("literal", `String s) ]
+        let type_json = ("type", `String "str") in
+        let literal_json = ("literal", `String s) in
+        `Assoc [ type_json; literal_json ]
     | SCharConst c ->
-        `Assoc
-          [ ("type", `String "char"); ("literal", `String (String.make 1 c)) ]
+        let type_json = ("type", `String "char") in
+        let literal_json = ("literal", `String (String.make 1 c)) in
+        `Assoc [ type_json; literal_json ]
 end
 
 let to_json sym_list conc_list out_dir =

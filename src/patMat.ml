@@ -127,17 +127,7 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   L.info "Compute AST pattern...";
   let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
   let parent_tups =
-    List.fold_left ~init:[]
-      ~f:(fun acc s ->
-        match s.Cil.skind with
-        | Cil.Block b | Cil.Loop (b, _, _, _) ->
-            Parser.mk_parent_tuples s b.bstmts @ acc
-        | Cil.If (_, tb, eb, _) ->
-            Parser.mk_parent_tuples s tb.bstmts
-            @ Parser.mk_parent_tuples s eb.bstmts
-            @ acc
-        | _ -> acc)
-      stmts
+    Parser.mk_parent_tuples stmts
     |> List.fold_left ~init:[] ~f:(fun acc (p, c) ->
            if Hashtbl.mem ast_map p && Hashtbl.mem ast_map c then
              ( Hashtbl.find ast_map p |> string_of_int,
