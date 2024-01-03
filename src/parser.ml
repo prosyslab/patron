@@ -4,8 +4,6 @@ module Map = Stdlib.Map
 module L = Logger
 module Sys = Stdlib.Sys
 
-let ast_node_cnt = ref 1
-
 let parse_loc loc =
   let parsed = Str.split (Str.regexp ":") loc in
   if List.length parsed <> 2 then { Maps.CfgNode.file = ""; line = -1 }
@@ -245,29 +243,27 @@ let parse_chc chc_file =
   |> Chc.of_list
 
 let mk_parent_tuples stmts =
-  let aux parent stmts =
-    List.fold_left ~init:[] ~f:(fun acc s -> (parent, s) :: acc) stmts
+  let aux parent stmts acc =
+    List.fold_left ~init:acc ~f:(fun a s -> (parent, s) :: a) stmts
   in
   List.fold_left ~init:[]
     ~f:(fun acc s ->
       match s.Cil.skind with
-      | Cil.Block b | Cil.Loop (b, _, _, _) -> aux s b.bstmts @ acc
-      | Cil.If (_, tb, eb, _) -> aux s tb.bstmts @ aux s eb.bstmts @ acc
+      | Cil.Block b | Cil.Loop (b, _, _, _) -> aux s b.bstmts acc
+      | Cil.If (_, tb, eb, _) -> acc |> aux s tb.bstmts |> aux s eb.bstmts
       | _ -> acc)
     stmts
 
 let eq_instrs ast_instr cfg_instr =
-  if List.length ast_instr = 0 then false
-  else
-    match (List.hd_exn ast_instr, cfg_instr) with
-    | Cil.Call (_, _, _, loc), Maps.CfgNode.CCall (_, _, cloc) ->
-        SymDiff.eq_line loc cloc
-    | Cil.Set (_, _, loc), Maps.CfgNode.CSet (_, _, cloc)
-    | Cil.Set (_, _, loc), Maps.CfgNode.CAlloc (_, _, cloc)
-    | Cil.Set (_, _, loc), Maps.CfgNode.CSalloc (_, _, cloc)
-    | Cil.Set (_, _, loc), Maps.CfgNode.CFalloc (_, _, cloc) ->
-        SymDiff.eq_line loc cloc
-    | _ -> false
+  match (ast_instr, cfg_instr) with
+  | [ Cil.Call (_, _, _, loc) ], Maps.CfgNode.CCall (_, _, cloc) ->
+      SymDiff.eq_line loc cloc
+  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CSet (_, _, cloc)
+  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CAlloc (_, _, cloc)
+  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CSalloc (_, _, cloc)
+  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CFalloc (_, _, cloc) ->
+      SymDiff.eq_line loc cloc
+  | _ -> false
 
 let lookup_eq_nodes ast_node cfg =
   Hashtbl.fold
@@ -283,33 +279,28 @@ let lookup_eq_nodes ast_node cfg =
     cfg []
   |> fun x -> if List.length x = 0 then None else Some (List.hd_exn x)
 
-let match_eq_nodes ast_node term maps =
-  let cfg = maps.Maps.cfg_map in
-  let ast_map = maps.Maps.ast_map in
-  let node_map = maps.Maps.node_map in
-  let ast_id =
-    if Hashtbl.mem ast_map ast_node then
-      Some (Hashtbl.find ast_map ast_node |> string_of_int)
-    else None
-  in
-  if Option.is_none ast_id then []
-  else
-    let cfg_id = lookup_eq_nodes ast_node cfg in
-    if Option.is_none cfg_id then []
-    else (
-      Hashtbl.add node_map (Option.value_exn cfg_id) (Option.value_exn ast_id);
-      [
-        Chc.Elt.FuncApply ("EqNode", [ mk_term (Option.value_exn cfg_id); term ]);
-      ])
+let match_eq_nodes maps ast_node term =
+  let open Option in
+  let ast_id = Hashtbl.find_opt maps.Maps.ast_map ast_node >>| string_of_int in
+  let cfg_id = lookup_eq_nodes ast_node maps.Maps.cfg_map in
+  let cfg_term = cfg_id >>| mk_term in
+  let monadic_add a b = a >>= fun a -> b >>| Hashtbl.add maps.Maps.node_map a in
+  let mk_eqnode cfg_term = Chc.Elt.FuncApply ("EqNode", [ cfg_term; term ]) in
+  monadic_add cfg_id ast_id *> map ~f:mk_eqnode cfg_term |> to_list
+
+let astnode_cnt = ref 1
+
+let new_astnode_id maps stmt =
+  let id = "AstNode-" ^ string_of_int !astnode_cnt in
+  incr astnode_cnt;
+  Hashtbl.add maps.Maps.ast_map stmt !astnode_cnt;
+  id
 
 let stmt2str maps stmt =
   if Hashtbl.mem maps.Maps.ast_map stmt then
-    Hashtbl.find maps.ast_map stmt |> string_of_int |> fun n ->
-    [ "AstNode"; n ] |> String.concat ~sep:"-"
-  else (
-    Hashtbl.add maps.Maps.ast_map stmt !ast_node_cnt;
-    incr ast_node_cnt;
-    [ "AstNode"; string_of_int !ast_node_cnt ] |> String.concat ~sep:"-")
+    let n = Hashtbl.find maps.ast_map stmt in
+    "AstNode-" ^ string_of_int n
+  else new_astnode_id maps stmt
 
 let mk_ast_rels maps acc (parent, child) (parent_str, child_str) =
   let parent_term = mk_term parent_str in
@@ -318,8 +309,8 @@ let mk_ast_rels maps acc (parent, child) (parent_str, child_str) =
     Chc.Elt.FuncApply ("AstParent", [ parent_term; child_term ])
   in
   let eqnode_rels =
-    match_eq_nodes parent parent_term maps
-    @ match_eq_nodes child child_term maps
+    match_eq_nodes maps parent parent_term
+    @ match_eq_nodes maps child child_term
   in
   (parent_rel :: eqnode_rels) @ acc
 
@@ -401,8 +392,9 @@ let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
   Utils.parse_map alarm_dir maps.exp_map;
   let stmts = Utils.extract_stmts ast in
   let facts =
-    make_cf_facts alarm_dir cfg maps.cfg_map
-    |> Chc.union (make_ast_facts maps stmts)
+    Chc.union
+      (make_cf_facts alarm_dir cfg maps.cfg_map)
+      (make_ast_facts maps stmts)
   in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;

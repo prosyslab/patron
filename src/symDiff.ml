@@ -350,8 +350,7 @@ and match_stmt cfg exp_map s =
   | Cil.Block b ->
       let bl =
         List.fold_left
-          (fun (acc : SElement.sym_node list) s ->
-            mk_stmt cfg exp_map s :: acc)
+          (fun (acc : SElement.sym_node list) s -> mk_stmt cfg exp_map s :: acc)
           [] b.bstmts
         |> List.rev
       in

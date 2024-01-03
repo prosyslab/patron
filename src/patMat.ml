@@ -235,22 +235,22 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
 
 let abstract_bug_pattern buggy src snk aexps maps ctx ast =
   let node_map = maps.Maps.node_map in
-  (* let ast_map = maps.Maps.ast_map in *)
+  let ast_map = maps.Maps.ast_map in
   let deps = collect_deps src snk aexps buggy |> Chc.to_list in
   let ast_node_lst = collect_nodes deps node_map in
-  (* let patch_node, patch_func = extract_parent ctx ast_map in
-     let smallest_ast_pattern =
-          if String.is_empty patch_node then
-            failwith "not implemented for direct patch below the function"
-          else compute_ast_pattern ast_node_lst patch_node patch_func maps ast
-        in *)
+  let patch_node, patch_func = extract_parent ctx ast_map in
+  let smallest_ast_pattern =
+    if String.is_empty patch_node then
+      failwith "not implemented for direct patch below the function"
+    else compute_ast_pattern ast_node_lst patch_node patch_func maps ast
+  in
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  ( Chc.Elt.Implies (deps (*@ smallest_ast_pattern*), errtrace)
+  ( Chc.Elt.Implies (deps @ smallest_ast_pattern, errtrace)
     |> Chc.Elt.numer2var |> Chc.singleton,
     ast_node_lst )
 
