@@ -391,11 +391,9 @@ let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
   Utils.parse_map alarm_dir maps.exp_map;
   let stmts = Utils.extract_stmts ast in
-  let facts =
-    Chc.union
-      (make_cf_facts alarm_dir cfg maps.cfg_map)
-      (make_ast_facts maps stmts)
-  in
+  let cf_facts = make_cf_facts alarm_dir cfg maps.cfg_map in
+  let ast_facts = make_ast_facts maps stmts in
+  let facts = Chc.union cf_facts ast_facts in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;
   (facts, get_alarm alarm_dir)

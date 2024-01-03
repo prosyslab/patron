@@ -113,96 +113,87 @@ let collect_nodes deps node_map =
          | _ -> acc)
 
 let extract_parent diff ast_map =
-  let patch_node = diff.SymDiff.patch_node.node in
+  let parent_of_patch = diff.SymDiff.patch_node.node in
   let func_name = diff.SymDiff.func_name in
-  match patch_node with
+  match parent_of_patch with
   | SymDiff.SElement.SGlob _ -> ("", func_name)
   | SymDiff.SElement.SStmt (_, s) ->
       (Hashtbl.find ast_map s |> string_of_int, func_name)
   | _ -> failwith "parent not found"
 
-let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
-  let ast_map = maps.Maps.ast_map in
-  let node_map = maps.Maps.node_map |> Utils.reverse_hashtbl in
-  L.info "Compute AST pattern...";
-  let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
-  let parent_tups =
-    Parser.mk_parent_tuples stmts
-    |> List.fold_left ~init:[] ~f:(fun acc (p, c) ->
-           if Hashtbl.mem ast_map p && Hashtbl.mem ast_map c then
-             ( Hashtbl.find ast_map p |> string_of_int,
-               Hashtbl.find ast_map c |> string_of_int )
-             :: acc
-           else acc)
+let rec go_up parent_tups ast_node_lst (parent, _) acc =
+  let candidates =
+    List.fold_left ~init:[]
+      ~f:(fun cand (parent', child') ->
+        if String.equal parent parent' then (parent', child') :: cand else cand)
+      parent_tups
   in
-  let start =
-    List.find_exn ~f:(fun (p, _) -> String.equal p patch_node) parent_tups
+  if List.length candidates = 0 then
+    let upper_node_opt =
+      List.find ~f:(fun (_, c') -> String.equal parent c') acc
+    in
+    let upper_node =
+      if Option.is_none upper_node_opt then
+        failwith "compute_ast_pattern: common ancestor not found"
+      else Option.value_exn upper_node_opt
+    in
+    go_up parent_tups ast_node_lst upper_node (upper_node :: acc)
+  else if
+    List.exists
+      ~f:(fun (_, c') ->
+        List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
+      candidates
+  then
+    List.find_exn
+      ~f:(fun (_, c') ->
+        List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
+      candidates
+    :: acc
+  else
+    let down = fold_down parent_tups ast_node_lst candidates [] in
+    List.length down |> string_of_int |> print_endline;
+    let upper_node_opt =
+      List.find ~f:(fun (_, c') -> String.equal parent c') acc
+    in
+    let upper_node =
+      if Option.is_none upper_node_opt then
+        failwith "common ancestor not found!"
+      else Option.value_exn upper_node_opt
+    in
+    if List.length down = 0 then
+      go_up parent_tups ast_node_lst upper_node (upper_node :: acc)
+    else acc @ down
+
+and go_down parent_tups ast_node_lst (p, c) acc =
+  let candidates =
+    List.fold_left ~init:[]
+      ~f:(fun acc' (p', c') ->
+        if String.equal c p' then (p', c') :: acc' else acc')
+      parent_tups
   in
-  let rec go_up (p, _) acc =
-    let rec go_down candidates acc =
-      let aux (p, c) acc =
-        let candidates =
-          List.fold_left ~init:[]
-            ~f:(fun acc' (p', c') ->
-              if String.equal c p' then (p', c') :: acc' else acc')
-            parent_tups
-        in
-        if List.length candidates = 0 then []
-        else
-          let is_found =
-            List.exists
-              ~f:(fun (_, c') ->
-                List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
-              candidates
-          in
-          if is_found then
-            List.find_exn
-              ~f:(fun (_, c') ->
-                List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
-              candidates
-            :: acc
-          else go_down candidates ((p, c) :: acc)
-      in
-      List.fold_left ~init:[]
-        ~f:(fun acc' edge -> aux edge (edge :: acc) @ acc')
+  if List.length candidates = 0 then []
+  else
+    let is_found =
+      List.exists
+        ~f:(fun (_, c') ->
+          List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
         candidates
     in
-    let candidates =
-      List.fold_left ~init:[]
-        ~f:(fun acc' (p', c') ->
-          if String.equal p p' then (p', c') :: acc' else acc')
-        parent_tups
-    in
-    if List.length candidates = 0 then
-      let up_opt = List.find ~f:(fun (_, c') -> String.equal p c') acc in
-      let up =
-        if Option.is_none up_opt then failwith "common ancestor not found"
-        else Option.value_exn up_opt
-      in
-      go_up up (up :: acc)
-    else
-      let is_found =
-        List.exists
-          ~f:(fun (_, c') ->
-            List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
-          candidates
-      in
-      if is_found then
-        List.find_exn
-          ~f:(fun (_, c') ->
-            List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
-          candidates
-        :: acc
-      else
-        let down = go_down candidates [] in
-        let up_opt = List.find ~f:(fun (_, c') -> String.equal p c') acc in
-        let up =
-          if Option.is_none up_opt then failwith "common ancestor not found"
-          else Option.value_exn up_opt
-        in
-        if List.length down = 0 then go_up up (up :: acc) else acc @ down
-  in
-  let solution = go_up start [ start ] in
+    if is_found then
+      List.find_exn
+        ~f:(fun (_, c') ->
+          List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
+        candidates
+      :: acc
+    else fold_down parent_tups ast_node_lst candidates ((p, c) :: acc)
+
+and fold_down parent_tups ast_node_lst candidates acc =
+  List.fold_left ~init:[]
+    ~f:(fun acc' edge ->
+      go_down parent_tups ast_node_lst edge (edge :: acc) @ acc')
+    candidates
+
+let mk_ast_bug_pattern node_map solution =
   List.fold_left ~init:[]
     ~f:(fun acc (p, c) ->
       let p = Chc.Elt.FDNumeral ("AstNode-" ^ p) in
@@ -232,6 +223,28 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
         :: acc
       else acc)
     solution
+
+let mk_parent_tups_str stmts ast_map =
+  Parser.mk_parent_tuples stmts
+  |> List.fold_left ~init:[] ~f:(fun acc (p, c) ->
+         if Hashtbl.mem ast_map p && Hashtbl.mem ast_map c then
+           ( Hashtbl.find ast_map p |> string_of_int,
+             Hashtbl.find ast_map c |> string_of_int )
+           :: acc
+         else acc)
+
+let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
+  print_endline patch_func;
+  let ast_map = maps.Maps.ast_map in
+  let node_map = maps.Maps.node_map |> Utils.reverse_hashtbl in
+  L.info "Compute AST pattern...";
+  let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
+  let parent_tups = mk_parent_tups_str stmts ast_map in
+  let init =
+    List.find_exn ~f:(fun (p, _) -> String.equal p patch_node) parent_tups
+  in
+  let solution = go_up parent_tups ast_node_lst init [ init ] in
+  mk_ast_bug_pattern node_map solution
 
 let abstract_bug_pattern buggy src snk aexps maps ctx ast =
   let node_map = maps.Maps.node_map in
@@ -325,6 +338,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
     |> List.hd_exn
   in
   let patch_node_id, _ = extract_parent ctx buggy_maps.Maps.ast_map in
+  Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern, nodes_in_pat =
     abstract_bug_pattern buggy_facts src snk aexps buggy_maps ctx buggy_ast
   in

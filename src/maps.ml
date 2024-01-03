@@ -120,3 +120,5 @@ let dump mode maps out_dir =
   dump_sym_map mode maps.sym_map out_dir;
   dump_numeral_map mode maps.numeral_map out_dir;
   dump_ast_map mode maps.ast_map out_dir
+
+let dump_ast mode maps out_dir = dump_ast_map mode maps.ast_map out_dir
