@@ -476,7 +476,8 @@ let exists_dep_arg terms args = List.exists ~f:(fun arg -> mem arg terms) args
 
 let prop_deps terms = function
   | Elt.FuncApply ("DetailedDUEdge", [ src; dst; loc ]) ->
-      if mem dst terms && mem loc terms then (true, add src terms)
+      if mem dst terms && mem loc terms && not (mem src terms) then
+        (true, add src terms)
       else (false, terms)
   (* | Elt.FuncApply ("DUEdge", [ src; dst ]) ->
       if mem dst terms then (true, add src terms) else (false, terms) *)

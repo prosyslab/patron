@@ -81,7 +81,6 @@ let mk_fixedpoint z3ctx =
   Z3.Params.add_bool param
     (mk_string_symbol "datalog.generate_explanations")
     true;
-  Z3.Params.add_bool param (mk_string_symbol "print_answer") true;
   Z3.Params.add_bool param (mk_string_symbol "spacer.elim_aux") false;
   Z3.Params.add_bool param (mk_string_symbol "xform.slice") false;
   Z3.Params.add_bool param (mk_string_symbol "xform.inline_linear") false;
