@@ -295,6 +295,8 @@ let rec mk_sdiff ctx cfg exp_map diff =
   match diff with
   | D.InsertStmt (_, s) -> SInsertStmt (ctx, mk_stmt cfg exp_map s)
   | D.DeleteStmt (_, s) -> SDeleteStmt (ctx, mk_stmt cfg exp_map s)
+  | D.UpdateExp (_, e1, e2) ->
+      SUpdateExp (ctx, mk_exp cfg exp_map e1, mk_exp cfg exp_map e2)
   | _ -> failwith "mk_sdiff: not implemented"
 
 and mk_exp cfg exp_map e =
@@ -893,6 +895,15 @@ module DiffJson = struct
         let action_json = ("action", `String "delete_stmt") in
         let ctx_json = context_json context1 in
         let change_json = ("change", sstmt_to_json snode) in
+        `Assoc [ action_json; ctx_json; change_json ]
+    | SUpdateExp (context1, e1, e2), UpdateExp _ ->
+        let action_json = ("action", `String "update_exp") in
+        let ctx_json = context_json context1 in
+        let change_json =
+          ( "change",
+            `Assoc [ ("before", sexp_to_json e1); ("after", sexp_to_json e2) ]
+          )
+        in
         `Assoc [ action_json; ctx_json; change_json ]
     | _ -> failwith "mk_json_obj: not implemented"
 

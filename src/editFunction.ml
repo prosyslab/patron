@@ -16,7 +16,7 @@ type t =
   | InsertExp of ctx * Cil.exp
   | DeleteExp of Cil.exp
   (* TODO *)
-  | UpdateExp of D.CilElement.t * D.CilElement.t * D.CilElement.t
+  | UpdateExp of ctx * Cil.exp * Cil.exp
   | InsertLval of D.CilElement.t * D.CilElement.t
   | DeleteLval of D.CilElement.t
 
@@ -244,7 +244,35 @@ let rec translate_stmt ast model_map cfg exp_map stmt =
       | _ -> failwith "translate_stmt: not implemented")
   | _ -> failwith "translate_stmt: translation target is not a statement type"
 
-let translate ast sym_diff model_path maps patch_node_id patch_nodes =
+let get_new_patch_id id model =
+  List.find
+    (fun (k, _) -> String.equal k (String.concat "-" [ "AstNode"; id ]))
+    model
+  |> snd
+  |> Str.global_replace (Str.regexp "AstNode-") ""
+  |> int_of_string
+
+let compute_patch_loc (before, after) patch_ingredients node_map ast_map_rev =
+  let find_corresponding_ast node_lst =
+    if node_lst = [] then None
+    else
+      List.fold_left
+        (fun acc s ->
+          try Some (List.find (fun x -> String.equal s x) patch_ingredients)
+          with _ -> acc)
+        None before
+      |> fun x ->
+      if x = None then None
+      else
+        Option.get x |> Hashtbl.find node_map |> fun x ->
+        let x_int = int_of_string x in
+        Hashtbl.find_opt ast_map_rev x_int
+  in
+  let before = find_corresponding_ast before in
+  let after = find_corresponding_ast after in
+  (before, after)
+
+let translate ast sym_diff model_path maps patch_node_id patch_ingredients_cfg =
   Logger.info "Translating patch...";
   let cfg = maps.Maps.cfg_map in
   let exp_map = maps.Maps.exp_map in
@@ -254,72 +282,40 @@ let translate ast sym_diff model_path maps patch_node_id patch_nodes =
   let node_map = maps.Maps.node_map in
   let node_map_rev = Utils.reverse_hashtbl node_map in
   (* ToDO: make the order of hashtbl proper so that it will optimize *)
-  let patch_nodes =
+  let patch_ingredients_ast =
     List.fold_left
       (fun lst x -> try Hashtbl.find node_map_rev x :: lst with _ -> lst)
-      [] patch_nodes
+      [] patch_ingredients_cfg
   in
-  let translated =
-    List.fold_left
-      (fun acc diff ->
-        match diff with
-        | S.SInsertStmt (context, stmt) ->
-            let new_patch_id =
-              List.find
-                (fun (k, _) ->
-                  String.equal k
-                    (String.concat "-" [ "AstNode"; patch_node_id ]))
-                model_map
-              |> snd
-              |> Str.global_replace (Str.regexp "AstNode-") ""
-              |> int_of_string
-            in
-            let new_parent_node =
-              (* TODO: case where parent is global *)
-              let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
-              Stmt translated_stmt
-            in
-            let before, after = context.S.patch_between in
-            let before =
-              if before = [] then None
-              else
-                List.fold_left
-                  (fun acc s ->
-                    try Some (List.find (fun x -> String.equal s x) patch_nodes)
-                    with _ -> acc)
-                  None before
-                |> fun x ->
-                if x = None then None
-                else
-                  Option.get x |> Hashtbl.find node_map |> fun x ->
-                  let x_int = int_of_string x in
-                  Hashtbl.find_opt ast_map_rev x_int
-            in
-            let after =
-              if after = [] then None
-              else
-                List.fold_left
-                  (fun acc s ->
-                    try Some (List.find (fun x -> String.equal s x) patch_nodes)
-                    with _ -> acc)
-                  None after
-                |> fun x ->
-                if x = None then None
-                else
-                  Option.get x |> Hashtbl.find node_map |> fun x ->
-                  let x_int = int_of_string x in
-                  Hashtbl.find_opt ast_map_rev x_int
-            in
-            let ctx =
-              { parent_node = new_parent_node; patch_between = (before, after) }
-            in
-            InsertStmt (ctx, translate_stmt ast model_map cfg exp_map stmt)
-            :: acc
-            (* | S.SDiff.SDeleteStmt (_, stmt) -> *)
-            (* failwith "translate: not implemented" *)
-            (* let stmt = translate_stmt ast model_map cfg exp_map stmt in
-               DeleteStmt stmt :: acc *)
-        | _ -> failwith "translate: not implemented")
-      [] sym_diff
-  in
-  translated
+  List.fold_left
+    (fun acc diff ->
+      match diff with
+      | S.SInsertStmt (context, stmt) ->
+          let new_patch_id = get_new_patch_id patch_node_id model_map in
+          let new_parent_node =
+            (* TODO: case where parent is global *)
+            let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
+            Stmt translated_stmt
+          in
+          let before, after =
+            compute_patch_loc context.S.patch_between patch_ingredients_ast
+              node_map ast_map_rev
+          in
+          let ctx =
+            { parent_node = new_parent_node; patch_between = (before, after) }
+          in
+          InsertStmt (ctx, translate_stmt ast model_map cfg exp_map stmt) :: acc
+      | S.SUpdateExp (_, e1, e2) ->
+          let new_patch_id = get_new_patch_id patch_node_id model_map in
+          let new_parent_node =
+            let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
+            Stmt translated_stmt
+          in
+          let ctx =
+            { parent_node = new_parent_node; patch_between = (None, None) }
+          in
+          let translated_e1 = translate_exp ast model_map exp_map e1 in
+          let translated_e2 = translate_exp ast model_map exp_map e2 in
+          UpdateExp (ctx, translated_e1, translated_e2) :: acc
+      | _ -> failwith "translate: not implemented")
+    [] sym_diff

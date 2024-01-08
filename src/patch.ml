@@ -231,6 +231,38 @@ let rec iter_body stmts parent patch_bw patch =
     [] stmts
   |> List.rev
 
+let replace_exp_in_stmt stmt from_exp to_exp =
+  match stmt.Cil.skind with
+  | Cil.Instr i ->
+      let new_instr =
+        List.fold_left
+          (fun acc x ->
+            match x with
+            | Cil.Call (lval, e, exp_list, loc) ->
+                if H.string_of_exp e = H.string_of_exp from_exp then
+                  Cil.Call (lval, to_exp, exp_list, loc) :: acc
+                else x :: acc
+            | Cil.Set (lval, e, loc) ->
+                if H.string_of_exp e = H.string_of_exp from_exp then
+                  Cil.Set (lval, to_exp, loc) :: acc
+                else x :: acc
+            | _ -> x :: acc)
+          [] i
+        |> List.rev
+      in
+      { stmt with skind = Cil.Instr new_instr }
+  | _ -> failwith "replace_exp_in_stmt: not implemented"
+
+let replace_exp_in_stmts stmts parent from_exp to_exp =
+  List.fold_left
+    (fun acc x ->
+      if Utils.SparrowParser.s_stmt x = Utils.SparrowParser.s_stmt parent then
+        let new_stmt = replace_exp_in_stmt x from_exp to_exp in
+        new_stmt :: acc
+      else x :: acc)
+    [] stmts
+  |> List.rev
+
 class stmtInsertVisitor target_func parent patch_bw stmt =
   object
     inherit Cil.nopCilVisitor
@@ -253,6 +285,31 @@ class stmtDeleteVisitor stmt =
       else DoChildren
   end
 
+class expUpdateVisitor target_func parent from_exp to_exp =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vfunc (f : Cil.fundec) =
+      if f.svar.vname = target_func then
+        let stmts = f.sbody.bstmts in
+        let new_stmts = replace_exp_in_stmts stmts parent from_exp to_exp in
+        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
+      else DoChildren
+  end
+
+(* class expInsertVisitor target_func parent exp =
+     object
+       inherit Cil.nopCilVisitor
+
+       method! vfunc (f : Cil.fundec) =
+         if f.svar.vname = target_func then
+           let stmts = f.sbody.bstmts in
+           let new_stmts =
+             List.fold_left
+               (fun acc x ->
+                 match (x.Cil.skind, parent) with
+                 | Cil.Loop (b, loc, t1,*)
+
 let apply_action diff donee action =
   match (action, diff) with
   | EF.InsertStmt (ctx, stmt), SymDiff.SInsertStmt (context, _) -> (
@@ -270,6 +327,15 @@ let apply_action diff donee action =
   | DeleteStmt stmt, _ ->
       let vis = new stmtDeleteVisitor stmt in
       ignore (Cil.visitCilFile vis donee)
+  | UpdateExp (ctx, from_exp, to_exp), SymDiff.SUpdateExp (context, _, _) -> (
+      let parent = ctx.EF.parent_node in
+      let target_func = context.SymDiff.func_name in
+      match parent with
+      | Fun _ -> failwith "UpdateExp: not implemented"
+      | Stmt s ->
+          let vis = new expUpdateVisitor target_func s from_exp to_exp in
+          ignore (Cil.visitCilFile vis donee)
+      | _ -> failwith "UpdateExp: Incorrect parent type")
   (* | InsertExp (context, exp) ->
          let vis = new expInsertVisitorInstr context exp in
          ignore (Cil.visitCilFile vis donee)
