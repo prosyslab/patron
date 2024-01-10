@@ -2,6 +2,7 @@ open Core
 module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module Set = Stdlib.Set
+module Sys = Stdlib.Sys
 module L = Logger
 module F = Format
 
@@ -430,6 +431,123 @@ let rec pp_chc fmt = function
       |> String.concat ~sep:",\n    "
       |> F.fprintf fmt "(\\forall %s.\n  %a <-\n    %s)" vars_str pp_chc hd
 
+let node = "node"
+let ast_node = "ast_node"
+let lval = "lval"
+let expr = "expr"
+let binop = "binop"
+let unop = "unop"
+let arg_list = "arg_list"
+let pos = "pos"
+let loc = "loc"
+let const = "const"
+let str_literal = "str_literal"
+
+let types =
+  [
+    node;
+    ast_node;
+    lval;
+    expr;
+    binop;
+    unop;
+    arg_list;
+    pos;
+    loc;
+    const;
+    str_literal;
+  ]
+
+let rels =
+  [
+    ("AllocExp", [ expr; expr ]);
+    ("Arg", [ arg_list; pos; expr ]);
+    ("Set", [ node; lval; expr ]);
+    ("BinOpExp", [ expr; binop; expr; expr ]);
+    ("UnOpExp", [ expr; unop; expr ]);
+    ("CallExp", [ expr; expr; arg_list ]);
+    ("DetailedDUEdge", [ node; node; loc ]);
+    (* ("DUEdge", [node; node]);
+       ("DUPath", [node; node]); *)
+    ("Index", [ lval; lval; expr ]);
+    ("Mem", [ lval; expr ]);
+    ("LibCallExp", [ expr; expr; arg_list ]);
+    ("LvalExp", [ expr; lval ]);
+    ("Return", [ node; expr ]);
+    ("SAllocExp", [ expr; str_literal ]);
+    ("Skip", [ node ]);
+    ("EvalLv", [ node; lval; loc ]);
+    (* ("Assume", []); *)
+    ("AstParent", [ ast_node; ast_node ]);
+    ("EqNode", [ node; ast_node ]);
+    ("ErrTrace", [ node; node ]);
+  ]
+
+let pp_types fmt =
+  List.iter ~f:(fun t -> F.fprintf fmt ".type %s <: symbol\n" t) types;
+  F.fprintf fmt "\n"
+
+let argdecls2str args =
+  args
+  |> List.mapi ~f:(fun i arg -> F.sprintf "v%d: %s" i arg)
+  |> String.concat ~sep:", "
+
+let pp_decls fmt =
+  List.iter
+    ~f:(fun (hd, args) -> F.fprintf fmt ".decl %s(%s)\n" hd (argdecls2str args))
+    rels;
+  F.fprintf fmt "\n"
+
+let pp_ios fmt =
+  List.iter
+    ~f:(fun (hd, _) ->
+      if String.equal hd "ErrTrace" then F.fprintf fmt ".output %s\n" hd
+      else F.fprintf fmt ".input %s\n" hd)
+    rels;
+  F.fprintf fmt "\n"
+
+module VarMap = Map.Make (String)
+
+let quote s = "\"" ^ s ^ "\""
+let comma_concat s ss = if String.is_empty s then ss else s ^ ", " ^ ss
+
+let args2str (var_map, s) = function
+  | Elt.FDNumeral n -> (var_map, quote n |> comma_concat s)
+  | Elt.Var v ->
+      if VarMap.mem v var_map then
+        (var_map, VarMap.find v var_map |> comma_concat s)
+      else
+        let new_v = "v" ^ (VarMap.cardinal var_map |> string_of_int) in
+        (VarMap.add v new_v var_map, comma_concat s new_v)
+  | _ -> L.error "args2str: invalid term"
+
+let rels2strlst (vm, rs) = function
+  | Elt.FuncApply (f, args) ->
+      let vm', args_str = List.fold_left ~f:args2str ~init:(vm, "") args in
+      (vm', F.sprintf "%s(%s)" f args_str :: rs)
+  | _ -> L.error "DUMMY"
+
+let pp_rels fmt var_map rels =
+  List.fold_left ~f:rels2strlst ~init:(var_map, []) rels
+  |> snd
+  |> String.concat ~sep:",\n    "
+  |> F.fprintf fmt "    %s."
+
+let pp_datalog fmt pattern =
+  pp_types fmt;
+  pp_decls fmt;
+  pp_ios fmt;
+  iter
+    (function
+      | Elt.Implies (rels, Elt.FuncApply (f, args)) ->
+          let var_map, args_str =
+            List.fold_left ~f:args2str ~init:(VarMap.empty, "") args
+          in
+          F.fprintf fmt "%s(%s) :-\n" f args_str;
+          pp_rels fmt var_map rels
+      | _ -> L.error "Chc.pp: invalid rule format")
+    pattern
+
 let pp fmt = iter (fun chc -> F.fprintf fmt "%a\n" pp_chc chc)
 
 let pp_smt fmt =
@@ -492,23 +610,23 @@ let prop_deps terms = function
       if mem n terms then (true, add e terms) else (false, terms)
   | FuncApply ("Arg", [ arg_list; _; e ]) ->
       if mem arg_list terms then (true, add e terms) else (false, terms)
-  | FuncApply ("BinOp", [ e; _; e1; e2 ]) ->
+  | FuncApply ("BinOpExp", [ e; _; e1; e2 ]) ->
       if mem e terms then (true, terms |> add e1 |> add e2) else (false, terms)
-  | FuncApply ("UnOp", [ e; _; e1 ]) ->
+  | FuncApply ("UnOpExp", [ e; _; e1 ]) ->
       if mem e terms then (true, add e1 terms) else (false, terms)
   | FuncApply ("LvalExp", [ e; lv ]) ->
       if mem e terms then (true, add lv terms) else (false, terms)
   | FuncApply ("Index", [ lv; lv'; e ]) ->
       if mem lv terms then (true, terms |> add lv' |> add e) else (false, terms)
-  | FuncApply ("Deref", [ lv; e ]) ->
+  | FuncApply ("Mem", [ lv; e ]) ->
       if mem lv terms then (true, add e terms) else (false, terms)
-  | FuncApply ("Call", [ e; _; arg_list ])
-  | FuncApply ("LibCall", [ e; _; arg_list ]) ->
+  | FuncApply ("CallExp", [ e; _; arg_list ])
+  | FuncApply ("LibCallExp", [ e; _; arg_list ]) ->
       (* Maybe not used *)
       if mem e terms then (true, add arg_list terms) else (false, terms)
-  | FuncApply ("Alloc", [ e; size_e ]) ->
+  | FuncApply ("AllocExp", [ e; size_e ]) ->
       if mem e terms then (true, add size_e terms) else (false, terms)
-  | FuncApply ("SAlloc", [ e; _ ]) ->
+  | FuncApply ("SAllocExp", [ e; _ ]) ->
       if mem e terms then (true, terms) else (false, terms)
   | _ -> (false, terms)
 
@@ -516,13 +634,13 @@ let is_child var = function
   | Elt.FuncApply ("Set", hd :: _)
   | FuncApply ("Return", hd :: _)
   | FuncApply ("Arg", _ :: hd :: _)
-  | FuncApply ("BinOp", hd :: _)
-  | FuncApply ("UnOp", hd :: _)
+  | FuncApply ("BinOpExp", hd :: _)
+  | FuncApply ("UnOpExp", hd :: _)
   | FuncApply ("LvalExp", hd :: _)
-  | FuncApply ("Call", hd :: _)
-  | FuncApply ("LibCall", hd :: _)
-  | FuncApply ("Alloc", hd :: _)
-  | FuncApply ("SAlloc", hd :: _) ->
+  | FuncApply ("CallExp", hd :: _)
+  | FuncApply ("LibCallExp", hd :: _)
+  | FuncApply ("AllocExp", hd :: _)
+  | FuncApply ("SAllocExp", hd :: _) ->
       Elt.equal var hd
   | _ -> false
 
@@ -604,12 +722,37 @@ let add_all z3env maps solver =
 
 let subst_pattern_for_target src snk = map (Elt.subst src snk)
 
-let pattern_match z3env out_dir ver_name maps chc src snk pattern =
+let run_souffle work_dir out_dir pattern =
+  let project_home =
+    Sys.executable_name |> Filename.dirname |> Filename.dirname
+    |> Filename.dirname |> Filename.dirname
+  in
+  let souffle_bin =
+    Filename.concat project_home "souffle"
+    |> Fun.flip Filename.concat "build"
+    |> Fun.flip Filename.concat "src"
+    |> Fun.flip Filename.concat "souffle"
+  in
+  let datalog_file = Filename.concat out_dir "BugPattern.dl" in
+  let oc = Out_channel.create datalog_file in
+  let fmt = F.formatter_of_out_channel oc in
+  pp_datalog fmt pattern;
+  Out_channel.close oc;
+  let process_info =
+    Core_unix.create_process ~prog:souffle_bin
+      ~args:[ souffle_bin; "-F"; work_dir; "-D"; out_dir; datalog_file ]
+  in
+  let pid = process_info.pid in
+  match Core_unix.waitpid pid with Ok () -> () | _ -> assert false
+
+let pattern_match z3env buggy_dir alarm_id out_dir ver_name maps facts src snk
+    pattern =
   let solver = Z3env.mk_fixedpoint z3env.Z3env.z3ctx in
   Z3env.reg_rel_to_solver z3env solver;
   L.info "Start making Z3 instance from facts and rels";
   let pattern' = subst_pattern_for_target src snk pattern in
-  add_all z3env maps solver (union chc pattern');
+  let alarm_dir = Filename.concat buggy_dir alarm_id in
+  add_all z3env maps solver (union facts pattern');
   L.info "Complete making Z3 instance from facts and rels";
   Z3utils.dump_solver_to_smt (ver_name ^ "_formula") solver out_dir;
   let status =
@@ -622,8 +765,12 @@ let pattern_match z3env out_dir ver_name maps chc src snk pattern =
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
   | Z3.Solver.UNKNOWN -> None
 
-let match_and_log z3env out_dir ver_name maps chc src snk pattern =
-  let status = pattern_match z3env out_dir ver_name maps chc src snk pattern in
+let match_and_log z3env buggy_dir alarm_id out_dir ver_name maps facts src snk
+    pattern =
+  let status =
+    pattern_match z3env buggy_dir alarm_id out_dir ver_name maps facts src snk
+      pattern
+  in
   Option.iter
     ~f:(fun ans ->
       L.info "%s is Matched" ver_name;

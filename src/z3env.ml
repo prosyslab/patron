@@ -149,7 +149,7 @@ let fact_files =
     "Set.facts";
     "Skip.facts";
     "UnOpExp.facts";
-    "Assume.facts";
+    (* "Assume.facts"; *)
     "EvalLv.facts";
   ]
 
@@ -208,10 +208,11 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Set" [ node; lval; expr ] boolean_sort
   in
   let alloc =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "Alloc" [ expr; expr ] boolean_sort
+    Z3.FuncDecl.mk_func_decl_s z3ctx "AllocExp" [ expr; expr ] boolean_sort
   in
   let salloc =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "SAlloc" [ expr; str_literal ] boolean_sort
+    Z3.FuncDecl.mk_func_decl_s z3ctx "SAllocExp" [ expr; str_literal ]
+      boolean_sort
   in
   let lval_exp =
     Z3.FuncDecl.mk_func_decl_s z3ctx "LvalExp" [ expr; lval ] boolean_sort
@@ -223,14 +224,14 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Index" [ lval; lval; expr ] boolean_sort
   in
   let deref =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "Deref" [ lval; expr ] boolean_sort
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Mem" [ lval; expr ] boolean_sort
   in
   let call =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "Call" [ expr; expr; arg_list ]
+    Z3.FuncDecl.mk_func_decl_s z3ctx "CallExp" [ expr; expr; arg_list ]
       boolean_sort
   in
   let libcall =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "LibCall" [ expr; expr; arg_list ]
+    Z3.FuncDecl.mk_func_decl_s z3ctx "LibCallExp" [ expr; expr; arg_list ]
       boolean_sort
   in
   let arg =
@@ -248,12 +249,12 @@ let mk_env () =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Cast" [ expr; expr ] boolean_sort
   in
   let binop =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "BinOp"
+    Z3.FuncDecl.mk_func_decl_s z3ctx "BinOpExp"
       [ expr; binop_sort; expr; expr ]
       boolean_sort
   in
   let unop =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "UnOp" [ expr; unop_sort; expr ]
+    Z3.FuncDecl.mk_func_decl_s z3ctx "UnOpExp" [ expr; unop_sort; expr ]
       boolean_sort
   in
   (* TODO: add extra relations for expr *)

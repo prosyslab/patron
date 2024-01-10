@@ -10,19 +10,19 @@ let match_func z3env f =
   | "Snk" -> z3env.snk
   | "Skip" -> z3env.skip
   | "Set" -> z3env.set
-  | "Alloc" -> z3env.alloc
-  | "SAlloc" -> z3env.salloc
+  | "AllocExp" -> z3env.alloc
+  | "SAllocExp" -> z3env.salloc
   | "LvalExp" -> z3env.lval_exp
   | "Var" -> z3env.var
   | "Index" -> z3env.index
-  | "Deref" -> z3env.deref
-  | "Call" -> z3env.call
-  | "LibCall" -> z3env.libcall
+  | "Mem" -> z3env.deref
+  | "CallExp" -> z3env.call
+  | "LibCallExp" -> z3env.libcall
   | "Arg" -> z3env.arg
   | "ConstExp" -> z3env.constexp
   | "Return" -> z3env.ret
-  | "BinOp" -> z3env.binop
-  | "UnOp" -> z3env.unop
+  | "BinOpExp" -> z3env.binop
+  | "UnOpExp" -> z3env.unop
   | "CFPath" -> z3env.cfpath
   | "DetailedDUEdge" -> z3env.deduedge
   | "DUEdge" -> z3env.duedge

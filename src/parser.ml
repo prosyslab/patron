@@ -2,6 +2,7 @@ open Core
 module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module L = Logger
+module F = Format
 module Sys = Stdlib.Sys
 
 let parse_loc loc =
@@ -146,20 +147,20 @@ let mk_term s =
         Chc.Elt.FDNumeral s)
 
 let file2func = function
-  | "AllocExp.facts" -> "Alloc"
+  | "AllocExp.facts" -> "AllocExp"
   | "Arg.facts" -> "Arg"
   | "Set.facts" -> "Set"
-  | "BinOpExp.facts" -> "BinOp"
-  | "UnOpExp.facts" -> "UnOp"
-  | "CallExp.facts" -> "Call"
+  | "BinOpExp.facts" -> "BinOpExp"
+  | "UnOpExp.facts" -> "UnOpExp"
+  | "CallExp.facts" -> "CallExp"
   | "CFPath.facts" -> "CFPath"
   | "DetailedDUEdge.facts" -> "DetailedDUEdge"
   | "DUEdge.facts" -> "DUEdge"
   | "DUPath.facts" -> "DUPath"
   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
   | "Index.facts" -> "Index"
-  | "Mem.facts" -> "Deref"
-  | "LibCallExp.facts" -> "LibCall"
+  | "Mem.facts" -> "Mem"
+  | "LibCallExp.facts" -> "LibCallExp"
   | "LvalExp.facts" -> "LvalExp"
   | "Return.facts" -> "Return"
   | "SAllocExp.facts" -> "SAlloc"
@@ -279,14 +280,18 @@ let lookup_eq_nodes ast_node cfg =
     cfg []
   |> fun x -> if List.length x = 0 then None else Some (List.hd_exn x)
 
-let match_eq_nodes maps ast_node term =
-  let open Option in
-  let ast_id = Hashtbl.find_opt maps.Maps.ast_map ast_node >>| string_of_int in
-  let cfg_id = lookup_eq_nodes ast_node maps.Maps.cfg_map in
-  let cfg_term = cfg_id >>| mk_term in
-  let monadic_add a b = a >>= fun a -> b >>| Hashtbl.add maps.Maps.node_map a in
-  let mk_eqnode cfg_term = Chc.Elt.FuncApply ("EqNode", [ cfg_term; term ]) in
-  monadic_add cfg_id ast_id *> map ~f:mk_eqnode cfg_term |> to_list
+let match_eq_nodes fmt maps ast_node =
+  let ast_num = Hashtbl.find maps.Maps.ast_map ast_node |> string_of_int in
+  let ast_id = "AstNode-" ^ ast_num in
+  let ast_term = mk_term ast_id in
+  let cfg_id_opt = lookup_eq_nodes ast_node maps.Maps.cfg_map in
+  if Option.is_some cfg_id_opt then (
+    let cfg_id = Option.value_exn cfg_id_opt in
+    let cfg_term = mk_term cfg_id in
+    F.fprintf fmt "%s\t%s\n" cfg_id ast_id;
+    Hashtbl.add maps.Maps.node_map cfg_id ast_num;
+    [ Chc.Elt.FuncApply ("EqNode", [ cfg_term; ast_term ]) ])
+  else []
 
 let astnode_cnt = ref 1
 
@@ -296,34 +301,52 @@ let new_astnode_id maps stmt =
   Hashtbl.add maps.Maps.ast_map stmt !astnode_cnt;
   id
 
-let stmt2str maps stmt =
+let stmt2astid maps stmt =
   if Hashtbl.mem maps.Maps.ast_map stmt then
     let n = Hashtbl.find maps.ast_map stmt in
     "AstNode-" ^ string_of_int n
   else new_astnode_id maps stmt
 
-let mk_ast_rels maps acc (parent, child) (parent_str, child_str) =
-  let parent_term = mk_term parent_str in
-  let child_term = mk_term child_str in
+let mk_ast_rels parent_fmt eqnode_fmt maps acc (parent, child)
+    (parent_id, child_id) =
+  F.fprintf parent_fmt "%s\t%s\n" parent_id child_id;
+  let parent_term = mk_term parent_id in
+  let child_term = mk_term child_id in
   let parent_rel =
     Chc.Elt.FuncApply ("AstParent", [ parent_term; child_term ])
   in
   let eqnode_rels =
-    match_eq_nodes maps parent parent_term
-    @ match_eq_nodes maps child child_term
+    match_eq_nodes eqnode_fmt maps parent @ match_eq_nodes eqnode_fmt maps child
   in
   (parent_rel :: eqnode_rels) @ acc
 
-let make_ast_facts (maps : Maps.t) stmts =
+let make_ast_facts work_dir (maps : Maps.t) stmts =
   let parent_tups = mk_parent_tuples stmts in
-  List.fold_left ~init:[]
-    ~f:(fun acc (parent, child) ->
-      let parent_str = stmt2str maps parent in
-      let child_str = stmt2str maps child in
-      (parent_str, child_str) :: acc)
-    parent_tups
-  |> List.fold2_exn ~init:[] ~f:(mk_ast_rels maps) parent_tups
-  |> Chc.of_list
+  let parent_oc =
+    Filename.concat work_dir "AstParent.facts" |> Out_channel.create
+  in
+  let eqnode_oc =
+    Filename.concat work_dir "EqNode.facts" |> Out_channel.create
+  in
+  let parent_fmt = F.formatter_of_out_channel parent_oc in
+  let eqnode_fmt = F.formatter_of_out_channel eqnode_oc in
+  let facts =
+    List.fold_left ~init:[]
+      ~f:(fun acc (parent, child) ->
+        let parent_id = stmt2astid maps parent in
+        let child_id = stmt2astid maps child in
+        (parent_id, child_id) :: acc)
+      parent_tups
+    |> List.fold2_exn ~init:[]
+         ~f:(mk_ast_rels parent_fmt eqnode_fmt maps)
+         parent_tups
+    |> Chc.of_list
+  in
+  F.pp_print_flush parent_fmt ();
+  F.pp_print_flush eqnode_fmt ();
+  Out_channel.close parent_oc;
+  Out_channel.close eqnode_oc;
+  facts
 
 let read_and_split file =
   In_channel.read_lines file |> List.map ~f:(fun l -> String.split ~on:'\t' l)
@@ -331,6 +354,7 @@ let read_and_split file =
 exception Not_impl_aexp
 
 let get_aexp alarm splited filename =
+  (* TODO: add expression relation that have error e.g. DivExp --> Div relation *)
   match (Filename.basename filename |> Filename.chop_extension, splited) with
   | "AlarmArrayExp", [ a; l; e ] when String.equal a alarm ->
       Chc.of_list [ Chc.Elt.FDNumeral l; Chc.Elt.FDNumeral e ]
@@ -392,8 +416,8 @@ let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
   Utils.parse_map alarm_dir maps.exp_map;
   let stmts = Utils.extract_stmts ast in
   let cf_facts = make_cf_facts alarm_dir cfg maps.cfg_map in
-  let ast_facts = make_ast_facts maps stmts in
+  let ast_facts = make_ast_facts alarm_dir maps stmts in
   let facts = Chc.union cf_facts ast_facts in
-  Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
-  Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;
+  (* Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
+     Chc.sexp_dump (Filename.concat out_dir target_alarm) facts; *)
   (facts, get_alarm alarm_dir)

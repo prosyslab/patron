@@ -246,24 +246,23 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   let solution = go_up parent_tups ast_node_lst init [ init ] in
   mk_ast_bug_pattern node_map solution
 
-let abstract_bug_pattern buggy src snk aexps maps ctx ast =
-  let node_map = maps.Maps.node_map in
-  let ast_map = maps.Maps.ast_map in
-  let deps = collect_deps src snk aexps buggy |> Chc.to_list in
-  let ast_node_lst = collect_nodes deps node_map in
-  let patch_node, patch_func = extract_parent ctx ast_map in
-  let smallest_ast_pattern =
-    if String.is_empty patch_node then
-      failwith "not implemented for direct patch below the function"
-    else compute_ast_pattern ast_node_lst patch_node patch_func maps ast
-  in
+let abstract_bug_pattern facts src snk aexps maps ctx ast =
+  let fact_lst = Chc.to_list facts in
+  (* let deps = collect_deps src snk aexps buggy |> Chc.to_list in *)
+  let ast_node_lst = collect_nodes fact_lst maps.Maps.node_map in
+  (* let patch_node, patch_func = extract_parent ctx maps.Maps.ast_map in
+     let smallest_ast_pattern =
+       if String.is_empty patch_node then
+         failwith "not implemented for direct patch below the function"
+       else compute_ast_pattern ast_node_lst patch_node patch_func maps ast
+     in *)
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  ( Chc.Elt.Implies (deps @ smallest_ast_pattern, errtrace)
+  ( Chc.Elt.Implies (fact_lst (* @ smallest_ast_pattern *), errtrace)
     |> Chc.Elt.numer2var |> Chc.singleton,
     ast_node_lst )
 
@@ -272,14 +271,15 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
-    let facts, (src, snk, _) =
+    let facts, (src, snk, aexps) =
       Parser.make_facts buggy_dir target_alarm ast cfg out_dir target_maps
     in
+    let facts' = collect_deps src snk aexps facts in
     let z3env = Z3env.get_env () in
     L.info "Try matching with %s..." target_alarm;
     let status =
-      Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
-        pattern
+      Chc.match_and_log z3env buggy_dir target_alarm out_dir target_alarm
+        target_maps facts' src snk pattern
     in
     Maps.dump target_alarm target_maps out_dir;
     if Option.is_some status then
@@ -326,6 +326,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
     Parser.make_facts buggy_dir true_alarm buggy_ast buggy_cfg out_dir
       buggy_maps
   in
+  let buggy_facts' = collect_deps src snk aexps buggy_facts in
   L.info "Mapping CFG Elements to AST nodes...";
   let sym_diff = SymDiff.define_sym_diff buggy_maps buggy_ast ast_diff in
   if write_out then (
@@ -341,15 +342,15 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   let patch_node_id, _ = extract_parent ctx buggy_maps.Maps.ast_map in
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern, patch_ingredients =
-    abstract_bug_pattern buggy_facts src snk aexps buggy_maps ctx buggy_ast
+    abstract_bug_pattern buggy_facts' src snk aexps buggy_maps ctx buggy_ast
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   let z3env = Z3env.get_env () in
   L.info "Try matching with buggy...";
-  ( Chc.match_and_log z3env out_dir "buggy" buggy_maps buggy_facts src snk
-      pattern
+  ( Chc.match_and_log z3env buggy_dir true_alarm out_dir "buggy" buggy_maps
+      buggy_facts' src snk pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
   match_with_new_alarms buggy_dir true_alarm buggy_maps patch_ast buggy_cfg
