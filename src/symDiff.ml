@@ -769,6 +769,23 @@ let get_patch_range siblings patch_loc node_map ast_map =
     in
     (left_lim, right_lim)
 
+let get_sibling_lst patch_node parent_branch =
+  match patch_node.node with
+  | SStmt (_, s) -> (
+      match s.Cil.skind with
+      | Cil.Block lst -> lst.bstmts
+      | Cil.Loop (b, _, _, _) -> b.bstmts
+      | Cil.If (_, tb, eb, _) ->
+          if parent_branch = D.true_branch then tb.bstmts
+          else if parent_branch = D.false_branch then eb.bstmts
+          else failwith "get_sibling_lst: if statment without branch"
+      | _ -> failwith "define_sym_diff: not implemented")
+  | SGlob (_, g) -> (
+      match g with
+      | Cil.GFun (f, _) -> f.sbody.bstmts
+      | _ -> failwith "define_sym_diff: not implemented")
+  | _ -> failwith "define_sym_diff: not implemented"
+
 let define_sym_diff (maps : Maps.t) buggy diff =
   get_gvars buggy;
   let cfg = maps.cfg_map in
@@ -787,20 +804,7 @@ let define_sym_diff (maps : Maps.t) buggy diff =
         with _ ->
           { node = SGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
       in
-      let siblings =
-        match patch_node.node with
-        | SStmt (_, s) -> (
-            match s.Cil.skind with
-            | Cil.Block lst -> lst.bstmts
-            | Cil.Loop (b, _, _, _) -> b.bstmts
-            | Cil.If _ -> failwith "define_sym_diff: not implemented"
-            | _ -> failwith "define_sym_diff: not implemented")
-        | SGlob (_, g) -> (
-            match g with
-            | Cil.GFun (f, _) -> f.sbody.bstmts
-            | _ -> failwith "define_sym_diff: not implemented")
-        | _ -> failwith "define_sym_diff: not implemented"
-      in
+      let siblings = get_sibling_lst patch_node ctx.D.parent_branch in
       let patch_bw =
         get_patch_range siblings ctx.patch_loc node_map maps.ast_map
       in
