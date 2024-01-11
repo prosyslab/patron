@@ -120,6 +120,7 @@ class blockVisitor =
                 let new_il = List.map ~f:Cil.mkStmtOneInstr (List.tl_exn il) in
                 stmt.skind <- Instr [ List.hd_exn il ];
                 l @ (stmt :: new_il)
+            | Cil.Instr il when List.length il = 0 -> l
             | _ -> l @ [ stmt ])
           b.bstmts
       in

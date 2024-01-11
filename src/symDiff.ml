@@ -364,8 +364,8 @@ and match_stmt cfg exp_map s =
       SElement.SReturn (Some { node; id; literal })
   | Cil.Return (None, _) -> SElement.SReturn None
   | Cil.Goto (s, _) ->
-      let node = SStmt (match_stmt cfg exp_map !s, !s) in
-      let id = match_stmt_id cfg !s.Cil.skind in
+      let node = SStmt (SSNull, !s) in
+      let id = "GOTO_DST" in
       let literal = H.string_of_stmt !s in
       SElement.SGoto { node; id; literal }
   | _ -> failwith "match_stmt: not implemented"
