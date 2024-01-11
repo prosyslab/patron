@@ -97,12 +97,7 @@ module SElement = struct
     | SBlock of sym_node list
     | SGoto of sym_node
 
-  and sym_global =
-    | SGNull
-    | SGID of string
-    | SGFun of string * string
-    | GVar of string * string
-
+  and sym_global = SGNull | SGFun | GVar of string * string
   and sym_node = { node : t; id : string; literal : string }
 
   let rec pp_node fmt e =
@@ -707,7 +702,7 @@ let get_parent_fun parent_lst =
   let check_fun g = match g with Cil.GFun _ -> true | _ -> false in
   let get_fun g =
     match g with
-    | Cil.GFun (f, _) -> f.svar
+    | Cil.GFun _ -> g
     | _ -> failwith "get_parent_fun: not a function"
   in
   let parent_fun_cand =
@@ -785,8 +780,13 @@ let define_sym_diff (maps : Maps.t) buggy diff =
       let root_path = ctx.D.parent |> List.rev in
       let s_root_path = match_context cfg exp_map root_path in
       let rest_path = List.tl s_root_path in
-      let parent_fun = get_parent_fun root_path in
-      let patch_node = List.hd rest_path in
+      let prnt_fun = get_parent_fun root_path in
+      let prnt_fun_name = extract_fun_name prnt_fun in
+      let patch_node =
+        try List.hd rest_path
+        with _ ->
+          { node = SGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
+      in
       let siblings =
         match patch_node.node with
         | SStmt (_, s) -> (
@@ -794,6 +794,10 @@ let define_sym_diff (maps : Maps.t) buggy diff =
             | Cil.Block lst -> lst.bstmts
             | Cil.Loop (b, _, _, _) -> b.bstmts
             | Cil.If _ -> failwith "define_sym_diff: not implemented"
+            | _ -> failwith "define_sym_diff: not implemented")
+        | SGlob (_, g) -> (
+            match g with
+            | Cil.GFun (f, _) -> f.sbody.bstmts
             | _ -> failwith "define_sym_diff: not implemented")
         | _ -> failwith "define_sym_diff: not implemented"
       in
@@ -805,7 +809,7 @@ let define_sym_diff (maps : Maps.t) buggy diff =
           parent = rest_path;
           patch_node;
           patch_between = patch_bw;
-          func_name = parent_fun.vname;
+          func_name = prnt_fun_name;
         }
       in
       mk_sdiff s_context cfg exp_map d :: acc)
