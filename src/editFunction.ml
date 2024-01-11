@@ -245,6 +245,7 @@ let rec translate_stmt ast model_map cfg exp_map stmt =
   | _ -> failwith "translate_stmt: translation target is not a statement type"
 
 let get_new_patch_id id model =
+  print_endline id;
   List.find
     (fun (k, _) -> String.equal k (String.concat "-" [ "AstNode"; id ]))
     model
@@ -305,6 +306,9 @@ let translate ast sym_diff model_path maps patch_node_id patch_ingredients_cfg =
             { parent_node = new_parent_node; patch_between = (before, after) }
           in
           InsertStmt (ctx, translate_stmt ast model_map cfg exp_map stmt) :: acc
+      | S.SDeleteStmt (_, stmt) ->
+          let translated_stmt = translate_stmt ast model_map cfg exp_map stmt in
+          DeleteStmt translated_stmt :: acc
       | S.SUpdateExp (_, e1, e2) ->
           let new_patch_id = get_new_patch_id patch_node_id model_map in
           let new_parent_node =
