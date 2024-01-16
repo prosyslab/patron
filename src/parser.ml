@@ -22,13 +22,13 @@ let parse_facts facts func_name =
       | _ -> acc)
     facts []
 
+let extract_str = function
+  | Chc.Elt.Const z -> Z.to_string z
+  | Chc.Elt.Var s -> s
+  | Chc.Elt.FDNumeral s -> s
+  | _ -> failwith "find_fact_opt - not implemented"
+
 let find_fact_opt key (fact : Chc.Elt.t list list) =
-  let extract_str = function
-    | Chc.Elt.Const z -> Z.to_string z
-    | Chc.Elt.Var s -> s
-    | Chc.Elt.FDNumeral s -> s
-    | _ -> failwith "find_fact_opt - not implemented"
-  in
   let arg_opt =
     List.find
       ~f:(fun lst ->
@@ -64,7 +64,7 @@ let parse_sparrow nodes map chc =
             else
               let arg = Option.value ~default:[] arg_opt in
               if List.length arg <> 0 then
-                CReturn1 (List.hd_exn arg, parse_loc loc)
+                CReturn1 (List.hd_exn arg, parse_loc loc, cmd)
               else CReturn2 (parse_loc loc)
         | "call" ->
             let arg_opt = find_fact_opt key call_facts in
@@ -81,25 +81,31 @@ let parse_sparrow nodes map chc =
               CCall
                 ( List.hd_exn arg,
                   CCallExp (lval, arg_lst, parse_loc loc),
-                  parse_loc loc )
+                  parse_loc loc,
+                  cmd )
         | "assume" ->
             let arg_opt = find_fact_opt key assume_facts in
             if Option.is_none arg_opt then CNone
             else
               let arg = Option.value ~default:[] arg_opt in
-              CAssume (List.hd_exn arg, parse_loc loc)
+              if List.hd_exn arg |> String.equal "true" then
+                CAssume (true, List.nth_exn arg 1, parse_loc loc)
+              else if List.hd_exn arg |> String.equal "false" then
+                CAssume (false, List.nth_exn arg 1, parse_loc loc)
+              else failwith "parse_sparrow: incorrect assume fact format"
         | "set" ->
             let arg = find_fact_opt key set_facts in
             if Option.is_none arg then CNone
             else
               let arg = Option.value ~default:[] arg in
-              CSet (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc)
+              CSet (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc, cmd)
         | "alloc" -> (
             let arg = find_fact_opt key alloc_exp_facts in
             match arg with
             | None -> CNone
             | Some arg ->
-                CAlloc (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc))
+                CAlloc (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc, cmd)
+            )
         | "falloc" -> CNone
         | "salloc" -> CNone
         | _ -> L.error "parse_sparrow: unknown command %s" (List.hd_exn cmd)
@@ -179,9 +185,6 @@ let parse_cf_facts datalog_dir fact_file =
            let arg_lst = String.split ~on:'\t' line in
            let args = List.map ~f:mk_term arg_lst in
            let elt = Chc.Elt.FuncApply (func_name, args) in
-           (* let map =
-                Utils.StrMap.add (List.hd_exn arg_lst) (List.tl_exn arg_lst) map
-              in *)
            elt :: lst)
   in
   List.rev elt_lst |> Chc.of_list
@@ -258,13 +261,14 @@ let mk_parent_tuples stmts =
 
 let eq_instrs ast_instr cfg_instr =
   match (ast_instr, cfg_instr) with
-  | [ Cil.Call (_, _, _, loc) ], Maps.CfgNode.CCall (_, _, cloc) ->
+  | [ Cil.Call (_, _, _, loc) ], Maps.CfgNode.CCall (_, _, cloc, _) ->
       SymDiff.eq_line loc cloc
-  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CSet (_, _, cloc)
-  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CAlloc (_, _, cloc)
-  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CSalloc (_, _, cloc)
-  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CFalloc (_, _, cloc) ->
+  | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CSet (_, _, cloc, cmd)
+  | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CAlloc (_, _, cloc, cmd)
+  | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CSalloc (_, _, cloc, cmd)
+  | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CFalloc (_, _, cloc, cmd) ->
       SymDiff.eq_line loc cloc
+      && String.equal (Utils.SparrowParser.s_lv lv) (List.nth_exn cmd 1)
   | _ -> false
 
 let lookup_eq_nodes ast_node cfg =
@@ -272,8 +276,10 @@ let lookup_eq_nodes ast_node cfg =
     (fun cnode id acc ->
       (match (ast_node.Cil.skind, cnode) with
       | Cil.Instr i, cn -> eq_instrs i cn
-      | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc -> SymDiff.eq_line loc cloc
-      | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc)
+      | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc
+      | Cil.If (_, _, _, loc), Maps.CfgNode.CAssume (_, _, cloc) ->
+          SymDiff.eq_line loc cloc
+      | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc, _)
       | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
           SymDiff.eq_line loc cloc
       | _ -> false)
@@ -419,6 +425,6 @@ let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
   let cf_facts = make_cf_facts alarm_dir cfg maps.cfg_map in
   let ast_facts = make_ast_facts alarm_dir maps stmts in
   let facts = Chc.union cf_facts ast_facts in
-  (* Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
-     Chc.sexp_dump (Filename.concat out_dir target_alarm) facts; *)
+  Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
+  Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;
   (facts, get_alarm alarm_dir)

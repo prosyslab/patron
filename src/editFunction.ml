@@ -3,7 +3,7 @@ module D = Diff
 module S = SymDiff
 module H = Utils
 
-type ast_node = Fun of Cil.global | Stmt of Cil.stmt | Exp of Cil.exp
+type ast_node = Fun | Stmt of Cil.stmt | Exp of Cil.exp
 
 type ctx = {
   parent_node : ast_node;
@@ -167,7 +167,9 @@ and translate_exp ast (model_map : (string * string) list) exp_map sexp =
       | S.SElement.SCastE (_, e), Cil.CastE (t, _) ->
           let exp = translate_exp ast model_map exp_map e in
           Cil.CastE (t, exp)
-      | S.SElement.SUnOp _, Cil.UnOp _
+      | S.SElement.SUnOp (_, t, _), Cil.UnOp (op', _, t') ->
+          let exp = translate_exp ast model_map exp_map t in
+          Cil.UnOp (op', exp, t')
       | S.SElement.SSizeOf _, Cil.SizeOf _
       | S.SElement.SSizeOfE _, Cil.SizeOfE _
       | S.SElement.SSizeOfStr _, Cil.SizeOfStr _
@@ -177,7 +179,6 @@ and translate_exp ast (model_map : (string * string) list) exp_map sexp =
   | _ -> failwith "translate_exp: ranslation target is not an expression"
 
 let rec translate_stmt ast model_map cfg exp_map stmt =
-  (* let id = stmt.S.SElement.id in *)
   let node = stmt.S.SElement.node in
   match node with
   | S.SElement.SStmt (sym, cil) -> (
@@ -245,7 +246,6 @@ let rec translate_stmt ast model_map cfg exp_map stmt =
   | _ -> failwith "translate_stmt: translation target is not a statement type"
 
 let get_new_patch_id id model =
-  print_endline id;
   List.find
     (fun (k, _) -> String.equal k (String.concat "-" [ "AstNode"; id ]))
     model
@@ -292,11 +292,16 @@ let translate ast sym_diff model_path maps patch_node_id patch_ingredients_cfg =
     (fun acc diff ->
       match diff with
       | S.SInsertStmt (context, stmt) ->
-          let new_patch_id = get_new_patch_id patch_node_id model_map in
+          let new_patch_id =
+            if String.equal patch_node_id "" then -1
+            else get_new_patch_id patch_node_id model_map
+          in
           let new_parent_node =
             (* TODO: case where parent is global *)
-            let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
-            Stmt translated_stmt
+            if new_patch_id = -1 then Fun
+            else
+              let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
+              Stmt translated_stmt
           in
           let before, after =
             compute_patch_loc context.S.patch_between patch_ingredients_ast

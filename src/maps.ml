@@ -8,35 +8,39 @@ module CfgNode = struct
 
   type t =
     | CNone
-    | CSet of string * string * loc (* (lv, e, loc) *)
-    | CExternal of string * loc (*(lv, loc)*)
-    | CAlloc of string * string * loc (*(lv, Array e, _, loc) *)
-    | CSalloc of string * string * loc (*(lv, s, loc) *)
-    | CFalloc of string * string * loc (*(lv, f, loc) *)
-    | CCall of string * t * loc (*(Some lv, CcallExp(fexp, params, loc))*)
+    | CSet of string * string * loc * string list (* (lv, e, loc) *)
+    | CExternal of string * loc * string list (*(lv, loc)*)
+    | CAlloc of string * string * loc * string list (*(lv, Array e, _, loc) *)
+    | CSalloc of string * string * loc * string list (*(lv, s, loc) *)
+    | CFalloc of string * string * loc * string list (*(lv, f, loc) *)
+    | CCall of
+        string
+        * t
+        * loc
+        * string list (*(Some lv, CcallExp(fexp, params, loc))*)
     | CCallExp of string * string list * loc (*(None, fexp, params, loc)*)
-    | CReturn1 of string * loc (*(Some e, loc) *)
+    | CReturn1 of string * loc * string list (*(Some e, loc) *)
     | CReturn2 of loc (*(None, loc) *)
     | CIf of loc (*(_, _, _, loc) *)
-    | CAssume of string * loc (*(e, _, loc) *)
+    | CAssume of bool * string * loc (*(e, _, loc) *)
     | CLoop of loc (*loc *)
     | CAsm of loc (*(_, _, _, _, _, loc) *)
     | CSkip of loc (*(_, loc)*)
 
   let pp = function
     | CNone -> "CNone"
-    | CSet (lv, e, _) -> F.sprintf "CSet(%s, %s)" lv e
-    | CExternal (lv, _) -> F.sprintf "CExternal(%s)" lv
-    | CAlloc (lv, e, _) -> F.sprintf "CAlloc(%s, %s)" lv e
-    | CSalloc (lv, s, _) -> F.sprintf "CSalloc(%s, %s)" lv s
-    | CFalloc (lv, f, _) -> F.sprintf "CFalloc(%s, %s)" lv f
-    | CCall (lv, _, _) -> F.sprintf "CCall(%s)" lv
+    | CSet (lv, e, _, _) -> F.sprintf "CSet(%s, %s)" lv e
+    | CExternal (lv, _, _) -> F.sprintf "CExternal(%s)" lv
+    | CAlloc (lv, e, _, _) -> F.sprintf "CAlloc(%s, %s)" lv e
+    | CSalloc (lv, s, _, _) -> F.sprintf "CSalloc(%s, %s)" lv s
+    | CFalloc (lv, f, _, _) -> F.sprintf "CFalloc(%s, %s)" lv f
+    | CCall (lv, _, _, _) -> F.sprintf "CCall(%s)" lv
     | CCallExp (fexp, params, _) ->
         F.sprintf "CCallExp(%s, %s)" fexp (String.concat ~sep:", " params)
-    | CReturn1 (e, _) -> F.sprintf "CReturn1(%s)" e
+    | CReturn1 (e, _, _) -> F.sprintf "CReturn1(%s)" e
     | CReturn2 _ -> "CReturn2"
     | CIf _ -> "CIf"
-    | CAssume (e, _) -> F.sprintf "CAssume(%s)" e
+    | CAssume (_, e, _) -> F.sprintf "CAssume(%s)" e
     | CLoop _ -> "CLoop"
     | CAsm _ -> "CAsm"
     | CSkip _ -> "CSkip"
@@ -83,18 +87,6 @@ let reset_maps maps =
   Hashtbl.reset maps.node_map;
   Hashtbl.reset maps.exp_map
 
-let make_ast_map stmts ast_map =
-  List.fold_left ~init:1
-    ~f:(fun id stmt ->
-      if Utils.string_of_stmt stmt |> Utils.summarize_pp |> String.equal "" then
-        id
-      else
-        let next_id = id + 1 in
-        Hashtbl.add ast_map stmt id;
-        next_id)
-    stmts
-  |> ignore
-
 let dump_map a_to_string b_to_string map_name mode map out_dir =
   let sym_map_file =
     F.sprintf "%s_%s.map" mode map_name |> Filename.concat out_dir
@@ -113,7 +105,25 @@ let dump_numeral_map = dump_map string_of_int Fun.id "numeral"
 
 let dump_ast_map =
   dump_map
-    (fun x -> Utils.string_of_stmt x |> Utils.summarize_pp)
+    (fun x ->
+      match x.Cil.skind with
+      | Cil.Instr i when List.length i = 0 -> "empty instr"
+      | Cil.Instr i -> (
+          match List.hd_exn i with
+          | Cil.Set (_, _, l) -> "set:" ^ Utils.s_location l
+          | Cil.Call (_, _, _, l) -> "call:" ^ Utils.s_location l
+          | Cil.Asm _ -> "asm")
+      | Cil.Return (_, l) -> "return:" ^ Utils.s_location l
+      | Cil.Goto _ -> Utils.string_of_stmt x
+      | Cil.Break l -> "break:" ^ Utils.s_location l
+      | Cil.Continue l -> "continue:" ^ Utils.s_location l
+      | Cil.If (_, _, _, l) -> "if:" ^ Utils.s_location l
+      | Cil.Switch (_, _, _, l) -> "switch:" ^ Utils.s_location l
+      | Cil.Loop (_, l, _, _) -> "loop:" ^ Utils.s_location l
+      | Cil.Block _ -> "block"
+      | Cil.TryFinally _ -> "tryfinally"
+      | Cil.TryExcept _ -> "tryexcept"
+      | Cil.ComputedGoto _ -> "computedgoto")
     string_of_int "ast"
 
 let dump mode maps out_dir =

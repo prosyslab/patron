@@ -104,6 +104,9 @@ let collect_nodes deps node_map =
       match dep with
       (* TODO: case where nodes are used but not by Set *)
       | Chc.Elt.FuncApply ("Set", args) -> List.hd_exn args :: acc
+      | Chc.Elt.FuncApply ("DetailedDUEdge", args) ->
+          (List.rev args |> List.tl_exn) @ acc
+      | Chc.Elt.FuncApply ("EvalLv", args) -> List.hd_exn args :: acc
       | _ -> acc)
     deps
   |> List.fold_left ~init:[] ~f:(fun acc node ->
@@ -151,7 +154,6 @@ let rec go_up parent_tups ast_node_lst (parent, _) acc =
     :: acc
   else
     let down = fold_down parent_tups ast_node_lst candidates [] in
-    List.length down |> string_of_int |> print_endline;
     let upper_node_opt =
       List.find ~f:(fun (_, c') -> String.equal parent c') acc
     in
@@ -234,7 +236,6 @@ let mk_parent_tups_str stmts ast_map =
          else acc)
 
 let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
-  print_endline patch_func;
   let ast_map = maps.Maps.ast_map in
   let node_map = maps.Maps.node_map |> Utils.reverse_hashtbl in
   L.info "Compute AST pattern...";
@@ -248,21 +249,20 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
 
 let abstract_bug_pattern facts src snk aexps maps ctx ast =
   let fact_lst = Chc.to_list facts in
-  (* let deps = collect_deps src snk aexps buggy |> Chc.to_list in *)
   let ast_node_lst = collect_nodes fact_lst maps.Maps.node_map in
-  (* let patch_node, patch_func = extract_parent ctx maps.Maps.ast_map in
-     let smallest_ast_pattern =
-       if String.is_empty patch_node then
-         failwith "not implemented for direct patch below the function"
-       else compute_ast_pattern ast_node_lst patch_node patch_func maps ast
-     in *)
+  List.length ast_node_lst |> string_of_int |> print_endline;
+  let patch_node, patch_func = extract_parent ctx maps.Maps.ast_map in
+  let smallest_ast_pattern =
+    if String.is_empty patch_node then []
+    else compute_ast_pattern ast_node_lst patch_node patch_func maps ast
+  in
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  ( Chc.Elt.Implies (fact_lst (* @ smallest_ast_pattern *), errtrace)
+  ( Chc.Elt.Implies (fact_lst @ smallest_ast_pattern, errtrace)
     |> Chc.Elt.numer2var |> Chc.singleton,
     ast_node_lst )
 

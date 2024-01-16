@@ -520,10 +520,10 @@ and match_set_id cfg loc =
   Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CSet (_, _, cloc)
-      | Maps.CfgNode.CAlloc (_, _, cloc)
-      | Maps.CfgNode.CFalloc (_, _, cloc)
-      | Maps.CfgNode.CSalloc (_, _, cloc) ->
+      | Maps.CfgNode.CSet (_, _, cloc, _)
+      | Maps.CfgNode.CAlloc (_, _, cloc, _)
+      | Maps.CfgNode.CFalloc (_, _, cloc, _)
+      | Maps.CfgNode.CSalloc (_, _, cloc, _) ->
           if eq_line loc cloc then v :: acc else acc
       | _ -> acc)
     cfg []
@@ -532,7 +532,7 @@ and match_call_id cfg loc =
   Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CCall (_, _, cloc) ->
+      | Maps.CfgNode.CCall (_, _, cloc, _) ->
           if eq_line loc cloc then v :: acc else acc
       | _ -> acc)
     cfg []
@@ -541,7 +541,7 @@ and match_return_id cfg loc =
   Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CReturn1 (_, cloc) ->
+      | Maps.CfgNode.CReturn1 (_, cloc, _) ->
           if eq_line loc cloc then v :: acc else acc
       | Maps.CfgNode.CReturn2 cloc -> if eq_line loc cloc then v :: acc else acc
       | _ -> acc)
@@ -551,7 +551,7 @@ and match_assume_id cfg loc cond =
   Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CAssume (ccond, cloc) ->
+      | Maps.CfgNode.CAssume (_, ccond, cloc) ->
           if eq_line loc cloc && H.string_of_exp cond |> H.subset ccond then
             v :: acc
           else acc

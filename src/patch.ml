@@ -263,7 +263,7 @@ let replace_exp_in_stmts stmts parent from_exp to_exp =
     [] stmts
   |> List.rev
 
-class stmtInsertVisitor target_func parent patch_bw stmt =
+class stmtInsertVisitorUnderStmt target_func parent patch_bw stmt =
   object
     inherit Cil.nopCilVisitor
 
@@ -271,6 +271,19 @@ class stmtInsertVisitor target_func parent patch_bw stmt =
       if f.svar.vname = target_func then
         let stmts = f.sbody.bstmts in
         let new_stmts = iter_body stmts parent patch_bw stmt in
+        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
+      else DoChildren
+  end
+
+class stmtInsertVisitorUnderFun target_func patch_bw stmt =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vfunc (f : Cil.fundec) =
+      if f.svar.vname = target_func then
+        let stmts = f.sbody.bstmts in
+        let before, after = patch_bw in
+        let new_stmts = insert_patch stmt stmts before after in
         ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
       else DoChildren
   end
@@ -316,11 +329,14 @@ let apply_action diff donee action =
       let parent = ctx.EF.parent_node in
       let target_func = context.SymDiff.func_name in
       match parent with
-      | Fun _ -> failwith "InsertStmt: not implemented"
+      | Fun ->
+          let patch_bw = ctx.EF.patch_between in
+          let vis = new stmtInsertVisitorUnderFun target_func patch_bw stmt in
+          ignore (Cil.visitCilFile vis donee)
       | Stmt s ->
           let patch_bw = ctx.EF.patch_between in
           let vis =
-            new stmtInsertVisitor target_func s.Cil.skind patch_bw stmt
+            new stmtInsertVisitorUnderStmt target_func s.Cil.skind patch_bw stmt
           in
           ignore (Cil.visitCilFile vis donee)
       | _ -> failwith "InsertStmt: Incorrect parent type")
