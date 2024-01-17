@@ -28,31 +28,28 @@ let extract_str = function
   | Chc.Elt.FDNumeral s -> s
   | _ -> failwith "find_fact_opt - not implemented"
 
-let find_fact_opt key (fact : Chc.Elt.t list list) =
-  let arg_opt =
-    List.find
-      ~f:(fun lst ->
-        let key_in_fact = List.hd_exn lst |> extract_str in
-        String.equal key_in_fact key)
-      fact
-  in
-  if Option.is_none arg_opt then None
-  else
-    let out =
-      Option.value ~default:[] arg_opt
-      |> List.tl_exn
-      |> List.fold_left ~init:[] ~f:(fun acc s -> extract_str s :: acc)
-      |> List.rev
-    in
-    Some out
+let find_fact_opt key fact =
+  List.find
+    ~f:(fun lst ->
+      let key_in_fact = List.hd_exn lst in
+      String.equal key_in_fact key)
+    fact
+  |> Option.map ~f:(fun lst -> List.tl_exn lst)
 
-let parse_sparrow nodes map chc =
-  let set_facts = parse_facts chc "Set" in
-  let call_facts = parse_facts chc "Call" in
-  let args_facts = parse_facts chc "Arg" in
-  let alloc_exp_facts = parse_facts chc "Alloc" in
-  let return_facts = parse_facts chc "Return" in
-  let assume_facts = parse_facts chc "Assume" in
+let get_facts facts func_name =
+  List.find_exn facts ~f:(fun (f, _) -> String.equal f func_name) |> snd
+
+let make_cfg_map raw_facts nodes map =
+  (* TODO: need to open more facts files for more detail info for diff *)
+  let set_facts = get_facts raw_facts "Set" in
+  let call_facts = [] in
+  (* let call_facts = get_facts raw_facts "Call" in *)
+  let args_facts = get_facts raw_facts "Arg" in
+  let alloc_exp_facts = [] in
+  (* let alloc_exp_facts = get_facts raw_facts "Alloc" in *)
+  let return_facts = get_facts raw_facts "Return" in
+  let assume_facts = [] in
+  (* let assume_facts = get_facts raw_facts "Assume" in *)
   List.iter
     ~f:(fun (key, cmd, loc) ->
       let cmd =
@@ -176,29 +173,38 @@ let file2func = function
   | "Assume.facts" -> "Assume"
   | f -> L.error "file2func - wrong filename: %s" f
 
-let parse_cf_facts datalog_dir fact_file =
-  let func_name = file2func fact_file in
-  let fact_file_path = Filename.concat datalog_dir fact_file in
+let parse_cf_facts (fact_file : string * string list list) =
+  let func_name, facts = fact_file in
   let elt_lst =
-    In_channel.read_lines fact_file_path
-    |> List.fold_left ~init:[] ~f:(fun lst line ->
-           let arg_lst = String.split ~on:'\t' line in
-           let args = List.map ~f:mk_term arg_lst in
-           let elt = Chc.Elt.FuncApply (func_name, args) in
-           elt :: lst)
+    List.fold_left ~init:[]
+      ~f:(fun lst arg_lst ->
+        let args = List.map ~f:mk_term arg_lst in
+        let elt = Chc.Elt.FuncApply (func_name, args) in
+        elt :: lst)
+      facts
   in
   List.rev elt_lst |> Chc.of_list
 
-let make_cf_facts work_dir cfg map =
-  let cf_facts =
-    List.fold_left ~init:Chc.empty
-      ~f:(fun facts file ->
-        let chc = parse_cf_facts work_dir file in
-        Chc.union facts chc)
-      Z3env.fact_files
-  in
-  parse_sparrow cfg map cf_facts;
-  cf_facts
+let parse_facts work_dir =
+  List.fold_left ~init:[]
+    ~f:(fun facts file ->
+      let func_name = file2func file in
+      let fact_file_path = Filename.concat work_dir file in
+      let file_contents =
+        In_channel.read_lines fact_file_path
+        |> List.fold_left ~init:[] ~f:(fun lst line ->
+               let arg_lst = String.split ~on:'\t' line in
+               arg_lst :: lst)
+      in
+      (func_name, file_contents) :: facts)
+    Z3env.fact_files
+
+let make_cf_facts raw_facts =
+  List.fold_left ~init:Chc.empty
+    ~f:(fun facts file ->
+      let chc = parse_cf_facts file in
+      Chc.union facts chc)
+    raw_facts
 
 let rec sexp2chc = function
   | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->
@@ -415,16 +421,24 @@ let get_alarm work_dir =
   in
   (src, snk, aexps)
 
-let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
+let make_facts buggy_dir target_alarm ast_facts out_dir raw_facts =
   let alarm_dir =
     Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
   in
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
-  Utils.parse_map alarm_dir maps.exp_map;
-  let stmts = Utils.extract_stmts ast in
-  let cf_facts = make_cf_facts alarm_dir cfg maps.cfg_map in
-  let ast_facts = make_ast_facts alarm_dir maps stmts in
+  let cf_facts = make_cf_facts raw_facts in
   let facts = Chc.union cf_facts ast_facts in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;
   (facts, get_alarm alarm_dir)
+
+let make_maps buggy_dir target_alarm ast cfg maps =
+  let alarm_dir =
+    Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
+  in
+  let raw_facts = parse_facts alarm_dir in
+  Utils.parse_map alarm_dir maps.Maps.exp_map;
+  let stmts = Utils.extract_stmts ast in
+  make_cfg_map raw_facts cfg maps.Maps.cfg_map;
+  let ast_facts = make_ast_facts alarm_dir maps stmts in
+  (raw_facts, ast_facts)

@@ -786,38 +786,115 @@ let get_sibling_lst patch_node parent_branch =
       | _ -> failwith "define_sym_diff: not implemented")
   | _ -> failwith "define_sym_diff: not implemented"
 
+let rec extract_node_ids node =
+  match node.node with
+  | SStmt (s, _) -> node.id :: extract_stmt_ids s
+  | SGlob _ -> [ node.id ]
+  | SExp (e, _) -> node.id :: extract_exp_ids e
+  | SLval (l, _) -> node.id :: extract_lval_ids l
+  | _ -> []
+
+and extract_stmt_ids (stmt : sym_stmt) =
+  match stmt with
+  | SBlock lst -> List.fold_left (fun acc s -> extract_node_ids s @ acc) [] lst
+  | SSet (l, e) -> extract_node_ids l @ extract_node_ids e
+  | SCall (Some l, e, es) ->
+      extract_node_ids l @ extract_node_ids e
+      @ List.fold_left (fun acc e -> extract_node_ids e @ acc) [] es
+  | SCall (None, e, es) ->
+      extract_node_ids e
+      @ List.fold_left (fun acc e -> extract_node_ids e @ acc) [] es
+  | SReturn (Some e) -> extract_node_ids e
+  | SReturn None -> []
+  | SIf (e, s1, s2) ->
+      extract_node_ids e
+      @ List.fold_left (fun acc s -> extract_node_ids s @ acc) [] s1
+      @ List.fold_left (fun acc s -> extract_node_ids s @ acc) [] s2
+  | SGoto s -> extract_node_ids s
+  | _ -> []
+
+and extract_exp_ids (exp : sym_exp) =
+  match exp with
+  | SELval l -> extract_node_ids l
+  | SConst _ -> []
+  | SSizeOf _ -> []
+  | SSizeOfE e -> extract_node_ids e
+  | SBinOp (_, e1, e2, _) -> extract_node_ids e1 @ extract_node_ids e2
+  | SUnOp (_, e, _) -> extract_node_ids e
+  | SCastE (_, e) -> extract_node_ids e
+  | SQuestion (e1, e2, e3, _) ->
+      extract_node_ids e1 @ extract_node_ids e2 @ extract_node_ids e3
+  | SAddrOf l -> extract_node_ids l
+  | SStartOf l -> extract_node_ids l
+  | SAddrOfLabel s -> extract_node_ids s
+  | _ -> []
+
+and extract_lval_ids (lval : sym_lval) =
+  match lval with
+  | Lval (l, o) -> extract_lhost_ids l @ extract_offset_ids o
+  | _ -> []
+
+and extract_lhost_ids (lhost : sym_lhost) =
+  match lhost with SVar _ -> [] | SMem e -> extract_node_ids e
+
+and extract_offset_ids (offset : sym_offset) =
+  match offset with
+  | SNoOffset -> []
+  | SField (_, o) -> extract_offset_ids o
+  | SIndex (e, o) -> extract_node_ids e @ extract_offset_ids o
+
+let extract_diff_ids sdiff =
+  match sdiff with
+  | SInsertStmt (_, n)
+  | SDeleteStmt (_, n)
+  | SInsertExp (_, n)
+  | SDeleteExp (_, n)
+  | SInsertLval (_, n)
+  | SDeleteLval (_, n) ->
+      extract_node_ids n
+  | SUpdateExp (_, n1, n2) | SUpdateLval (_, n1, n2) ->
+      extract_node_ids n1 @ extract_node_ids n2
+
 let define_sym_diff (maps : Maps.t) buggy diff =
   get_gvars buggy;
   let cfg = maps.cfg_map in
   let exp_map = maps.exp_map |> Utils.reverse_hashtbl in
   let node_map = maps.node_map |> Utils.reverse_hashtbl in
-  List.fold_left
-    (fun acc d ->
-      let ctx = get_ctx d in
-      let root_path = ctx.D.parent |> List.rev in
-      let s_root_path = match_context cfg exp_map root_path in
-      let rest_path = List.tl s_root_path in
-      let prnt_fun = get_parent_fun root_path in
-      let prnt_fun_name = extract_fun_name prnt_fun in
-      let patch_node =
-        try List.hd rest_path
-        with _ ->
-          { node = SGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
-      in
-      let siblings = get_sibling_lst patch_node ctx.D.parent_branch in
-      let patch_bw =
-        get_patch_range siblings ctx.patch_loc node_map maps.ast_map
-      in
-      let s_context : sym_context =
-        {
-          parent = rest_path;
-          patch_node;
-          patch_between = patch_bw;
-          func_name = prnt_fun_name;
-        }
-      in
-      mk_sdiff s_context cfg exp_map d :: acc)
-    [] diff
+  let sdiff =
+    List.fold_left
+      (fun acc d ->
+        let ctx = get_ctx d in
+        let root_path = ctx.D.parent |> List.rev in
+        let s_root_path = match_context cfg exp_map root_path in
+        let rest_path = List.tl s_root_path in
+        let prnt_fun = get_parent_fun root_path in
+        let prnt_fun_name = extract_fun_name prnt_fun in
+        let patch_node =
+          try List.hd rest_path
+          with _ ->
+            { node = SGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
+        in
+        let siblings = get_sibling_lst patch_node ctx.D.parent_branch in
+        let patch_bw =
+          get_patch_range siblings ctx.patch_loc node_map maps.ast_map
+        in
+        let s_context : sym_context =
+          {
+            parent = rest_path;
+            patch_node;
+            patch_between = patch_bw;
+            func_name = prnt_fun_name;
+          }
+        in
+        mk_sdiff s_context cfg exp_map d :: acc)
+      [] diff
+  in
+  let patch_comp =
+    List.fold_left (fun acc d -> extract_diff_ids d @ acc) [] sdiff
+    |> List.sort_uniq Stdlib.compare
+    |> List.filter (fun x -> x <> "None")
+  in
+  (sdiff, patch_comp)
 
 module DiffJson = struct
   open SElement
