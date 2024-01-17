@@ -1,12 +1,11 @@
 # patron
 Bug Pattern Matching Tool using SMT Solver for Patch Transplantation
 
-## Usage
-
-**Bug Pattern Construction**
-```
-./patron db <target project directory>
-```
+## Prerequisites
+- Opam
+- Sparrow
+- Target C program taint-analyzed by Sparrow
+- One True Alarm # from `<target_bug_dir>/sparrow-out/taint/datalog/Alarm.map`
 - The target project dir must have the following structure
 ```
 target_dir
@@ -18,7 +17,8 @@ target_dir
         └ sparrow-out 
                 ├ ...
 ```
-**Patch Generation**
+## Usage
+
 ```
-./patron patch <Donee directory> <DB directiory>
+./patron <target project directory> <True Alarm #>
 ```
