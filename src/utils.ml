@@ -640,18 +640,34 @@ class copyStmtVisitor =
 let stmt_lst = ref []
 let target_func = ref ""
 
+let rec collect_stmts_from_block stmts =
+  match stmts with
+  | [] -> []
+  | hd :: tl -> (
+      match hd.Cil.skind with
+      | Cil.Block b | Cil.Loop (b, _, _, _) ->
+          (hd :: collect_stmts_from_block b.Cil.bstmts)
+          @ collect_stmts_from_block tl
+      | Cil.If (_, b1, b2, _) ->
+          (hd :: collect_stmts_from_block b1.bstmts)
+          @ collect_stmts_from_block b2.bstmts
+          @ collect_stmts_from_block tl
+      | _ -> hd :: collect_stmts_from_block tl)
+
 class functionVisitor =
   object
     inherit Cil.nopCilVisitor
 
     method! vfunc func =
       if func.svar.vname = !target_func then (
-        stmt_lst := func.sbody.bstmts;
+        stmt_lst := !stmt_lst @ func.sbody.bstmts;
+        stmt_lst := collect_stmts_from_block !stmt_lst;
         SkipChildren)
       else DoChildren
   end
 
 let extract_target_func_stmt_lst file target =
+  stmt_lst := [];
   target_func := target;
   let vis = new functionVisitor in
   ignore (Cil.visitCilFile vis file);

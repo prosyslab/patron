@@ -247,6 +247,66 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   let solution = go_up parent_tups ast_node_lst init [ init ] in
   mk_ast_bug_pattern node_map solution
 
+let get_func str = String.split_on_chars ~on:[ '-' ] str |> List.hd_exn
+let get_id str = String.split_on_chars ~on:[ '-' ] str |> List.last_exn
+
+let extract_func elt =
+  List.fold_left ~init:[]
+    ~f:(fun acc e ->
+      match e with
+      | Chc.Elt.FDNumeral s | Chc.Elt.Var s -> get_func s :: acc
+      | _ -> acc)
+    elt
+
+let extract_id elt =
+  List.fold_left ~init:[]
+    ~f:(fun acc e ->
+      match e with
+      | Chc.Elt.FDNumeral s | Chc.Elt.Var s -> get_id s :: acc
+      | _ -> acc)
+    elt
+
+let extract_funcs_from_facts facts =
+  Chc.fold
+    (fun c acc ->
+      match c with
+      | Chc.Elt.FuncApply (_, elt) -> extract_func elt @ acc
+      | _ -> acc)
+    facts []
+  |> List.dedup_and_sort ~compare:String.compare
+
+let reduce_ast_facts maps ast (ast_facts : Chc.t) facts =
+  let func_lst = extract_funcs_from_facts facts in
+  let interesting_stmts =
+    List.fold ~init:[]
+      ~f:(fun acc f -> Utils.extract_target_func_stmt_lst ast f @ acc)
+      func_lst
+    |> List.fold ~init:[] ~f:(fun acc s ->
+           try (Hashtbl.find maps.Maps.ast_map s |> string_of_int) :: acc
+           with _ -> acc)
+  in
+  Chc.fold
+    (fun c acc ->
+      match c with
+      | Chc.Elt.FuncApply ("AstParent", elt) ->
+          let nodes = [ List.hd_exn elt; List.last_exn elt ] |> extract_id in
+          List.fold_left ~init:Chc.empty
+            ~f:(fun acc' node ->
+              if List.exists ~f:(fun n -> String.equal n node) interesting_stmts
+              then Chc.add c acc'
+              else acc')
+            nodes
+          |> Chc.union acc
+      | Chc.Elt.FuncApply ("EqNode", elt) ->
+          let (func : string) =
+            [ List.hd_exn elt ] |> extract_func |> List.hd_exn
+          in
+          if List.exists ~f:(fun y -> String.equal func y) func_lst then
+            Chc.add c acc
+          else acc
+      | _ -> failwith "non-ast fact")
+    ast_facts Chc.empty
+
 let abstract_bug_pattern facts src snk aexps maps ctx ast =
   let fact_lst = Chc.to_list facts in
   let ast_node_lst = collect_nodes fact_lst maps.Maps.node_map in
@@ -277,11 +337,13 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
       Parser.make_facts buggy_dir target_alarm ast_facts out_dir raw_facts
     in
     let facts' = collect_deps src snk aexps facts in
+    let ast_facts' = reduce_ast_facts target_maps ast ast_facts facts' in
     let z3env = Z3env.get_env () in
     L.info "Try matching with %s..." target_alarm;
+    let facts_combined = Chc.union facts' ast_facts' in
     let status =
       Chc.match_and_log z3env buggy_dir target_alarm out_dir target_alarm
-        target_maps facts' src snk pattern
+        target_maps facts_combined src snk pattern
     in
     Maps.dump target_alarm target_maps out_dir;
     if Option.is_some status then
@@ -320,6 +382,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   let patch_ast = Parser.parse_ast patch_dir inline_funcs in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
+  (* List.iter ~f:(fun diff -> Diff.pp_action F.std_formatter diff) ast_diff; *)
   L.info "Loading CFG Elements...";
   let buggy_cfg =
     Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out")
@@ -340,6 +403,9 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   in
   L.info "Make Facts in buggy done";
   let buggy_facts' = collect_deps src snk aexps buggy_facts in
+  let ast_facts' =
+    reduce_ast_facts buggy_maps buggy_ast ast_facts buggy_facts'
+  in
   let ctx =
     List.fold_left ~init:[]
       ~f:(fun acc diff -> SymDiff.extract_context diff :: acc)
@@ -347,7 +413,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
     (* Consider that patch occured in a single location for now *)
     |> List.hd_exn
   in
-  let patch_node_id, _ = extract_parent ctx buggy_maps.Maps.ast_map in
+  let patch_node_id = extract_parent ctx buggy_maps.Maps.ast_map |> fst in
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern, patch_ingredients =
     abstract_bug_pattern buggy_facts' src snk aexps buggy_maps ctx buggy_ast
@@ -357,8 +423,9 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   let z3env = Z3env.get_env () in
   L.info "Try matching with buggy...";
+  let facts_combined = Chc.union buggy_facts' ast_facts' in
   ( Chc.match_and_log z3env buggy_dir true_alarm out_dir "buggy" buggy_maps
-      buggy_facts' src snk pattern
+      facts_combined src snk pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
   match_with_new_alarms buggy_dir true_alarm buggy_maps patch_ast buggy_cfg

@@ -438,6 +438,7 @@ let make_maps buggy_dir target_alarm ast cfg maps =
   in
   let raw_facts = parse_facts alarm_dir in
   Utils.parse_map alarm_dir maps.Maps.exp_map;
+  (* TODO: either reduce the stmts here or reduce the fact list when rules are made *)
   let stmts = Utils.extract_stmts ast in
   make_cfg_map raw_facts cfg maps.Maps.cfg_map;
   let ast_facts = make_ast_facts alarm_dir maps stmts in

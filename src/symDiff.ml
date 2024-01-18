@@ -96,6 +96,8 @@ module SElement = struct
     | SReturn of sym_node option
     | SBlock of sym_node list
     | SGoto of sym_node
+    | SBreak
+    | SContinue
 
   and sym_global = SGNull | SGFun | GVar of string * string
   and sym_node = { node : t; id : string; literal : string }
@@ -131,6 +133,8 @@ module SElement = struct
         Format.fprintf fmt "SBlock";
         pp_node_lst fmt b
     | SGoto s -> Format.fprintf fmt "SGoto(%a)" pp_node s
+    | SBreak -> Format.fprintf fmt "SBreak"
+    | SContinue -> Format.fprintf fmt "SContinue"
 
   and pp_soptlval fmt l =
     match l with None -> Format.fprintf fmt "None" | Some l -> pp_node fmt l
@@ -363,6 +367,8 @@ and match_stmt cfg exp_map s =
       let id = "GOTO_DST" in
       let literal = H.string_of_stmt !s in
       SElement.SGoto { node; id; literal }
+  | Cil.Break _ -> SElement.SBreak
+  | Cil.Continue _ -> SElement.SContinue
   | _ -> failwith "match_stmt: not implemented"
 
 and mk_sexp cfg exp_map e =
@@ -1068,6 +1074,22 @@ module DiffJson = struct
         let literal_json = ("literal", `String sstmt.literal) in
         let goto_json = ("goto", `Assoc [ node_json; id_json; literal_json ]) in
         `Assoc [ goto_json ]
+    | SBreak ->
+        let node_json = ("node", `String "break") in
+        let id_json = ("id", `String sstmt.id) in
+        let literal_json = ("literal", `String sstmt.literal) in
+        let break_json =
+          ("break", `Assoc [ node_json; id_json; literal_json ])
+        in
+        `Assoc [ break_json ]
+    | SContinue ->
+        let node_json = ("node", `String "continue") in
+        let id_json = ("id", `String sstmt.id) in
+        let literal_json = ("literal", `String sstmt.literal) in
+        let continue_json =
+          ("continue", `Assoc [ node_json; id_json; literal_json ])
+        in
+        `Assoc [ continue_json ]
     | _ ->
         (* SElement.pp_sstmt Format.std_formatter sstmt; *)
         `Null
