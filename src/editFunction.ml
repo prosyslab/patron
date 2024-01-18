@@ -3,7 +3,7 @@ module D = Diff
 module S = SymDiff
 module H = Utils
 
-type ast_node = Fun | Stmt of Cil.stmt | Exp of Cil.exp
+type ast_node = Fun of string | Stmt of Cil.stmt | Exp of Cil.exp
 
 type ctx = {
   parent_node : ast_node;
@@ -273,6 +273,25 @@ let compute_patch_loc (before, after) patch_ingredients node_map ast_map_rev =
   let after = find_corresponding_ast after in
   (before, after)
 
+let find_patch_fun diff model =
+  let get_func str = String.split_on_char '-' str |> List.hd in
+  let untranslated_func_name =
+    match diff with
+    | S.SInsertStmt (ctx, _)
+    | S.SDeleteStmt (ctx, _)
+    | S.SUpdateExp (ctx, _, _)
+    | S.SInsertExp (ctx, _)
+    | S.SDeleteExp (ctx, _)
+    | S.SInsertLval (ctx, _)
+    | S.SDeleteLval (ctx, _)
+    | S.SUpdateLval (ctx, _, _) ->
+        ctx.func_name
+  in
+  List.find
+    (fun (k, _) -> get_func k |> String.equal untranslated_func_name)
+    model
+  |> snd |> get_func
+
 let translate ast sym_diff model_path maps patch_node_id patch_ingredients_cfg =
   Logger.info "Translating patch...";
   let cfg = maps.Maps.cfg_map in
@@ -297,8 +316,9 @@ let translate ast sym_diff model_path maps patch_node_id patch_ingredients_cfg =
             else get_new_patch_id patch_node_id model_map
           in
           let new_parent_node =
-            (* TODO: case where parent is global *)
-            if new_patch_id = -1 then Fun
+            if new_patch_id = -1 then
+              let translated_func_name = find_patch_fun diff model_map in
+              Fun translated_func_name
             else
               let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
               Stmt translated_stmt

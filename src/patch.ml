@@ -329,9 +329,9 @@ let apply_action diff donee action =
       let parent = ctx.EF.parent_node in
       let target_func = context.SymDiff.func_name in
       match parent with
-      | Fun ->
+      | Fun func_name ->
           let patch_bw = ctx.EF.patch_between in
-          let vis = new stmtInsertVisitorUnderFun target_func patch_bw stmt in
+          let vis = new stmtInsertVisitorUnderFun func_name patch_bw stmt in
           ignore (Cil.visitCilFile vis donee)
       | Stmt s ->
           let patch_bw = ctx.EF.patch_between in

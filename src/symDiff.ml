@@ -490,7 +490,7 @@ and match_context cfg exp_map lst =
           let node = SGlob (SGNull, g) in
           let literal = H.string_of_global g in
           { id; node; literal } :: match_context cfg exp_map tl
-      | _ -> failwith "match_context: not implemented")
+      | _ -> failwith "match_context: context failed to be read")
 
 and match_exp_id exp_map e =
   let candidate =
@@ -871,7 +871,7 @@ let define_sym_diff (maps : Maps.t) buggy diff =
         let prnt_fun_name = extract_fun_name prnt_fun in
         let patch_node =
           try List.hd rest_path
-          with _ ->
+          with Failure _ ->
             { node = SGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
         in
         let siblings = get_sibling_lst patch_node ctx.D.parent_branch in
