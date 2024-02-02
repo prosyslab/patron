@@ -110,16 +110,16 @@ let dump_ast_map =
       | Cil.Instr i when List.length i = 0 -> "empty instr"
       | Cil.Instr i -> (
           match List.hd_exn i with
-          | Cil.Set (_, _, l) -> "set:" ^ Utils.s_location l
-          | Cil.Call (_, _, _, l) -> "call:" ^ Utils.s_location l
+          | Cil.Set (_, _, l) -> "set:" ^ Ast.s_location l
+          | Cil.Call (_, _, _, l) -> "call:" ^ Ast.s_location l
           | Cil.Asm _ -> "asm")
-      | Cil.Return (_, l) -> "return:" ^ Utils.s_location l
-      | Cil.Goto _ -> Utils.string_of_stmt x
-      | Cil.Break l -> "break:" ^ Utils.s_location l
-      | Cil.Continue l -> "continue:" ^ Utils.s_location l
-      | Cil.If (_, _, _, l) -> "if:" ^ Utils.s_location l
-      | Cil.Switch (_, _, _, l) -> "switch:" ^ Utils.s_location l
-      | Cil.Loop (_, l, _, _) -> "loop:" ^ Utils.s_location l
+      | Cil.Return (_, l) -> "return:" ^ Ast.s_location l
+      | Cil.Goto _ -> Ast.s_stmt x
+      | Cil.Break l -> "break:" ^ Ast.s_location l
+      | Cil.Continue l -> "continue:" ^ Ast.s_location l
+      | Cil.If (_, _, _, l) -> "if:" ^ Ast.s_location l
+      | Cil.Switch (_, _, _, l) -> "switch:" ^ Ast.s_location l
+      | Cil.Loop (_, l, _, _) -> "loop:" ^ Ast.s_location l
       | Cil.Block _ -> "block"
       | Cil.TryFinally _ -> "tryfinally"
       | Cil.TryExcept _ -> "tryexcept"

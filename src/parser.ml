@@ -274,7 +274,7 @@ let eq_instrs ast_instr cfg_instr =
   | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CSalloc (_, _, cloc, cmd)
   | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CFalloc (_, _, cloc, cmd) ->
       SymDiff.eq_line loc cloc
-      && String.equal (Utils.SparrowParser.s_lv lv) (List.nth_exn cmd 1)
+      && String.equal (Ast.s_lv lv) (List.nth_exn cmd 1)
   | _ -> false
 
 let lookup_eq_nodes ast_node cfg =

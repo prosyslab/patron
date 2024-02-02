@@ -21,17 +21,15 @@ module H = Utils
 
 let check_sibling_exp sibling exp_list =
   match sibling with
-  | D.CilElement.EExp e ->
-      List.exists (fun x -> H.string_of_exp x = H.string_of_exp e) exp_list
+  | Ast.Exp e -> List.exists (fun x -> Ast.isom_exp x e) exp_list
   | _ ->
       failwith
         "check_sibling_exp: sibling of an expression must be an expression"
 
 let check_stmt stmt stmt_list =
-  List.exists (fun x -> H.string_of_stmt x = H.string_of_stmt stmt) stmt_list
+  List.exists (fun x -> Ast.isom_stmt x stmt) stmt_list
 
-let check_exp exp exp_list =
-  List.exists (fun x -> H.string_of_exp x = H.string_of_exp exp) exp_list
+let check_exp exp exp_list = List.exists (fun x -> Ast.isom_exp x exp) exp_list
 
 (* let check_parent_stmt parent node =
    match parent.Cil.skind with
@@ -42,160 +40,29 @@ let check_exp exp exp_list =
 
 let get_sibling_exp sibling exp_list =
   match sibling with
-  | D.CilElement.EExp e ->
-      List.find (fun x -> H.string_of_exp x = H.string_of_exp e) exp_list
+  | Ast.Exp e -> List.find (fun x -> Ast.isom_exp x e) exp_list
   | _ ->
       failwith "get_sibling_exp: sibling of an expression must be an expression"
 
 let get_snk snk stmt_list =
   match snk with
-  | D.CilElement.EStmt s ->
-      List.find (fun x -> H.string_of_stmt x = H.string_of_stmt s) stmt_list
+  | Ast.Stmt s -> List.find (fun x -> Ast.isom_stmt x s) stmt_list
   | _ -> failwith "get_snk: snk must be a stmt"
 
 let check_snk snk stmt_list =
   match snk with
-  | D.CilElement.EStmt s ->
-      List.exists (fun x -> H.string_of_stmt x = H.string_of_stmt s) stmt_list
+  | Ast.Stmt s -> List.exists (fun x -> Ast.isom_stmt x s) stmt_list
   | _ -> failwith "check_snk: snk must be a stmt"
 
 let get_sibling_stmt sibling stmt_list =
   match sibling with
-  | D.CilElement.EStmt s ->
-      List.find (fun x -> H.string_of_stmt x = H.string_of_stmt s) stmt_list
+  | Ast.Stmt s -> List.find (fun x -> Ast.isom_stmt x s) stmt_list
   | _ -> failwith "get_sibling_stmt: sibling of a stmt must be a stmt"
 
-(* class expInsertVisitorInstr context (exp : Cil.exp) =
-     object
-       inherit Cil.nopCilVisitor
-
-       method! vinst (i : Cil.instr) =
-         if check_parent context.D.Diff.parent i then
-           match i with
-           | Cil.Call (lval, e, exp_list, loc) ->
-               if check_sibling_exp context.left_sibling exp_list then
-                 let prev_exp = get_sibling_exp context.left_sibling exp_list in
-                 ChangeTo
-                   [
-                     Cil.Call
-                       (lval, e, H.append_after_elt_exp prev_exp exp exp_list, loc);
-                   ]
-               else if check_sibling_exp context.right_sibling exp_list then
-                 let next_exp = get_sibling_exp context.right_sibling exp_list in
-                 ChangeTo
-                   [
-                     Cil.Call
-                       (lval, e, H.append_before_elt_exp next_exp exp exp_list, loc);
-                   ]
-               else
-                 failwith
-                   "expInsertVisitorInstr: an expression cannot be inserted \
-                    without any sibling info"
-           | _ -> DoChildren
-         else DoChildren
-     end
-
-   class lvalInsertVisitorInstr context (lval : Cil.lval) =
-     object
-       inherit Cil.nopCilVisitor
-
-       method! vinst (i : Cil.instr) =
-         if check_parent context.D.Diff.parent i then
-           match i with
-           | Cil.Call (None, e, exp_list, loc) ->
-               ChangeTo [ Cil.Call (Some lval, e, exp_list, loc) ]
-           | _ -> DoChildren
-         else DoChildren
-     end
-
-   class lvalDeleteVisitorInstr context (lval : Cil.lval) =
-     object
-       inherit Cil.nopCilVisitor
-
-       method! vinst (i : Cil.instr) =
-         if check_parent context.D.Diff.parent i then
-           match i with
-           | Cil.Call (Some l, e, exp_list, loc) ->
-               if H.string_of_lval l = H.string_of_lval lval then
-                 ChangeTo [ Cil.Call (None, e, exp_list, loc) ]
-               else failwith "lvalDeleteVisitorInstr: lval not found"
-           | _ -> DoChildren
-         else DoChildren
-     end
-
-   class lvalUpdateVisitorInstr context (_from : Cil.lval) (_to : Cil.lval) =
-     object
-       inherit Cil.nopCilVisitor
-
-       method! vinst (i : Cil.instr) =
-         if check_parent context.D.Diff.parent i then
-           match i with
-           | Cil.Call (Some l, e, exp_list, loc) ->
-               if H.string_of_lval l = H.string_of_lval _from then
-                 ChangeTo [ Cil.Call (Some _to, e, exp_list, loc) ]
-               else failwith "lvalDeleteVisitorInstr: lval not found"
-           | _ -> DoChildren
-         else DoChildren
-     end
-
-   class expDeleteVisitorInstr context (exp : Cil.exp) =
-     object
-       inherit Cil.nopCilVisitor
-
-       method! vinst (i : Cil.instr) =
-         if check_parent context.D.Diff.parent i then
-           match i with
-           | Cil.Call (lval, e, exp_list, loc) ->
-               if check_exp exp exp_list then
-                 ChangeTo
-                   [ Cil.Call (lval, e, H.delete_elt_exp exp exp_list, loc) ]
-               else if check_sibling_exp context.left_sibling exp_list then
-                 let prev_exp = get_sibling_exp context.left_sibling exp_list in
-                 ChangeTo
-                   [
-                     Cil.Call
-                       (lval, e, H.delete_before_elt_exp prev_exp exp_list, loc);
-                   ]
-               else if check_sibling_exp context.right_sibling exp_list then
-                 let next_exp = get_sibling_exp context.right_sibling exp_list in
-                 ChangeTo
-                   [
-                     Cil.Call
-                       (lval, e, H.delete_after_elt_exp next_exp exp_list, loc);
-                   ]
-               else
-                 failwith
-                   "expInsertVisitorInstr: an expression cannot be inserted \
-                    without any sibling info"
-           | _ -> DoChildren
-         else DoChildren
-     end
-
-   class expUpdateVisitorInstr context (from_exp : Cil.exp) (to_exp : Cil.exp) =
-     object
-       inherit Cil.nopCilVisitor
-
-       method! vinst (i : Cil.instr) =
-         if check_parent context.D.Diff.parent i then
-           match i with
-           | Cil.Call (lval, e, exp_list, loc) -> (
-               match (e, from_exp) with
-               | Cil.Lval (Cil.Var v1, _), Cil.Lval (Cil.Var v2, _) ->
-                   if v1.vname = v2.vname then
-                     ChangeTo [ Cil.Call (lval, to_exp, exp_list, loc) ]
-                   else DoChildren
-               | _ -> DoChildren)
-           | Cil.Set (lval, e, loc) ->
-               if H.string_of_exp from_exp = H.string_of_exp e then
-                 ChangeTo [ Cil.Set (lval, to_exp, loc) ]
-               else failwith "expUpdateVisitorInstr: rval is not matched"
-           | _ -> DoChildren
-         else DoChildren
-     end *)
 let insert_patch new_stmt patch_block before after =
-  if before = None && after = None then new_stmt :: patch_block
-  else if before = None then
-    let after = Option.get after in
+  if before = [] && after = [] then new_stmt :: patch_block
+  else if before = [] then
+    let after = List.hd after in
     List.fold_left
       (fun acc s ->
         if Utils.eq_stmt_line after.Cil.skind s.Cil.skind then
@@ -204,7 +71,7 @@ let insert_patch new_stmt patch_block before after =
       [] patch_block
     |> List.rev
   else
-    let before = Option.get before in
+    let before = List.rev before |> List.hd in
     List.fold_left
       (fun acc s ->
         if Utils.eq_stmt_line before.Cil.skind s.Cil.skind then
@@ -239,11 +106,11 @@ let replace_exp_in_stmt stmt from_exp to_exp =
           (fun acc x ->
             match x with
             | Cil.Call (lval, e, exp_list, loc) ->
-                if H.string_of_exp e = H.string_of_exp from_exp then
+                if Ast.isom_exp e from_exp then
                   Cil.Call (lval, to_exp, exp_list, loc) :: acc
                 else x :: acc
             | Cil.Set (lval, e, loc) ->
-                if H.string_of_exp e = H.string_of_exp from_exp then
+                if Ast.isom_exp e from_exp then
                   Cil.Set (lval, to_exp, loc) :: acc
                 else x :: acc
             | _ -> x :: acc)
@@ -253,10 +120,20 @@ let replace_exp_in_stmt stmt from_exp to_exp =
       { stmt with skind = Cil.Instr new_instr }
   | _ -> failwith "replace_exp_in_stmt: not implemented"
 
+let delete_elt_stmt elt list =
+  let rec aux acc = function
+    | [] -> List.rev acc
+    | hd :: tl ->
+        if Ast.isom_stmt elt hd then aux acc tl else aux (hd :: acc) tl
+  in
+  let result = aux [] list in
+  if List.length result = List.length list - 1 then result
+  else failwith "stmt_list delete error"
+
 let replace_exp_in_stmts stmts parent from_exp to_exp =
   List.fold_left
     (fun acc x ->
-      if Utils.SparrowParser.s_stmt x = Utils.SparrowParser.s_stmt parent then
+      if Ast.s_stmt x = Ast.s_stmt parent then
         let new_stmt = replace_exp_in_stmt x from_exp to_exp in
         new_stmt :: acc
       else x :: acc)
@@ -294,7 +171,7 @@ class stmtDeleteVisitor stmt =
 
     method! vblock (b : Cil.block) =
       if check_stmt stmt b.bstmts then
-        ChangeTo { b with bstmts = H.delete_elt_stmt stmt b.bstmts }
+        ChangeTo { b with bstmts = delete_elt_stmt stmt b.bstmts }
       else DoChildren
   end
 
@@ -322,29 +199,30 @@ class expUpdateVisitor target_func parent from_exp to_exp =
                (fun acc x ->
                  match (x.Cil.skind, parent) with
                  | Cil.Loop (b, loc, t1,*)
+let paths2stmts (path1, path2) = (Ast.path2stmts path1, Ast.path2stmts path2)
 
 let apply_action diff donee action =
   match (action, diff) with
-  | EF.InsertStmt (ctx, stmt), SymDiff.SInsertStmt (context, _) -> (
-      let parent = ctx.EF.parent_node in
+  | D.InsertStmt (ctx, stmt), SymDiff.SInsertStmt (context, _) -> (
+      let parent = List.hd ctx.D.root_path in
       let target_func = context.SymDiff.func_name in
       match parent with
       | Fun func_name ->
-          let patch_bw = ctx.EF.patch_between in
+          let patch_bw = paths2stmts ctx.D.patch_between in
           let vis = new stmtInsertVisitorUnderFun func_name patch_bw stmt in
           ignore (Cil.visitCilFile vis donee)
       | Stmt s ->
-          let patch_bw = ctx.EF.patch_between in
+          let patch_bw = paths2stmts ctx.D.patch_between in
           let vis =
             new stmtInsertVisitorUnderStmt target_func s.Cil.skind patch_bw stmt
           in
           ignore (Cil.visitCilFile vis donee)
       | _ -> failwith "InsertStmt: Incorrect parent type")
-  | DeleteStmt stmt, _ ->
+  | DeleteStmt (_, stmt), _ ->
       let vis = new stmtDeleteVisitor stmt in
       ignore (Cil.visitCilFile vis donee)
   | UpdateExp (ctx, from_exp, to_exp), SymDiff.SUpdateExp (context, _, _) -> (
-      let parent = ctx.EF.parent_node in
+      let parent = List.hd ctx.D.root_path in
       let target_func = context.SymDiff.func_name in
       match parent with
       | Fun _ -> failwith "UpdateExp: not implemented"
@@ -373,8 +251,7 @@ let apply_action diff donee action =
   | _ -> failwith "Not implemented"
 
 let apply sym_diff donee edit_function =
-  let donee_backup = donee in
   List.iter2
     (fun action diff -> apply_action diff donee action)
     edit_function sym_diff;
-  if H.compare_files donee_backup donee then (true, donee) else (false, donee)
+  donee

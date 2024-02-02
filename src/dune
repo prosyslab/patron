@@ -20,7 +20,8 @@
   symDiff
   diff
   patch
-  inline)
+  inline
+  ast)
  (libraries
   patronlib
   yojson

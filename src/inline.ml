@@ -16,7 +16,6 @@ let get_loc_filename loc =
     String.sub loc.file (idx + 1) (len - idx - 1)
   with _ -> loc.file
 
-let eq_lval l1 l2 = Utils.string_of_lval l1 = Utils.string_of_lval l2
 let s_location loc = get_loc_filename loc ^ ":" ^ string_of_int loc.line
 
 module AbsDom = struct
@@ -1003,8 +1002,8 @@ module IntraCfg = struct
     match (find_cmd n g, find_cmd s g) with
     | Cmd.Csalloc (_, str, _), Cmd.Cset (l, _, _) -> (
         match Cil.removeOffsetLval l with
-        | l, Cil.Index (i, Cil.NoOffset) when eq_lval lval l && Cil.isConstant i
-          ->
+        | l, Cil.Index (i, Cil.NoOffset)
+          when Ast.eq_lval lval l && Cil.isConstant i ->
             let node_list, exp_list =
               (n :: s :: node_list, Cil.mkString str :: exp_list)
             in
@@ -1015,8 +1014,8 @@ module IntraCfg = struct
         | _ -> (node_list, exp_list))
     | Cmd.Cset (l, e, _), _ when Cil.isConstant e -> (
         match Cil.removeOffsetLval l with
-        | l, Cil.Index (i, Cil.NoOffset) when eq_lval lval l && Cil.isConstant i
-          ->
+        | l, Cil.Index (i, Cil.NoOffset)
+          when Ast.eq_lval lval l && Cil.isConstant i ->
             let node_list, exp_list = (n :: node_list, e :: exp_list) in
             let ss = succ n g in
             if List.length ss = 1 then
@@ -2093,7 +2092,7 @@ let inline opt (global : Global.t) =
   let f = global.file in
   let regexps = List.map (fun str -> Str.regexp (".*" ^ str ^ ".*")) opt in
   let to_inline =
-    Utils.list_fold
+    Ast.list_fold
       (fun global to_inline ->
         match global with
         | GFun (fd, _)
