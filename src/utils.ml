@@ -213,17 +213,6 @@ let parse_node_json sparrow_dir =
       (key, cmd, loc) :: acc)
     [] key_list
 
-let cil_stmts = ref []
-
-class copyStmtVisitor =
-  object
-    inherit Cil.nopCilVisitor
-
-    method! vstmt stmt =
-      cil_stmts := stmt :: !cil_stmts;
-      DoChildren
-  end
-
 let stmt_lst = ref []
 let target_func = ref ""
 
@@ -260,17 +249,16 @@ let extract_target_func_stmt_lst file target =
   ignore (Cil.visitCilFile vis file);
   !stmt_lst
 
-let extract_node file =
-  cil_stmts := [];
-  let vis = new copyStmtVisitor in
-  ignore (Cil.visitCilFile vis file);
-  (file.globals, !cil_stmts)
+let extract_target_func ast target =
+  List.find
+    (fun x ->
+      match x with Cil.GFun (x, _) -> x.Cil.svar.vname = target | _ -> false)
+    ast.Cil.globals
 
-let extract_stmts file =
-  cil_stmts := [];
-  let vis = new copyStmtVisitor in
-  ignore (Cil.visitCilFile vis file);
-  !cil_stmts
+let extract_target_funcs ast targets =
+  List.fold_left
+    (fun acc target -> extract_target_func ast target :: acc)
+    [] targets
 
 let get_first_nth_lines n str =
   let rec aux acc n str =

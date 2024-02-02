@@ -115,7 +115,7 @@ let collect_nodes deps node_map =
              try Hashtbl.find node_map n :: acc with _ -> acc)
          | _ -> acc)
 
-let extract_parent sym_diff ast_map =
+let extract_parent sym_diff (ast_map : (Ast.t, int) Hashtbl.t) =
   let parent_of_patch =
     List.fold_left ~init:[]
       ~f:(fun acc diff -> SymDiff.extract_context diff :: acc)
@@ -128,7 +128,9 @@ let extract_parent sym_diff ast_map =
     ~f:(fun acc (p, f) ->
       match p with
       | SymDiff.SymAst.SGlob _ -> ("", f) :: acc
-      | SStmt (_, s) -> (Hashtbl.find ast_map s |> string_of_int, f) :: acc
+      | SStmt (_, s) ->
+          (Ast.stmt2ast (Some s) |> Hashtbl.find ast_map |> string_of_int, f)
+          :: acc
       | _ -> failwith "parent not found")
     parent_of_patch
   |> List.rev
@@ -235,8 +237,8 @@ let mk_ast_bug_pattern node_map solution =
       else acc)
     solution
 
-let mk_parent_tups_str stmts ast_map =
-  Parser.mk_parent_tuples stmts
+let mk_parent_tups_str func stmts ast_map =
+  Parser.mk_parent_tuples func stmts
   |> List.fold_left ~init:[] ~f:(fun acc (p, c) ->
          if Hashtbl.mem ast_map p && Hashtbl.mem ast_map c then
            ( Hashtbl.find ast_map p |> string_of_int,
@@ -250,7 +252,8 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   let node_map = maps.Maps.node_map |> Utils.reverse_hashtbl in
   L.info "Compute AST pattern...";
   let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
-  let parent_tups = mk_parent_tups_str stmts ast_map in
+  let func = Utils.extract_target_func ast patch_func in
+  let parent_tups = mk_parent_tups_str [ func ] stmts ast_map in
   let init =
     List.find_exn ~f:(fun (p, _) -> String.equal p patch_node) parent_tups
   in
@@ -289,7 +292,10 @@ let reduce_ast_facts maps ast (ast_facts : Chc.t) facts =
   let func_lst = extract_funcs_from_facts facts in
   let interesting_stmts =
     List.fold ~init:[]
-      ~f:(fun acc f -> Utils.extract_target_func_stmt_lst ast f @ acc)
+      ~f:(fun acc f ->
+        (Utils.extract_target_func_stmt_lst ast f
+        |> List.map ~f:(fun s -> Ast.stmt2ast (Some s)))
+        @ acc)
       func_lst
     |> List.fold ~init:[] ~f:(fun acc s ->
            try (Hashtbl.find maps.Maps.ast_map s |> string_of_int) :: acc

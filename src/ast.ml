@@ -282,3 +282,22 @@ let eq_global glob1 glob2 =
   | Cil.GText _, Cil.GText _ ->
       true
   | _ -> false
+
+let cil_stmts = ref []
+
+class copyStmtVisitor =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vstmt stmt =
+      cil_stmts := stmt :: !cil_stmts;
+      DoChildren
+  end
+
+let extract_stmts file =
+  cil_stmts := [];
+  let vis = new copyStmtVisitor in
+  ignore (Cil.visitCilFile vis file);
+  !cil_stmts
+
+let extract_globs file = file.Cil.globals

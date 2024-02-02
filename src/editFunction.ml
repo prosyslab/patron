@@ -250,7 +250,7 @@ let compute_patch_loc (before, after) patch_ingredients node_map ast_map_rev =
           (fun acc x ->
             Hashtbl.find node_map x |> fun x ->
             let x_int = int_of_string x in
-            Hashtbl.find ast_map_rev x_int :: acc)
+            (Hashtbl.find ast_map_rev x_int |> Ast.ast2stmt) :: acc)
           [] x
         |> Ast.stmts2path
   in
@@ -305,7 +305,7 @@ let translate ast sym_diff model_path maps patch_node_ids patch_ingredients_cfg
               Ast.Fun translated_func_name
             else
               let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
-              Ast.Stmt translated_stmt
+              translated_stmt
           in
           let before, after =
             compute_patch_loc ctx.S.patch_between patch_ingredients_ast node_map
@@ -326,7 +326,7 @@ let translate ast sym_diff model_path maps patch_node_ids patch_ingredients_cfg
           let new_patch_id = get_new_patch_id parent_id model_map in
           let new_parent_node =
             let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
-            Ast.Stmt translated_stmt
+            translated_stmt
           in
           let ctx = D.mk_context [ new_parent_node ] [] [] ctx.S.sibling_idx in
           let translated_e1 = translate_exp ast model_map exp_map e1 in

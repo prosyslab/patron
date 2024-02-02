@@ -49,7 +49,7 @@ end
 type t = {
   sym_map : (string, Z3.Expr.expr) Hashtbl.t;
   numeral_map : (int, string) Hashtbl.t;
-  ast_map : (Cil.stmt, int) Hashtbl.t;
+  ast_map : (Ast.t, int) Hashtbl.t;
   cfg_map : (CfgNode.t, string) Hashtbl.t;
   exp_map : (string, string) Hashtbl.t;
   node_map : (string, string) Hashtbl.t;
@@ -103,27 +103,38 @@ let dump_map a_to_string b_to_string map_name mode map out_dir =
 let dump_sym_map = dump_map Fun.id Z3.Expr.to_string "sym"
 let dump_numeral_map = dump_map string_of_int Fun.id "numeral"
 
+let dump_ast_stmt x =
+  match x.Cil.skind with
+  | Cil.Instr i when List.length i = 0 -> "empty instr"
+  | Cil.Instr i -> (
+      match List.hd_exn i with
+      | Cil.Set (_, _, l) -> "set:" ^ Ast.s_location l
+      | Cil.Call (_, _, _, l) -> "call:" ^ Ast.s_location l
+      | Cil.Asm _ -> "asm")
+  | Cil.Return (_, l) -> "return:" ^ Ast.s_location l
+  | Cil.Goto _ -> Ast.s_stmt x
+  | Cil.Break l -> "break:" ^ Ast.s_location l
+  | Cil.Continue l -> "continue:" ^ Ast.s_location l
+  | Cil.If (_, _, _, l) -> "if:" ^ Ast.s_location l
+  | Cil.Switch (_, _, _, l) -> "switch:" ^ Ast.s_location l
+  | Cil.Loop (_, l, _, _) -> "loop:" ^ Ast.s_location l
+  | Cil.Block _ -> "block"
+  | Cil.TryFinally _ -> "tryfinally"
+  | Cil.TryExcept _ -> "tryexcept"
+  | Cil.ComputedGoto _ -> "computedgoto"
+
+let dump_ast_glob x =
+  match x with
+  | Cil.GFun (f, l) -> "gfun:" ^ f.Cil.svar.vname ^ Ast.s_location l
+  | _ -> failwith "dump_ast_glob"
+
 let dump_ast_map =
   dump_map
     (fun x ->
-      match x.Cil.skind with
-      | Cil.Instr i when List.length i = 0 -> "empty instr"
-      | Cil.Instr i -> (
-          match List.hd_exn i with
-          | Cil.Set (_, _, l) -> "set:" ^ Ast.s_location l
-          | Cil.Call (_, _, _, l) -> "call:" ^ Ast.s_location l
-          | Cil.Asm _ -> "asm")
-      | Cil.Return (_, l) -> "return:" ^ Ast.s_location l
-      | Cil.Goto _ -> Ast.s_stmt x
-      | Cil.Break l -> "break:" ^ Ast.s_location l
-      | Cil.Continue l -> "continue:" ^ Ast.s_location l
-      | Cil.If (_, _, _, l) -> "if:" ^ Ast.s_location l
-      | Cil.Switch (_, _, _, l) -> "switch:" ^ Ast.s_location l
-      | Cil.Loop (_, l, _, _) -> "loop:" ^ Ast.s_location l
-      | Cil.Block _ -> "block"
-      | Cil.TryFinally _ -> "tryfinally"
-      | Cil.TryExcept _ -> "tryexcept"
-      | Cil.ComputedGoto _ -> "computedgoto")
+      match x with
+      | Ast.Global g -> dump_ast_glob g
+      | Ast.Stmt s -> dump_ast_stmt s
+      | _ -> failwith "dump_ast_map: unexpected ast type")
     string_of_int "ast"
 
 let dump mode maps out_dir =

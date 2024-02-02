@@ -253,17 +253,38 @@ let parse_chc chc_file =
          try (Sexp.of_string rule |> sexp2chc) :: chc_list with _ -> chc_list)
   |> Chc.of_list
 
-let mk_parent_tuples stmts =
-  let aux parent stmts acc =
-    List.fold_left ~init:acc ~f:(fun a s -> (parent, s) :: a) stmts
+let mk_parent_tuples globs stmts =
+  let mk_glob_parents parent stmts acc =
+    let parent = Ast.glob2ast (Some parent) in
+    List.fold_left ~init:acc
+      ~f:(fun a s -> (parent, Ast.stmt2ast (Some s)) :: a)
+      stmts
   in
-  List.fold_left ~init:[]
-    ~f:(fun acc s ->
-      match s.Cil.skind with
-      | Cil.Block b | Cil.Loop (b, _, _, _) -> aux s b.bstmts acc
-      | Cil.If (_, tb, eb, _) -> acc |> aux s tb.bstmts |> aux s eb.bstmts
-      | _ -> acc)
-    stmts
+  let mk_stmt_parents parent stmts acc =
+    let parent = Ast.stmt2ast (Some parent) in
+    List.fold_left ~init:acc
+      ~f:(fun a s -> (parent, Ast.stmt2ast (Some s)) :: a)
+      stmts
+  in
+  let glob_tuples =
+    List.fold_left ~init:[]
+      ~f:(fun acc g ->
+        match g with
+        | Cil.GFun (f, _) -> mk_glob_parents g f.sbody.bstmts acc
+        | _ -> acc)
+      globs
+  in
+  let stmt_tuples =
+    List.fold_left ~init:[]
+      ~f:(fun acc s ->
+        match s.Cil.skind with
+        | Cil.Block b | Cil.Loop (b, _, _, _) -> mk_stmt_parents s b.bstmts acc
+        | Cil.If (_, tb, eb, _) ->
+            acc |> mk_stmt_parents s tb.bstmts |> mk_stmt_parents s eb.bstmts
+        | _ -> acc)
+      stmts
+  in
+  glob_tuples @ stmt_tuples
 
 let eq_instrs ast_instr cfg_instr =
   match (ast_instr, cfg_instr) with
@@ -278,9 +299,10 @@ let eq_instrs ast_instr cfg_instr =
   | _ -> false
 
 let lookup_eq_nodes ast_node cfg =
+  let stmt_node = Ast.ast2stmt ast_node in
   Hashtbl.fold
     (fun cnode id acc ->
-      (match (ast_node.Cil.skind, cnode) with
+      (match (stmt_node.Cil.skind, cnode) with
       | Cil.Instr i, cn -> eq_instrs i cn
       | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc
       | Cil.If (_, _, _, loc), Maps.CfgNode.CAssume (_, _, cloc) ->
@@ -314,11 +336,11 @@ let new_astnode_id maps stmt =
   Hashtbl.add maps.Maps.ast_map stmt !astnode_cnt;
   id
 
-let stmt2astid maps stmt =
-  if Hashtbl.mem maps.Maps.ast_map stmt then
-    let n = Hashtbl.find maps.ast_map stmt in
+let ast2astid maps ast =
+  if Hashtbl.mem maps.Maps.ast_map ast then
+    let n = Hashtbl.find maps.ast_map ast in
     "AstNode-" ^ string_of_int n
-  else new_astnode_id maps stmt
+  else new_astnode_id maps ast
 
 let mk_ast_rels parent_fmt eqnode_fmt maps acc (parent, child)
     (parent_id, child_id) =
@@ -329,12 +351,16 @@ let mk_ast_rels parent_fmt eqnode_fmt maps acc (parent, child)
     Chc.Elt.FuncApply ("AstParent", [ parent_term; child_term ])
   in
   let eqnode_rels =
-    match_eq_nodes eqnode_fmt maps parent @ match_eq_nodes eqnode_fmt maps child
+    if match parent with Ast.Global _ -> true | _ -> false then
+      match_eq_nodes eqnode_fmt maps child
+    else
+      match_eq_nodes eqnode_fmt maps parent
+      @ match_eq_nodes eqnode_fmt maps child
   in
   (parent_rel :: eqnode_rels) @ acc
 
-let make_ast_facts work_dir (maps : Maps.t) stmts =
-  let parent_tups = mk_parent_tuples stmts in
+let make_ast_facts work_dir maps (globs, stmts) =
+  let parent_tups = mk_parent_tuples globs stmts in
   let parent_oc =
     Filename.concat work_dir "AstParent.facts" |> Out_channel.create
   in
@@ -346,8 +372,8 @@ let make_ast_facts work_dir (maps : Maps.t) stmts =
   let facts =
     List.fold_left ~init:[]
       ~f:(fun acc (parent, child) ->
-        let parent_id = stmt2astid maps parent in
-        let child_id = stmt2astid maps child in
+        let parent_id = ast2astid maps parent in
+        let child_id = ast2astid maps child in
         (parent_id, child_id) :: acc)
       parent_tups
     |> List.fold2_exn ~init:[]
@@ -439,7 +465,7 @@ let make_maps buggy_dir target_alarm ast cfg maps =
   let raw_facts = parse_facts alarm_dir in
   Utils.parse_map alarm_dir maps.Maps.exp_map;
   (* TODO: either reduce the stmts here or reduce the fact list when rules are made *)
-  let stmts = Utils.extract_stmts ast in
+  let ast_info = (Ast.extract_globs ast, Ast.extract_stmts ast) in
   make_cfg_map raw_facts cfg maps.Maps.cfg_map;
-  let ast_facts = make_ast_facts alarm_dir maps stmts in
+  let ast_facts = make_ast_facts alarm_dir maps ast_info in
   (raw_facts, ast_facts)
