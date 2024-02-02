@@ -275,7 +275,8 @@ let find_patch_fun diff model =
     model
   |> snd |> get_func
 
-let translate ast sym_diff model_path maps patch_node_id patch_ingredients_cfg =
+let translate ast sym_diff model_path maps patch_node_ids patch_ingredients_cfg
+    =
   Logger.info "Translating patch...";
   let cfg = maps.Maps.cfg_map in
   let exp_map = maps.Maps.exp_map in
@@ -290,13 +291,13 @@ let translate ast sym_diff model_path maps patch_node_id patch_ingredients_cfg =
       (fun lst x -> try Hashtbl.find node_map_rev x :: lst with _ -> lst)
       [] patch_ingredients_cfg
   in
-  List.fold_left
-    (fun acc diff ->
+  List.fold_left2
+    (fun acc diff parent_id ->
       match diff with
       | S.SInsertStmt (ctx, stmt) ->
           let new_patch_id =
-            if String.equal patch_node_id "" then -1
-            else get_new_patch_id patch_node_id model_map
+            if String.equal parent_id "" then -1
+            else get_new_patch_id parent_id model_map
           in
           let new_parent_node =
             if new_patch_id = -1 then
@@ -322,7 +323,7 @@ let translate ast sym_diff model_path maps patch_node_id patch_ingredients_cfg =
           let translated_stmt = translate_stmt ast model_map cfg exp_map stmt in
           D.DeleteStmt (ctx, translated_stmt) :: acc
       | S.SUpdateExp (ctx, e1, e2) ->
-          let new_patch_id = get_new_patch_id patch_node_id model_map in
+          let new_patch_id = get_new_patch_id parent_id model_map in
           let new_parent_node =
             let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
             Ast.Stmt translated_stmt
@@ -332,4 +333,4 @@ let translate ast sym_diff model_path maps patch_node_id patch_ingredients_cfg =
           let translated_e2 = translate_exp ast model_map exp_map e2 in
           D.UpdateExp (ctx, translated_e1, translated_e2) :: acc
       | _ -> failwith "translate: not implemented")
-    [] sym_diff
+    [] sym_diff patch_node_ids
