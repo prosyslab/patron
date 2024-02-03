@@ -6,6 +6,69 @@ module Set = Stdlib.Set
 module Map = Stdlib.Map
 module Sys = Stdlib.Sys
 
+let get_func str = String.split_on_chars ~on:[ '-' ] str |> List.hd_exn
+let get_id str = String.split_on_chars ~on:[ '-' ] str |> List.last_exn
+
+let extract_id elt =
+  List.fold_left ~init:[]
+    ~f:(fun acc e ->
+      match e with
+      | Chc.Elt.FDNumeral s | Chc.Elt.Var s -> get_id s :: acc
+      | _ -> acc)
+    elt
+
+let extract_func elt =
+  List.fold_left ~init:[]
+    ~f:(fun acc e ->
+      match e with
+      | Chc.Elt.FDNumeral s | Chc.Elt.Var s -> get_func s :: acc
+      | _ -> acc)
+    elt
+
+let extract_funcs_from_facts facts =
+  Chc.fold
+    (fun c acc ->
+      match c with
+      | Chc.Elt.FuncApply (_, elt) -> extract_func elt @ acc
+      | _ -> acc)
+    facts []
+  |> List.dedup_and_sort ~compare:String.compare
+
+let reduce_ast_facts maps ast facts =
+  let func_lst = extract_funcs_from_facts facts in
+  let interesting_stmts =
+    List.fold ~init:[]
+      ~f:(fun acc f ->
+        (Utils.extract_target_func_stmt_lst ast f
+        |> List.map ~f:(fun s -> Ast.stmt2ast (Some s)))
+        @ acc)
+      func_lst
+    |> List.fold ~init:[] ~f:(fun acc s ->
+           try (Hashtbl.find maps.Maps.ast_map s |> string_of_int) :: acc
+           with _ -> acc)
+  in
+  Chc.fold
+    (fun c acc ->
+      match c with
+      | Chc.Elt.FuncApply ("AstParent", elt) ->
+          let nodes = [ List.hd_exn elt; List.last_exn elt ] |> extract_id in
+          List.fold_left ~init:Chc.empty
+            ~f:(fun acc' node ->
+              if List.exists ~f:(fun n -> String.equal n node) interesting_stmts
+              then Chc.add c acc'
+              else acc')
+            nodes
+          |> Chc.union acc
+      | Chc.Elt.FuncApply ("EqNode", elt) ->
+          let (func : string) =
+            [ List.hd_exn elt ] |> extract_func |> List.hd_exn
+          in
+          if List.exists ~f:(fun y -> String.equal func y) func_lst then
+            Chc.add c acc
+          else acc
+      | _ -> acc)
+    facts Chc.empty
+
 let rec fixedpoint rels terms deps =
   let deps', terms' =
     Chc.fold
@@ -25,7 +88,9 @@ let remove_before_src_after_snk src snk rels =
   let after_deps = fixedpoint rels after_snk Chc.empty |> fst in
   rels |> (Fun.flip Chc.diff) before_deps |> (Fun.flip Chc.diff) after_deps
 
-let collect_deps src snk aexps chc =
+let collect_deps maps ast src snk aexps chc =
+  let ast_facts = reduce_ast_facts maps ast chc in
+  (* Chc.iter (fun c -> L.info "ast_facts: %a" Chc.pp_chc c) ast_facts; *)
   let func_apps =
     Chc.extract_func_apps chc |> remove_before_src_after_snk src snk
   in
@@ -36,6 +101,7 @@ let collect_deps src snk aexps chc =
   |> Chc.filter (fun dep ->
          (Chc.Elt.is_duedge dep || Chc.Elt.is_assume dep) |> not)
   |> Chc.inter chc
+(* |> Chc.union ast_facts *)
 
 let sort_rule_optimize ref deps =
   let get_args = function
@@ -260,69 +326,6 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   let solution = go_up parent_tups ast_node_lst init [ init ] in
   mk_ast_bug_pattern node_map solution
 
-let get_func str = String.split_on_chars ~on:[ '-' ] str |> List.hd_exn
-let get_id str = String.split_on_chars ~on:[ '-' ] str |> List.last_exn
-
-let extract_func elt =
-  List.fold_left ~init:[]
-    ~f:(fun acc e ->
-      match e with
-      | Chc.Elt.FDNumeral s | Chc.Elt.Var s -> get_func s :: acc
-      | _ -> acc)
-    elt
-
-let extract_id elt =
-  List.fold_left ~init:[]
-    ~f:(fun acc e ->
-      match e with
-      | Chc.Elt.FDNumeral s | Chc.Elt.Var s -> get_id s :: acc
-      | _ -> acc)
-    elt
-
-let extract_funcs_from_facts facts =
-  Chc.fold
-    (fun c acc ->
-      match c with
-      | Chc.Elt.FuncApply (_, elt) -> extract_func elt @ acc
-      | _ -> acc)
-    facts []
-  |> List.dedup_and_sort ~compare:String.compare
-
-let reduce_ast_facts maps ast (ast_facts : Chc.t) facts =
-  let func_lst = extract_funcs_from_facts facts in
-  let interesting_stmts =
-    List.fold ~init:[]
-      ~f:(fun acc f ->
-        (Utils.extract_target_func_stmt_lst ast f
-        |> List.map ~f:(fun s -> Ast.stmt2ast (Some s)))
-        @ acc)
-      func_lst
-    |> List.fold ~init:[] ~f:(fun acc s ->
-           try (Hashtbl.find maps.Maps.ast_map s |> string_of_int) :: acc
-           with _ -> acc)
-  in
-  Chc.fold
-    (fun c acc ->
-      match c with
-      | Chc.Elt.FuncApply ("AstParent", elt) ->
-          let nodes = [ List.hd_exn elt; List.last_exn elt ] |> extract_id in
-          List.fold_left ~init:Chc.empty
-            ~f:(fun acc' node ->
-              if List.exists ~f:(fun n -> String.equal n node) interesting_stmts
-              then Chc.add c acc'
-              else acc')
-            nodes
-          |> Chc.union acc
-      | Chc.Elt.FuncApply ("EqNode", elt) ->
-          let (func : string) =
-            [ List.hd_exn elt ] |> extract_func |> List.hd_exn
-          in
-          if List.exists ~f:(fun y -> String.equal func y) func_lst then
-            Chc.add c acc
-          else acc
-      | _ -> failwith "non-ast fact")
-    ast_facts Chc.empty
-
 let need_ast_pattern diff =
   match List.hd_exn diff with SymDiff.SUpdateExp _ -> false | _ -> true
 
@@ -331,8 +334,8 @@ let abstract_bug_pattern facts src snk aexps maps diff ast =
   let ast_node_lst = collect_nodes fact_lst maps.Maps.node_map in
   if List.length ast_node_lst = 0 then
     failwith "abstract_bug_pattern: no AST nodes corresponding CFG nodes found";
-  List.iter ~f:(fun n -> L.info "facts: %a" Chc.pp_chc n) fact_lst;
-  List.iter ~f:(fun n -> L.info "ast_node_lst: %s" n) ast_node_lst;
+  (* List.iter ~f:(fun n -> L.info "facts: %a" Chc.pp_chc n) fact_lst;
+     List.iter ~f:(fun n -> L.info "ast_node_lst: %s" n) ast_node_lst; *)
   let parents = extract_parent diff maps.Maps.ast_map in
   let smallest_ast_patterns =
     List.fold_left ~init:[]
@@ -348,7 +351,7 @@ let abstract_bug_pattern facts src snk aexps maps diff ast =
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  ( Chc.Elt.Implies (fact_lst @ smallest_ast_patterns, errtrace)
+  ( Chc.Elt.Implies (fact_lst (*@ smallest_ast_patterns*), errtrace)
     |> Chc.Elt.numer2var |> Chc.singleton,
     ast_node_lst )
 
@@ -357,20 +360,15 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
-    let raw_facts, ast_facts =
-      Parser.make_maps buggy_dir target_alarm ast cfg target_maps
-    in
     let facts, (src, snk, aexps) =
-      Parser.make_facts buggy_dir target_alarm ast_facts out_dir raw_facts
+      Parser.make_facts buggy_dir target_alarm ast cfg out_dir target_maps
     in
-    let facts' = collect_deps src snk aexps facts in
-    let ast_facts' = reduce_ast_facts target_maps ast ast_facts facts' in
+    let facts' = collect_deps target_maps ast src snk aexps facts in
     let z3env = Z3env.get_env () in
     L.info "Try matching with %s..." target_alarm;
-    let facts_combined = Chc.union facts' ast_facts' in
     let status =
       Chc.match_and_log z3env buggy_dir target_alarm out_dir target_alarm
-        target_maps facts_combined src snk pattern
+        target_maps facts' src snk pattern
     in
     Maps.dump target_alarm target_maps out_dir;
     if Option.is_some status then
@@ -412,9 +410,12 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   let buggy_cfg =
     Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out")
   in
-  let raw_facts, ast_facts =
-    Parser.make_maps buggy_dir true_alarm buggy_ast buggy_cfg buggy_maps
+  L.info "CFG Elements Loading Done!";
+  let buggy_facts, (src, snk, aexps) =
+    Parser.make_facts buggy_dir true_alarm buggy_ast buggy_cfg out_dir
+      buggy_maps
   in
+  L.info "Make Facts in buggy done";
   L.info "Mapping CFG Elements to AST nodes...";
   let sym_diff, patch_comps =
     SymDiff.define_sym_diff buggy_maps buggy_ast ast_diff
@@ -422,14 +423,8 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   if write_out then (
     L.info "Writing out the edit script...";
     SymDiff.to_json sym_diff out_dir);
-  (* change make_facts args using raw and ast_facts *)
-  let buggy_facts, (src, snk, aexps) =
-    Parser.make_facts buggy_dir true_alarm ast_facts out_dir raw_facts
-  in
-  L.info "Make Facts in buggy done";
-  let buggy_facts' = collect_deps src snk aexps buggy_facts in
-  let ast_facts' =
-    reduce_ast_facts buggy_maps buggy_ast ast_facts buggy_facts'
+  let buggy_facts' =
+    collect_deps buggy_maps buggy_ast src snk aexps buggy_facts
   in
   let patch_node_ids =
     extract_parent sym_diff buggy_maps.Maps.ast_map |> List.map ~f:fst
@@ -444,9 +439,8 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   let z3env = Z3env.get_env () in
   L.info "Try matching with buggy...";
-  let facts_combined = Chc.union buggy_facts' ast_facts' in
   ( Chc.match_and_log z3env buggy_dir true_alarm out_dir "buggy" buggy_maps
-      facts_combined src snk pattern
+      buggy_facts' src snk pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
   match_with_new_alarms buggy_dir true_alarm buggy_maps patch_ast buggy_cfg
