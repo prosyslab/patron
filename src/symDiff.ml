@@ -272,6 +272,17 @@ type t =
   | SDeleteLval of sym_context * sym_node
   | SUpdateLval of sym_context * sym_node * sym_node
 
+let get_ctx = function
+  | SInsertStmt (ctx, _)
+  | SDeleteStmt (ctx, _)
+  | SInsertExp (ctx, _)
+  | SDeleteExp (ctx, _)
+  | SUpdateExp (ctx, _, _)
+  | SInsertLval (ctx, _)
+  | SDeleteLval (ctx, _)
+  | SUpdateLval (ctx, _, _) ->
+      ctx
+
 let extract_func_name sdiff =
   match sdiff with
   | SInsertStmt (ctx, _) | SDeleteStmt (ctx, _) -> ctx.func_name
@@ -683,20 +694,6 @@ and to_sconst c =
   | Cil.CStr s -> SStringConst s
   | _ -> failwith "not supported"
 
-let get_ctx diff =
-  match diff with
-  | D.InsertGlobal (ctx, _)
-  | DeleteGlobal (ctx, _)
-  | InsertStmt (ctx, _)
-  | DeleteStmt (ctx, _)
-  | InsertExp (ctx, _)
-  | DeleteExp (ctx, _)
-  | UpdateExp (ctx, _, _)
-  | InsertLval (ctx, _)
-  | DeleteLval (ctx, _)
-  | UpdateLval (ctx, _, _) ->
-      ctx
-
 let get_parent_fun parent_lst =
   let check_fun g = match g with Cil.GFun _ -> true | _ -> false in
   let get_fun g =
@@ -882,6 +879,14 @@ let mk_sym_ctx ctx env exp_map cfg_map =
     sibling_idx = ctx.D.sibling_idx;
   }
 
+let extract_ctx_nodes sdiff =
+  List.fold_left
+    (fun acc sd ->
+      let ctx = get_ctx sd in
+      let b, a = ctx.patch_between in
+      b @ a @ acc)
+    [] sdiff
+
 let define_sym_diff (maps : Maps.t) buggy diff =
   get_gvars buggy;
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
@@ -889,13 +894,15 @@ let define_sym_diff (maps : Maps.t) buggy diff =
   let sdiff =
     List.fold_left
       (fun acc (action, env) ->
-        let ctx = get_ctx action in
+        let ctx = D.get_ctx action in
         let s_context = mk_sym_ctx ctx env exp_map cfg in
         mk_sdiff s_context cfg exp_map action :: acc)
       [] diff
   in
   let patch_comp =
-    List.fold_left (fun acc d -> extract_diff_ids d @ acc) [] sdiff
+    extract_ctx_nodes sdiff
+    |> List.append
+         (List.fold_left (fun acc d -> extract_diff_ids d @ acc) [] sdiff)
     |> List.sort_uniq Stdlib.compare
     |> List.filter (fun x -> x <> "None")
   in

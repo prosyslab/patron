@@ -53,6 +53,20 @@ type t =
   | DeleteLval of context * Cil.lval
   | UpdateLval of context * Cil.lval * Cil.lval
 
+let get_ctx diff =
+  match diff with
+  | InsertGlobal (ctx, _)
+  | DeleteGlobal (ctx, _)
+  | InsertStmt (ctx, _)
+  | DeleteStmt (ctx, _)
+  | InsertExp (ctx, _)
+  | DeleteExp (ctx, _)
+  | UpdateExp (ctx, _, _)
+  | InsertLval (ctx, _)
+  | DeleteLval (ctx, _)
+  | UpdateLval (ctx, _, _) ->
+      ctx
+
 let pp_env fmt env =
   F.fprintf fmt "Depth: %d\n" env.patch_depth;
   F.fprintf fmt "Previous Sibling Node: \n%s\n" (Ast.s_node env.prev_sibling);
