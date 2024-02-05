@@ -290,3 +290,5 @@ let reverse_hashtbl tbl =
   let rev_tbl_init = Hashtbl.create 1000 in
   Hashtbl.iter (fun k v -> Hashtbl.add rev_tbl_init v k) tbl;
   rev_tbl_init
+
+let mk_ast_node_str id = "AstNode-" ^ id

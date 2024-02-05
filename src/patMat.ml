@@ -179,8 +179,9 @@ let collect_nodes deps node_map =
   |> List.fold_left ~init:[] ~f:(fun acc node ->
          match node with
          | Chc.Elt.FDNumeral n -> (
-             try Hashtbl.find node_map n :: acc with _ -> acc)
+             try Hashtbl.find node_map n :: n :: acc with _ -> n :: acc)
          | _ -> acc)
+  |> Stdlib.List.sort_uniq (fun x y -> String.compare x y)
 
 let extract_parent sym_diff (ast_map : (Ast.t, int) Hashtbl.t) =
   let parent_of_patch =
@@ -335,8 +336,6 @@ let abstract_bug_pattern facts src snk aexps maps diff ast =
   let ast_node_lst = collect_nodes fact_lst maps.Maps.node_map in
   if List.length ast_node_lst = 0 then
     failwith "abstract_bug_pattern: no AST nodes corresponding CFG nodes found";
-  (* List.iter ~f:(fun n -> L.info "facts: %a" Chc.pp_chc n) fact_lst;
-     List.iter ~f:(fun n -> L.info "ast_node_lst: %s" n) ast_node_lst; *)
   let parents = extract_parent diff maps.Maps.ast_map in
   let smallest_ast_patterns =
     List.fold_left ~init:[]
@@ -354,7 +353,10 @@ let abstract_bug_pattern facts src snk aexps maps diff ast =
   Z3env.buggy_snk := snk;
   ( Chc.Elt.Implies (fact_lst @ smallest_ast_patterns, errtrace)
     |> Chc.Elt.numer2var |> Chc.singleton,
-    ast_node_lst )
+    ast_node_lst
+    |> List.fold_left ~init:[] ~f:(fun acc s ->
+           if String.contains s '-' then s :: acc
+           else Utils.mk_ast_node_str s :: acc) )
 
 let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
     out_dir patch_ids patch_ingredients diff =

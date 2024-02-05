@@ -3,6 +3,16 @@ module D = Diff
 module S = SymDiff
 module H = Utils
 
+let translate_by_model id model =
+  List.find_opt (fun (k, _) -> String.equal k id) model |> function
+  | x -> ( match x with Some (_, v) -> Some v | None -> None)
+
+let translate_node_lst lst model =
+  List.fold_left
+    (fun acc x ->
+      match translate_by_model x model with Some x -> x :: acc | None -> acc)
+    [] lst
+
 let of_exp node =
   match node with Ast.Exp e -> e | _ -> failwith "extract_cil: not exp"
 
@@ -279,8 +289,7 @@ let find_patch_fun diff model =
     model
   |> snd |> get_func
 
-let translate ast sym_diff model_path maps patch_node_ids patch_ingredients_cfg
-    =
+let translate ast sym_diff model_path maps patch_node_ids patch_ingredients =
   Logger.info "Translating patch...";
   let cfg = maps.Maps.cfg_map in
   let exp_map = maps.Maps.exp_map in
@@ -288,13 +297,8 @@ let translate ast sym_diff model_path maps patch_node_ids patch_ingredients_cfg
   let ast_map = maps.Maps.ast_map in
   let ast_map_rev = Utils.reverse_hashtbl ast_map in
   let node_map = maps.Maps.node_map in
-  let node_map_rev = Utils.reverse_hashtbl node_map in
   (* ToDO: make the order of hashtbl proper so that it will optimize *)
-  let patch_ingredients_ast =
-    List.fold_left
-      (fun lst x -> try Hashtbl.find node_map_rev x :: lst with _ -> lst)
-      [] patch_ingredients_cfg
-  in
+  let translated_ingredients = translate_node_lst patch_ingredients model_map in
   List.fold_left2
     (fun acc diff parent_id ->
       match diff with
@@ -312,8 +316,8 @@ let translate ast sym_diff model_path maps patch_node_ids patch_ingredients_cfg
               translated_stmt
           in
           let before, after =
-            compute_patch_loc ctx.S.patch_between patch_ingredients_ast node_map
-              ast_map_rev
+            compute_patch_loc ctx.S.patch_between translated_ingredients
+              node_map ast_map_rev
           in
           let ctx =
             D.mk_context [ new_parent_node ] before after ctx.S.sibling_idx
