@@ -21,7 +21,8 @@
   diff
   patch
   inline
-  ast)
+  ast
+  dug)
  (libraries
   patronlib
   yojson

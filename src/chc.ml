@@ -349,6 +349,109 @@ end)
 
 let to_list s = fold (fun c l -> c :: l) s []
 
+let extract_src_dst = function
+  | Elt.FuncApply ("DUEdge", [ Elt.FDNumeral src; Elt.FDNumeral dst ]) ->
+      (src, dst)
+  | _ -> L.error "extract_src_dst: wrong relation"
+
+let to_dug du_rels =
+  let module NodeSet = Set.Make (String) in
+  let nodes =
+    fold
+      (fun rel ns ->
+        let src, dst = extract_src_dst rel in
+        ns |> NodeSet.add src |> NodeSet.add dst)
+      du_rels NodeSet.empty
+  in
+  let dug = Dug.create ~size:(NodeSet.cardinal nodes) () in
+  fold
+    (fun rel g ->
+      let src, dst = extract_src_dst rel in
+      Dug.add_edge src dst g)
+    du_rels dug
+
+let road_to_node terms = function
+  | Elt.FuncApply ("Set", [ n; lv; e ]) ->
+      if mem e terms || mem lv terms then (true, add n terms) else (false, terms)
+  | FuncApply ("Return", [ n; e ]) ->
+      if mem e terms then (true, add n terms) else (false, terms)
+  | FuncApply ("Arg", [ arg_list; _; e ]) ->
+      if mem e terms then (true, add arg_list terms) else (false, terms)
+  | FuncApply ("BinOpExp", [ e; _; e1; e2 ]) ->
+      if mem e1 terms || mem e2 terms then (true, add e terms)
+      else (false, terms)
+  | FuncApply ("UnOpExp", [ e; _; e1 ]) ->
+      if mem e1 terms then (true, add e terms) else (false, terms)
+  | FuncApply ("LvalExp", [ e; lv ]) ->
+      if mem lv terms then (true, add e terms) else (false, terms)
+  | FuncApply ("Index", [ lv; lv'; e ]) ->
+      if mem lv' terms || mem e terms then (true, add lv terms)
+      else (false, terms)
+  | FuncApply ("Mem", [ lv; e ]) ->
+      if mem e terms then (true, add lv terms) else (false, terms)
+  | FuncApply ("CallExp", [ e; _; arg_list ])
+  | FuncApply ("LibCallExp", [ e; _; arg_list ]) ->
+      if mem arg_list terms then (true, add e terms) else (false, terms)
+  | FuncApply ("AllocExp", [ e; size_e ]) ->
+      if mem size_e terms then (true, add e terms) else (false, terms)
+  | _ -> (false, terms)
+
+let rec fixedpoint rels terms deps =
+  let deps', terms' =
+    fold
+      (fun c (deps, terms) ->
+        let is_nec, terms' = road_to_node terms c in
+        ((if is_nec then add c deps else deps), terms'))
+      rels (deps, terms)
+  in
+  if subset deps' deps && subset terms' terms then (deps', terms')
+  else fixedpoint rels terms' deps'
+
+let terms2strs =
+  List.map ~f:(function
+    | Elt.FDNumeral s -> s
+    | _ -> L.error "abstract_using_patch_comps: wrong terms'")
+
+let filter_by_node =
+  List.filter ~f:(fun s ->
+      let sort_id = String.split ~on:'-' s in
+      let name = List.hd_exn sort_id in
+      if List.length sort_id = 2 then
+        match name with
+        | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp"
+        | "ArgList" | "Lval" | "Loc" | "Val" | "Pos" | "AstNode" ->
+            false
+        | _ -> true
+      else false)
+
+let mk_duedge edge =
+  Elt.FuncApply
+    ( "DUEdge",
+      [ Elt.FDNumeral (Dug.G.E.src edge); Elt.FDNumeral (Dug.G.E.dst edge) ] )
+
+let paths2rels =
+  List.fold_left
+    ~f:(fun rels path ->
+      List.fold_left
+        ~f:(fun rels edge -> add (mk_duedge edge) rels)
+        ~init:rels path)
+    ~init:empty
+
+let abstract_using_patch_comps chc comps snk =
+  let du_rels = filter Elt.is_duedge chc in
+  let ast_rels = diff chc du_rels in
+  let terms = List.map ~f:(fun s -> Elt.FDNumeral s) comps |> of_list in
+  let abs_ast_rels, terms' = fixedpoint ast_rels terms empty in
+  let nodes = to_list terms' |> terms2strs |> filter_by_node in
+  let dug = to_dug du_rels in
+  let paths =
+    List.fold_left
+      ~f:(fun paths src -> Dug.shortest_path dug src snk :: paths)
+      ~init:[] nodes
+  in
+  let abs_du_rels = paths2rels paths in
+  union abs_ast_rels abs_du_rels
+
 let rec collect_vars = function
   | Elt.Lt (t1, t2)
   | Gt (t1, t2)
@@ -466,9 +569,9 @@ let rels =
     ("BinOpExp", [ expr; binop; expr; expr ]);
     ("UnOpExp", [ expr; unop; expr ]);
     ("CallExp", [ expr; expr; arg_list ]);
-    ("DetailedDUEdge", [ node; node; loc ]);
-    (* ("DUEdge", [node; node]);
-       ("DUPath", [node; node]); *)
+    (* ("DetailedDUEdge", [ node; node; loc ]); *)
+    ("DUEdge", [ node; node ]);
+    (* ("DUPath", [ node; node ]); *)
     ("Index", [ lval; lval; expr ]);
     ("Mem", [ lval; expr ]);
     ("LibCallExp", [ expr; expr; arg_list ]);
@@ -593,12 +696,12 @@ let all_args_has_dep terms args =
 let exists_dep_arg terms args = List.exists ~f:(fun arg -> mem arg terms) args
 
 let prop_deps terms = function
-  | Elt.FuncApply ("DetailedDUEdge", [ src; dst; loc ]) ->
+  (* | Elt.FuncApply ("DetailedDUEdge", [ src; dst; loc ]) ->
       if mem dst terms && mem loc terms && not (mem src terms) then
         (true, add src terms)
-      else (false, terms)
-  (* | Elt.FuncApply ("DUEdge", [ src; dst ]) ->
-      if mem dst terms then (true, add src terms) else (false, terms) *)
+      else (false, terms) *)
+  | Elt.FuncApply ("DUEdge", [ src; dst ]) ->
+      if mem dst terms then (true, add src terms) else (false, terms)
   | Elt.FuncApply ("CFPath", args) | FuncApply ("DUPath", args) ->
       if all_args_has_dep terms args then (true, terms) else (false, terms)
   | FuncApply ("EvalLv", [ n; lv; loc ]) ->
@@ -672,8 +775,9 @@ let extract_cf_nodes deps node_map =
       match dep with
       (* TODO: case where nodes are used but not by Set *)
       | Elt.FuncApply ("Set", args) -> List.hd_exn args :: acc
-      | Elt.FuncApply ("DetailedDUEdge", args) ->
-          (List.rev args |> List.tl_exn) @ acc
+      (* | Elt.FuncApply ("DetailedDUEdge", args) ->
+          (List.rev args |> List.tl_exn) @ acc *)
+      | Elt.FuncApply ("DUEdge", args) -> args @ acc
       | Elt.FuncApply ("EvalLv", args) -> List.hd_exn args :: acc
       | _ -> acc)
     deps
@@ -763,13 +867,11 @@ let run_souffle work_dir out_dir pattern =
   let pid = process_info.pid in
   match Core_unix.waitpid pid with Ok () -> () | _ -> assert false
 
-let pattern_match z3env buggy_dir alarm_id out_dir ver_name maps facts src snk
-    pattern =
+let pattern_match z3env out_dir ver_name maps facts src snk pattern =
   let solver = Z3env.mk_fixedpoint z3env.Z3env.z3ctx in
   Z3env.reg_rel_to_solver z3env solver;
   L.info "Start making Z3 instance from facts and rels";
   let pattern' = subst_pattern_for_target src snk pattern in
-  let alarm_dir = Filename.concat buggy_dir alarm_id in
   add_all z3env maps solver (union facts pattern');
   L.info "Complete making Z3 instance from facts and rels";
   Z3utils.dump_solver_to_smt (ver_name ^ "_formula") solver out_dir;
@@ -783,11 +885,9 @@ let pattern_match z3env buggy_dir alarm_id out_dir ver_name maps facts src snk
   | Z3.Solver.SATISFIABLE -> Z3.Fixedpoint.get_answer solver
   | Z3.Solver.UNKNOWN -> None
 
-let match_and_log z3env buggy_dir alarm_id out_dir ver_name maps facts src snk
-    pattern =
+let match_and_log z3env out_dir ver_name maps facts src snk pattern =
   let status =
-    pattern_match z3env buggy_dir alarm_id out_dir ver_name maps facts src snk
-      pattern
+    pattern_match z3env out_dir ver_name maps facts src snk pattern
   in
   Option.iter
     ~f:(fun ans ->

@@ -136,8 +136,8 @@ let fact_files =
     "BinOpExp.facts";
     "CallExp.facts";
     (* "CFPath.facts"; *)
-    "DetailedDUEdge.facts";
-    (* "DUEdge.facts"; *)
+    (* "DetailedDUEdge.facts"; *)
+    "DUEdge.facts";
     "DUPath.facts";
     "LibCallExp.facts";
     "LvalExp.facts";
