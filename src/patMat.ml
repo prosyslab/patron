@@ -397,19 +397,27 @@ let is_new_alarm dir ta a =
   (not (String.equal ta a))
   && Sys.is_directory (Filename.concat dir ("sparrow-out/taint/datalog/" ^ a))
 
-let match_with_new_alarms buggy_dir true_alarm buggy_maps buggy_ast buggy_cfg
-    pattern out_dir patch_ids patch_ingredients diff =
+let match_with_new_alarms buggy_dir donee_dir true_alarm buggy_maps buggy_ast
+    buggy_cfg pattern out_dir patch_ids patch_ingredients diff =
   Sys.readdir (Filename.concat buggy_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
-         if is_new_alarm buggy_dir true_alarm ta then
+         if
+           String.equal buggy_dir donee_dir
+           && is_new_alarm buggy_dir true_alarm ta
+         then
            match_bug_for_one_prj pattern buggy_maps buggy_dir ta buggy_ast
              buggy_cfg out_dir patch_ids patch_ingredients diff)
 
-let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
+let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
+    out_dir =
   let buggy_maps = Maps.create_maps () in
   Maps.reset_maps buggy_maps;
   let buggy_ast = Parser.parse_ast buggy_dir inline_funcs in
   let patch_ast = Parser.parse_ast patch_dir inline_funcs in
+  let donee_ast =
+    if String.equal buggy_dir donee_dir then patch_ast
+    else Parser.parse_ast donee_dir inline_funcs
+  in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
   L.info "Loading CFG Elements...";
@@ -449,6 +457,6 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
       combined_facts src snk pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
-  match_with_new_alarms buggy_dir true_alarm buggy_maps patch_ast buggy_cfg
-    pattern out_dir patch_node_ids patch_ingredients sym_diff;
+  match_with_new_alarms buggy_dir donee_dir true_alarm buggy_maps donee_ast
+    buggy_cfg pattern out_dir patch_node_ids patch_ingredients sym_diff;
   L.info "Done."

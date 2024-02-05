@@ -9,7 +9,8 @@ module L = Logger
 let verbose = ref 0
 
 type t = {
-  bench_dir : string;
+  donor_dir : string;
+  donee_dir : string;
   true_alarm : string;
   out_dir : string;
   inline : string list;
@@ -25,11 +26,21 @@ let mkdir dirname =
     exit 1
   else Unix.mkdir dirname 0o755
 
-let init bench_dir true_alarm out_dir debug inline memtrace write_out =
+let init donor_dir donee_dir true_alarm out_dir debug inline memtrace write_out
+    =
   if debug then L.set_level L.DEBUG else L.set_level L.INFO;
   mkdir out_dir;
   Filename.concat out_dir "log.txt" |> L.from_file;
-  { bench_dir; true_alarm; out_dir; inline; write_out; debug; memtrace }
+  {
+    donor_dir;
+    donee_dir;
+    true_alarm;
+    out_dir;
+    inline;
+    write_out;
+    debug;
+    memtrace;
+  }
 
 let main_cmd =
   let name = "patron" in
@@ -43,17 +54,24 @@ let main_cmd =
     ]
   in
   let info = Cmd.info name ~version:"0.0.1" ~doc ~man in
-  let bench_dir =
+  let donor_dir =
     Arg.(
       required
       & pos 0 (some file) None
-      & info [] ~docv:"TARGET_DIR"
-          ~doc:"The target directory that has bug and patch directories")
+      & info [] ~docv:"DONOR_DIR"
+          ~doc:"The DONOR directory that has bug and patch directories")
+  in
+  let donee_dir =
+    Arg.(
+      required
+      & pos 1 (some file) None
+      & info [] ~docv:"DONEE_DIR"
+          ~doc:"The donee directory that has bug directory")
   in
   let true_alarm =
     Arg.(
       required
-      & pos 1 (some string) None
+      & pos 2 (some string) None
       & info [] ~docv:"true_alarm"
           ~doc:"The true alarm that patched by developer")
   in
@@ -87,8 +105,8 @@ let main_cmd =
   in
   Cmd.v info
     Term.(
-      const init $ bench_dir $ true_alarm $ out_dir $ debug $ inline_opt
-      $ memtrace $ write_out)
+      const init $ donor_dir $ donee_dir $ true_alarm $ out_dir $ debug
+      $ inline_opt $ memtrace $ write_out)
 
 let parse () =
   match Cmd.eval_value main_cmd with
