@@ -297,7 +297,9 @@ let extract_context sdiff =
   | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) -> ctx
   | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) -> ctx
 
-let rec mk_sdiff ctx cfg exp_map diff =
+let rec mk_sdiff ctx maps diff =
+  let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
+  let cfg = maps.cfg_map in
   match diff with
   | D.InsertStmt (_, s) -> SInsertStmt (ctx, mk_stmt cfg exp_map s)
   | D.DeleteStmt (_, s) -> SDeleteStmt (ctx, mk_stmt cfg exp_map s)
@@ -854,16 +856,26 @@ let extract_diff_ids sdiff =
 let symbolize_sibs sibs =
   List.fold_left (fun acc s -> s.id :: acc) [] sibs |> List.rev
 
-let mk_sym_ctx ctx env exp_map cfg_map =
+let filter_nodes cf_facts nodes =
+  List.fold_left
+    (fun acc n -> if List.mem n cf_facts then n :: acc else acc)
+    [] nodes
+  |> List.rev
+
+let mk_s_sibs maps exp_map path facts =
+  let facts_lst = Chc.to_list facts in
+  match_ast_path maps.cfg_map exp_map path
+  |> symbolize_sibs
+  |> filter_nodes (Chc.extract_cf_nodes facts_lst maps.Maps.node_map)
+
+let mk_sym_ctx ctx env maps cf_facts =
+  let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
+  let cfg_map = maps.cfg_map in
   let root_path = List.rev ctx.D.root_path in
   let s_root_path = match_ast_path cfg_map exp_map root_path in
   let left_sibs, right_sibs = ctx.patch_between in
-  let s_left_sibs =
-    match_ast_path cfg_map exp_map left_sibs |> symbolize_sibs
-  in
-  let s_right_sibs =
-    match_ast_path cfg_map exp_map right_sibs |> symbolize_sibs
-  in
+  let s_left_sibs = mk_s_sibs maps exp_map left_sibs cf_facts in
+  let s_right_sibs = mk_s_sibs maps exp_map right_sibs cf_facts in
   let rest_path = List.tl s_root_path in
   let prnt_fun = get_parent_fun root_path in
   let patch_node =
@@ -887,16 +899,14 @@ let extract_ctx_nodes sdiff =
       b @ a @ acc)
     [] sdiff
 
-let define_sym_diff (maps : Maps.t) buggy diff =
+let define_sym_diff (maps : Maps.t) buggy diff cf_facts =
   get_gvars buggy;
-  let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
-  let cfg = maps.cfg_map in
   let sdiff =
     List.fold_left
       (fun acc (action, env) ->
         let ctx = D.get_ctx action in
-        let s_context = mk_sym_ctx ctx env exp_map cfg in
-        mk_sdiff s_context cfg exp_map action :: acc)
+        let s_context = mk_sym_ctx ctx env maps cf_facts in
+        mk_sdiff s_context maps action :: acc)
       [] diff
   in
   let patch_comp =

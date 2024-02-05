@@ -237,27 +237,18 @@ let rec translate_stmt ast model_map cfg exp_map stmt =
   | _ -> failwith "translate_stmt: translation target is not a statement type"
 
 let get_new_patch_id id model =
-  (* print_endline id;
-     if List.exists (fun (k, _) -> String.equal k id) model then *)
   List.find
     (fun (k, _) -> String.equal k (String.concat "-" [ "AstNode"; id ]))
     model
   |> snd
   |> Str.global_replace (Str.regexp "AstNode-") ""
   |> int_of_string
-(* else
-   failwith "get_new_patch_id: patch location is not included in the pattern" *)
 
-let compute_patch_loc (before, after) patch_ingredients node_map ast_map_rev =
+let compute_patch_loc (before, after) model_map node_map ast_map_rev =
   let cfg2ast_stmt node_lst =
     if node_lst = [] then []
     else
-      List.fold_left
-        (fun acc s ->
-          try List.find (fun x -> String.equal s x) patch_ingredients :: acc
-          with _ -> acc)
-        [] node_lst
-      |> fun x ->
+      translate_node_lst node_lst model_map |> fun x ->
       if x = [] then []
       else
         List.fold_left
@@ -289,7 +280,7 @@ let find_patch_fun diff model =
     model
   |> snd |> get_func
 
-let translate ast sym_diff model_path maps patch_node_ids patch_ingredients =
+let translate ast sym_diff model_path maps patch_node_ids =
   Logger.info "Translating patch...";
   let cfg = maps.Maps.cfg_map in
   let exp_map = maps.Maps.exp_map in
@@ -298,7 +289,6 @@ let translate ast sym_diff model_path maps patch_node_ids patch_ingredients =
   let ast_map_rev = Utils.reverse_hashtbl ast_map in
   let node_map = maps.Maps.node_map in
   (* ToDO: make the order of hashtbl proper so that it will optimize *)
-  let translated_ingredients = translate_node_lst patch_ingredients model_map in
   List.fold_left2
     (fun acc diff parent_id ->
       match diff with
@@ -316,8 +306,7 @@ let translate ast sym_diff model_path maps patch_node_ids patch_ingredients =
               translated_stmt
           in
           let before, after =
-            compute_patch_loc ctx.S.patch_between translated_ingredients
-              node_map ast_map_rev
+            compute_patch_loc ctx.S.patch_between model_map node_map ast_map_rev
           in
           let ctx =
             D.mk_context [ new_parent_node ] before after ctx.S.sibling_idx

@@ -666,6 +666,24 @@ let is_removable rels = function
 
 let collect_removable chcs = filter (is_removable chcs) chcs
 
+let extract_cf_nodes deps node_map =
+  List.fold_left ~init:[]
+    ~f:(fun acc dep ->
+      match dep with
+      (* TODO: case where nodes are used but not by Set *)
+      | Elt.FuncApply ("Set", args) -> List.hd_exn args :: acc
+      | Elt.FuncApply ("DetailedDUEdge", args) ->
+          (List.rev args |> List.tl_exn) @ acc
+      | Elt.FuncApply ("EvalLv", args) -> List.hd_exn args :: acc
+      | _ -> acc)
+    deps
+  |> List.fold_left ~init:[] ~f:(fun acc node ->
+         match node with
+         | Elt.FDNumeral n -> (
+             try Hashtbl.find node_map n :: n :: acc with _ -> n :: acc)
+         | _ -> acc)
+  |> Stdlib.List.sort_uniq (fun x y -> String.compare x y)
+
 let collect_node ~before node chcs =
   let befores =
     fold
