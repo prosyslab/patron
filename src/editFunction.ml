@@ -227,15 +227,16 @@ let rec translate_stmt ast model_map cfg exp_map stmt =
   | _ -> failwith "translate_stmt: translation target is not a statement type"
 
 let get_new_patch_id id model =
-  if List.exists (fun (k, _) -> String.equal k id) model then
-    List.find
-      (fun (k, _) -> String.equal k (String.concat "-" [ "AstNode"; id ]))
-      model
-    |> snd
-    |> Str.global_replace (Str.regexp "AstNode-") ""
-    |> int_of_string
-  else
-    failwith "get_new_patch_id: patch location is not included in the pattern"
+  (* print_endline id;
+     if List.exists (fun (k, _) -> String.equal k id) model then *)
+  List.find
+    (fun (k, _) -> String.equal k (String.concat "-" [ "AstNode"; id ]))
+    model
+  |> snd
+  |> Str.global_replace (Str.regexp "AstNode-") ""
+  |> int_of_string
+(* else
+   failwith "get_new_patch_id: patch location is not included in the pattern" *)
 
 let compute_patch_loc (before, after) patch_ingredients node_map ast_map_rev =
   let cfg2ast_stmt node_lst =

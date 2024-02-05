@@ -347,14 +347,13 @@ let mk_ast_rels parent_fmt eqnode_fmt maps acc (parent, child)
   let parent_rel =
     Chc.Elt.FuncApply ("AstParent", [ parent_term; child_term ])
   in
-  let eqnode_rels =
-    if match parent with Ast.Global _ -> true | _ -> false then
-      match_eq_nodes eqnode_fmt maps child
-    else
+  if match parent with Ast.Stmt _ -> false | _ -> true then parent_rel :: acc
+  else
+    let eqnode_rels =
       match_eq_nodes eqnode_fmt maps parent
       @ match_eq_nodes eqnode_fmt maps child
-  in
-  (parent_rel :: eqnode_rels) @ acc
+    in
+    (parent_rel :: eqnode_rels) @ acc
 
 let make_ast_facts work_dir maps (globs, stmts) =
   let parent_tups = mk_parent_tuples globs stmts in
@@ -444,16 +443,16 @@ let get_alarm work_dir =
   in
   (src, snk, aexps)
 
-let make_facts buggy_dir target_alarm ast cfg out_dir (maps : Maps.t) =
+let make_facts buggy_dir target_alarm ast cfg out_dir maps =
   let alarm_dir =
     Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
   in
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
-  Utils.parse_map alarm_dir maps.exp_map;
+  Utils.parse_map alarm_dir maps.Maps.exp_map;
   let ast_nodes = (Ast.extract_globs ast, Ast.extract_stmts ast) in
   let cf_facts = make_cf_facts alarm_dir cfg maps.cfg_map in
   let ast_facts = make_ast_facts alarm_dir maps ast_nodes in
   let facts = Chc.union cf_facts ast_facts in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;
-  (facts, get_alarm alarm_dir)
+  (cf_facts, ast_facts, get_alarm alarm_dir)

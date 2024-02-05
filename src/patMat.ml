@@ -88,20 +88,21 @@ let remove_before_src_after_snk src snk rels =
   let after_deps = fixedpoint rels after_snk Chc.empty |> fst in
   rels |> (Fun.flip Chc.diff) before_deps |> (Fun.flip Chc.diff) after_deps
 
-let collect_deps maps ast src snk aexps chc =
-  let ast_facts = reduce_ast_facts maps ast chc in
-  (* Chc.iter (fun c -> L.info "ast_facts: %a" Chc.pp_chc c) ast_facts; *)
+let collect_deps maps ast src snk aexps cf_chc ast_chc =
   let func_apps =
-    Chc.extract_func_apps chc |> remove_before_src_after_snk src snk
+    Chc.extract_func_apps cf_chc |> remove_before_src_after_snk src snk
   in
   let snk_term = Chc.Elt.FDNumeral snk in
   let terms = Chc.add snk_term aexps in
-  fixedpoint func_apps terms Chc.empty
-  |> fst
-  |> Chc.filter (fun dep ->
-         (Chc.Elt.is_duedge dep || Chc.Elt.is_assume dep) |> not)
-  |> Chc.inter chc
-(* |> Chc.union ast_facts *)
+  let reduced_cf_facts =
+    fixedpoint func_apps terms Chc.empty
+    |> fst
+    |> Chc.filter (fun dep ->
+           (Chc.Elt.is_duedge dep || Chc.Elt.is_assume dep) |> not)
+    |> Chc.inter cf_chc
+  in
+  let reduced_ast_facts = reduce_ast_facts maps ast ast_chc in
+  (reduced_cf_facts, reduced_ast_facts)
 
 let sort_rule_optimize ref deps =
   let get_args = function
@@ -351,7 +352,7 @@ let abstract_bug_pattern facts src snk aexps maps diff ast =
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  ( Chc.Elt.Implies (fact_lst (*@ smallest_ast_patterns*), errtrace)
+  ( Chc.Elt.Implies (fact_lst @ smallest_ast_patterns, errtrace)
     |> Chc.Elt.numer2var |> Chc.singleton,
     ast_node_lst )
 
@@ -360,15 +361,18 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
-    let facts, (src, snk, aexps) =
+    let cf_facts, ast_facts, (src, snk, aexps) =
       Parser.make_facts buggy_dir target_alarm ast cfg out_dir target_maps
     in
-    let facts' = collect_deps target_maps ast src snk aexps facts in
+    let cf_facts', ast_facts' =
+      collect_deps target_maps ast src snk aexps cf_facts ast_facts
+    in
+    let combined_facts = Chc.union cf_facts' ast_facts' in
     let z3env = Z3env.get_env () in
     L.info "Try matching with %s..." target_alarm;
     let status =
       Chc.match_and_log z3env buggy_dir target_alarm out_dir target_alarm
-        target_maps facts' src snk pattern
+        target_maps combined_facts src snk pattern
     in
     Maps.dump target_alarm target_maps out_dir;
     if Option.is_some status then
@@ -411,7 +415,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
     Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out")
   in
   L.info "CFG Elements Loading Done!";
-  let buggy_facts, (src, snk, aexps) =
+  let cf_facts, ast_facts, (src, snk, aexps) =
     Parser.make_facts buggy_dir true_alarm buggy_ast buggy_cfg out_dir
       buggy_maps
   in
@@ -423,16 +427,16 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   if write_out then (
     L.info "Writing out the edit script...";
     SymDiff.to_json sym_diff out_dir);
-  let buggy_facts' =
-    collect_deps buggy_maps buggy_ast src snk aexps buggy_facts
+  let cf_facts', ast_facts' =
+    collect_deps buggy_maps buggy_ast src snk aexps cf_facts ast_facts
   in
+  let combined_facts = Chc.union cf_facts' ast_facts' in
   let patch_node_ids =
     extract_parent sym_diff buggy_maps.Maps.ast_map |> List.map ~f:fst
   in
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern, patch_ingredients =
-    abstract_bug_pattern buggy_facts' src snk aexps buggy_maps sym_diff
-      buggy_ast
+    abstract_bug_pattern cf_facts' src snk aexps buggy_maps sym_diff buggy_ast
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
@@ -440,7 +444,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir out_dir =
   let z3env = Z3env.get_env () in
   L.info "Try matching with buggy...";
   ( Chc.match_and_log z3env buggy_dir true_alarm out_dir "buggy" buggy_maps
-      buggy_facts' src snk pattern
+      combined_facts src snk pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
   match_with_new_alarms buggy_dir true_alarm buggy_maps patch_ast buggy_cfg
