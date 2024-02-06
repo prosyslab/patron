@@ -347,12 +347,12 @@ let mk_parent_tuples globs stmts =
 let eq_instrs ast_instr cfg_instr =
   match (ast_instr, cfg_instr) with
   | [ Cil.Call (_, _, _, loc) ], Maps.CfgNode.CCall (_, _, _, cloc, _, _) ->
-      SymDiff.eq_line loc cloc
+      AbsDiff.eq_line loc cloc
   | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CSet (_, _, cloc, cmd, _)
   | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CAlloc (_, _, cloc, cmd)
   | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CSalloc (_, _, cloc, cmd)
   | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CFalloc (_, _, cloc, cmd) ->
-      SymDiff.eq_line loc cloc
+      AbsDiff.eq_line loc cloc
       && String.equal (Ast.s_lv lv) (List.nth_exn cmd 1)
   | _ -> false
 
@@ -364,10 +364,10 @@ let lookup_eq_nodes ast_node cfg =
       | Cil.Instr i, cn -> eq_instrs i cn
       | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc
       | Cil.If (_, _, _, loc), Maps.CfgNode.CAssume (_, _, cloc) ->
-          SymDiff.eq_line loc cloc
+          AbsDiff.eq_line loc cloc
       | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc, _)
       | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
-          SymDiff.eq_line loc cloc
+          AbsDiff.eq_line loc cloc
       | _ -> false)
       |> fun bool -> if bool then id :: acc else acc)
     cfg []

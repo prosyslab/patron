@@ -17,7 +17,7 @@
   modeling
   utils
   editFunction
-  symDiff
+  absDiff
   diff
   patch
   inline

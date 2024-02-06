@@ -164,20 +164,20 @@ let sort_rule_optimize ref deps =
   in
   (lcs |> List.rev) @ (unsorted |> List.rev)
 
-let extract_parent sym_diff (ast_map : (Ast.t, int) Hashtbl.t) =
+let extract_parent abs_diff (ast_map : (Ast.t, int) Hashtbl.t) =
   let parent_of_patch =
     List.fold_left ~init:[]
-      ~f:(fun acc diff -> SymDiff.extract_context diff :: acc)
-      sym_diff
+      ~f:(fun acc diff -> AbsDiff.extract_context diff :: acc)
+      abs_diff
     (* Consider that patch occured in a single location for now *)
     |> List.fold_left ~init:[] ~f:(fun acc c ->
-           (c.SymDiff.parent_of_patch.node, c.SymDiff.func_name) :: acc)
+           (c.AbsDiff.parent_of_patch.node, c.AbsDiff.func_name) :: acc)
   in
   List.fold_left ~init:[]
     ~f:(fun acc (p, f) ->
       match p with
-      | SymDiff.SymAst.SGlob _ -> ("", f) :: acc
-      | SStmt (_, s) ->
+      | AbsDiff.AbsAst.AbsGlob _ -> ("", f) :: acc
+      | AbsStmt (_, s) ->
           (Ast.stmt2ast (Some s) |> Hashtbl.find ast_map |> string_of_int, f)
           :: acc
       | _ -> failwith "parent not found")
@@ -310,7 +310,7 @@ let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
   mk_ast_bug_pattern node_map solution
 
 let need_ast_pattern diff =
-  match List.hd_exn diff with SymDiff.SUpdateExp _ -> false | _ -> true
+  match List.hd_exn diff with AbsDiff.SUpdateExp _ -> false | _ -> true
 
 let abstract_bug_pattern du_facts dug patch_comps src snk alarm_comps maps diff
     ast =
@@ -418,20 +418,20 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   L.info "Mapping CFG Elements to AST nodes...";
   let du_rels = Chc.filter Chc.Elt.is_duedge du_facts' in
   let dug = Chc.to_dug du_rels in
-  let sym_diff, patch_comps =
-    SymDiff.define_sym_diff buggy_maps buggy_ast ast_diff du_facts'
+  let abs_diff, patch_comps =
+    AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff du_facts'
       (Dug.copy dug) (src, snk)
   in
   if write_out then (
     L.info "Writing out the edit script...";
-    SymDiff.to_json sym_diff out_dir);
+    AbsDiff.to_json abs_diff out_dir);
   let patch_node_ids =
-    extract_parent sym_diff buggy_maps.Maps.ast_map |> List.map ~f:fst
+    extract_parent abs_diff buggy_maps.Maps.ast_map |> List.map ~f:fst
   in
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern =
     abstract_bug_pattern du_facts' dug patch_comps src snk alarm_comps
-      buggy_maps sym_diff buggy_ast
+      buggy_maps abs_diff buggy_ast
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
@@ -443,5 +443,5 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
   match_with_new_alarms buggy_dir donee_dir true_alarm buggy_maps donee_ast
-    buggy_cfg pattern out_dir patch_node_ids sym_diff;
+    buggy_cfg pattern out_dir patch_node_ids abs_diff;
   L.info "Done."

@@ -2,29 +2,29 @@ module J = Yojson.Basic.Util
 module H = Utils
 module D = Diff
 
-module SymAst = struct
+module AbsAst = struct
   type t =
-    | SNull
-    | SGlob of sym_global * Cil.global
-    | SStmt of sym_stmt * Cil.stmt
-    | SExp of sym_exp * Cil.exp
-    | SLval of sym_lval * Cil.lval
+    | Null
+    | AbsGlob of abs_global * Cil.global
+    | AbsStmt of abs_stmt * Cil.stmt
+    | AbsExp of abs_exp * Cil.exp
+    | AbsLval of abs_lval * Cil.lval
 
-  and sym_typeinfo = { sym_tname : string; sym_ttype : sym_typ }
-  and sym_enuminfo = { ename : string; eitems : (string * sym_node) list }
+  and abs_typeinfo = { abs_tname : string; abs_ttype : abs_typ }
+  and abs_enuminfo = { ename : string; eitems : (string * abs_node) list }
 
-  and sym_typ =
+  and abs_typ =
     | SVoid
     | SInt
     | SFloat
-    | SPtr of sym_typ
-    | SArray of sym_typ
-    | SNamed of sym_typeinfo
-    | SComp of sym_compinfo
-    | SEnum of sym_enuminfo
-    | SFun of sym_typ * (string * sym_typ) list option * bool
+    | SPtr of abs_typ
+    | SArray of abs_typ
+    | SNamed of abs_typeinfo
+    | SComp of abs_compinfo
+    | SEnum of abs_enuminfo
+    | SFun of abs_typ * (string * abs_typ) list option * bool
 
-  and sym_binop =
+  and abs_binop =
     | SPlusA
     | SPlusPI
     | SIndexPI
@@ -48,61 +48,61 @@ module SymAst = struct
     | SLAnd
     | SLOr
 
-  and sym_unop = SNot | SNeg
+  and abs_unop = SNot | SNeg
 
-  and sym_const =
+  and abs_const =
     | SIntConst of int
     | SFloatConst of float
     | SCharConst of char
     | SStringConst of string
 
-  and sym_offset =
+  and abs_offset =
     | SNoOffset
-    | SField of sym_fieldinfo * sym_offset
-    | SIndex of sym_node * sym_offset
+    | SField of abs_fieldinfo * abs_offset
+    | SIndex of abs_node * abs_offset
 
-  and sym_compinfo = { cname : string; cstruct : bool }
-  and sym_fieldinfo = { fcomp : sym_compinfo; fname : string; ftype : sym_typ }
-  and sym_varinfo = { vname : string; vtype : sym_typ }
+  and abs_compinfo = { cname : string; cstruct : bool }
+  and abs_fieldinfo = { fcomp : abs_compinfo; fname : string; ftype : abs_typ }
+  and abs_varinfo = { vname : string; vtype : abs_typ }
 
-  and sym_exp =
+  and abs_exp =
     | SENULL
-    | SConst of sym_const
-    | SELval of sym_node
-    | SSizeOf of sym_typ
-    | SSizeOfE of sym_node
+    | SConst of abs_const
+    | SELval of abs_node
+    | SSizeOf of abs_typ
+    | SSizeOfE of abs_node
     | SSizeOfStr of string
-    | SBinOp of sym_binop * sym_node * sym_node * sym_typ
-    | SUnOp of sym_unop * sym_node * sym_typ
-    | SQuestion of sym_node * sym_node * sym_node * sym_typ
-    | SCastE of sym_typ * sym_node
-    | SAddrOf of sym_node
-    | SStartOf of sym_node
-    | SAddrOfLabel of sym_node
+    | SBinOp of abs_binop * abs_node * abs_node * abs_typ
+    | SUnOp of abs_unop * abs_node * abs_typ
+    | SQuestion of abs_node * abs_node * abs_node * abs_typ
+    | SCastE of abs_typ * abs_node
+    | SAddrOf of abs_node
+    | SStartOf of abs_node
+    | SAddrOfLabel of abs_node
 
-  and sym_lhost = SVar of sym_varinfo | SMem of sym_node
-  and sym_lval = SLNull | Lval of sym_lhost * sym_offset
+  and abs_lhost = SVar of abs_varinfo | SMem of abs_node
+  and abs_lval = SLNull | Lval of abs_lhost * abs_offset
 
-  and sym_stmt =
+  and abs_stmt =
     | SSNull
-    | SIf of sym_node * sym_node list * sym_node list
-    | SSet of sym_node * sym_node
-    | SCall of sym_node option * sym_node * sym_node list
-    | SReturn of sym_node option
-    | SBlock of sym_node list
-    | SGoto of sym_node
+    | SIf of abs_node * abs_node list * abs_node list
+    | SSet of abs_node * abs_node
+    | SCall of abs_node option * abs_node * abs_node list
+    | SReturn of abs_node option
+    | SBlock of abs_node list
+    | SGoto of abs_node
     | SBreak
     | SContinue
 
-  and sym_global = SGNull | SGFun | GVar of string * string
-  and sym_node = { node : t; id : string; literal : string }
+  and abs_global = SGNull | SGFun | GVar of string * string
+  and abs_node = { node : t; id : string; literal : string }
 
   let rec pp_node fmt e =
     match e.node with
-    | SNull -> Format.fprintf fmt "SNull"
-    | SStmt (s, _) -> Format.fprintf fmt "SStmt(%a)" pp_sstmt s
-    | SExp (e, _) -> Format.fprintf fmt "SExp(%a)" pp_sexp e
-    | SLval (l, _) -> Format.fprintf fmt "SLval(%a)" pp_slval l
+    | Null -> Format.fprintf fmt "SNull"
+    | AbsStmt (s, _) -> Format.fprintf fmt "AbsStmt(%a)" pp_absstmt s
+    | AbsExp (e, _) -> Format.fprintf fmt "AbsExp(%a)" pp_absExp e
+    | AbsLval (l, _) -> Format.fprintf fmt "AbsLval(%a)" pp_absLval l
     | _ -> failwith "not implemented"
 
   and pp_node_lst fmt lst =
@@ -110,10 +110,10 @@ module SymAst = struct
     List.iter (fun e -> Format.fprintf fmt "%a, " pp_node e) lst;
     Format.fprintf fmt "]"
 
-  and pp_sstmts fmt ss =
-    List.iter (fun s -> Format.fprintf fmt "%a; " pp_sstmt s) ss
+  and pp_absstmts fmt ss =
+    List.iter (fun s -> Format.fprintf fmt "%a; " pp_absstmt s) ss
 
-  and pp_sstmt fmt s =
+  and pp_absstmt fmt s =
     match s with
     | SSNull -> Format.fprintf fmt "SSNull"
     | SIf (e, s1, s2) ->
@@ -137,7 +137,7 @@ module SymAst = struct
   and pp_svarinfo fmt v =
     Format.fprintf fmt "SVarInfo(%s, %a)" v.vname pp_styp v.vtype
 
-  and pp_slval fmt l =
+  and pp_absLval fmt l =
     match l with
     | SLNull -> Format.fprintf fmt "SLNull"
     | Lval (lhost, _) -> (
@@ -148,7 +148,7 @@ module SymAst = struct
   and pp_soptexp fmt e =
     match e with None -> Format.fprintf fmt "None" | Some e -> pp_node fmt e
 
-  and pp_sexp fmt e =
+  and pp_absExp fmt e =
     match e with
     | SENULL -> Format.fprintf fmt "SENULL"
     | SConst c -> Format.fprintf fmt "SConst(%a)" pp_sconst c
@@ -183,7 +183,7 @@ module SymAst = struct
     | SFloat -> Format.fprintf fmt "SFloat"
     | SPtr t -> Format.fprintf fmt "SPtr(%a)" pp_styp t
     | SArray t -> Format.fprintf fmt "SArray(%a)" pp_styp t
-    | SNamed t -> Format.fprintf fmt "SNamed(%a)" pp_styp t.sym_ttype
+    | SNamed t -> Format.fprintf fmt "SNamed(%a)" pp_styp t.abs_ttype
     | SComp c -> Format.fprintf fmt "SComp(%a)" pp_scompinfo c
     | SEnum e -> Format.fprintf fmt "SEnum(%a)" pp_senuminfo e
     | SFun (t, lst, b) ->
@@ -248,15 +248,15 @@ module SymAst = struct
     | SNot -> Format.fprintf fmt "SNot"
     | SNeg -> Format.fprintf fmt "SNeg"
 
-  let to_null = SNull
+  let to_null = Null
   let compare = compare
 end
 
-include SymAst
+include AbsAst
 
-type sym_context = {
-  root_path : sym_node list;
-  parent_of_patch : sym_node;
+type abs_context = {
+  root_path : abs_node list;
+  parent_of_patch : abs_node;
   patch_bound : string list * string list;
   patch_between : string list * string list;
   func_name : string;
@@ -264,14 +264,14 @@ type sym_context = {
 }
 
 type t =
-  | SInsertStmt of sym_context * sym_node
-  | SDeleteStmt of sym_context * sym_node
-  | SInsertExp of sym_context * sym_node
-  | SDeleteExp of sym_context * sym_node
-  | SUpdateExp of sym_context * sym_node * sym_node
-  | SInsertLval of sym_context * sym_node
-  | SDeleteLval of sym_context * sym_node
-  | SUpdateLval of sym_context * sym_node * sym_node
+  | SInsertStmt of abs_context * abs_node
+  | SDeleteStmt of abs_context * abs_node
+  | SInsertExp of abs_context * abs_node
+  | SDeleteExp of abs_context * abs_node
+  | SUpdateExp of abs_context * abs_node * abs_node
+  | SInsertLval of abs_context * abs_node
+  | SDeleteLval of abs_context * abs_node
+  | SUpdateLval of abs_context * abs_node * abs_node
 
 let get_ctx = function
   | SInsertStmt (ctx, _)
@@ -321,14 +321,13 @@ let match_exp2du cfg_rev exp_map du_node exp_str =
     in
     if candidate = [] then "None"
     else
-      (* List.iter (fun x -> Printf.printf "%s\n" x) candidate; *)
       try
         List.find
           (fun x -> List.exists (fun y -> String.equal x y) exps)
           candidate
       with Not_found -> "None"
 
-let rec find_closest_exp (before, after) cfg_rev exp_map exp_str =
+let find_closest_exp (before, after) cfg_rev exp_map exp_str =
   let rec aux b a acc =
     match (List.rev b, a) with
     | [], [] -> "None"
@@ -369,14 +368,14 @@ let rec mk_sdiff (patch_bw : string list * string list) ctx maps diff =
 
 and mk_exp patch_bw parent_stmt cfg exp_map e =
   {
-    node = SExp (match_exp patch_bw parent_stmt cfg exp_map e, e);
+    node = AbsExp (match_exp patch_bw parent_stmt cfg exp_map e, e);
     id = match_exp_id patch_bw parent_stmt cfg exp_map e;
     literal = Ast.s_exp e;
   }
 
 and mk_lval patch_bw parent_stmt cfg_rev exp_map l =
   {
-    node = SLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l);
+    node = AbsLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l);
     id = match_lval_id patch_bw parent_stmt cfg_rev exp_map l;
     literal = Ast.s_lv l;
   }
@@ -387,7 +386,7 @@ and mk_exps patch_bw parent_stmt cfg_rev exp_map exps =
 and mk_stmt patch_bw cfg cfg_rev exp_map s =
   let id = match_stmt_id cfg s.Cil.skind in
   {
-    node = SStmt (match_stmt patch_bw id cfg cfg_rev exp_map s, s);
+    node = AbsStmt (match_stmt patch_bw id cfg cfg_rev exp_map s, s);
     id;
     literal = Ast.s_stmt s;
   }
@@ -399,15 +398,15 @@ and match_instr patch_bw sid cfg exp_map i =
   let i = List.hd i in
   match i with
   | Cil.Set (l, e, _) ->
-      SymAst.SSet
+      AbsAst.SSet
         (mk_lval patch_bw sid cfg exp_map l, mk_exp patch_bw sid cfg exp_map e)
   | Cil.Call (Some l, e, es, _) ->
-      SymAst.SCall
+      AbsAst.SCall
         ( Some (mk_lval patch_bw sid cfg exp_map l),
           mk_exp patch_bw sid cfg exp_map e,
           mk_exps patch_bw sid cfg exp_map es )
   | Cil.Call (None, e, es, _) ->
-      SymAst.SCall
+      AbsAst.SCall
         ( None,
           mk_exp patch_bw sid cfg exp_map e,
           mk_exps patch_bw sid cfg exp_map es )
@@ -416,10 +415,10 @@ and match_instr patch_bw sid cfg exp_map i =
 and match_stmt patch_bw sid cfg cfg_rev exp_map s =
   match s.Cil.skind with
   | Cil.If (e, s1, s2, _) ->
-      let node = SExp (match_exp patch_bw sid cfg_rev exp_map e, e) in
+      let node = AbsExp (match_exp patch_bw sid cfg_rev exp_map e, e) in
       let id = match_exp_id patch_bw sid cfg_rev exp_map e in
       let literal = Ast.s_exp e in
-      SymAst.SIf
+      AbsAst.SIf
         ( { node; id; literal },
           mk_stmts patch_bw cfg cfg_rev exp_map s1.Cil.bstmts,
           mk_stmts patch_bw cfg cfg_rev exp_map s2.Cil.bstmts )
@@ -427,44 +426,48 @@ and match_stmt patch_bw sid cfg cfg_rev exp_map s =
   | Cil.Block b ->
       let bl =
         List.fold_left
-          (fun (acc : SymAst.sym_node list) s ->
+          (fun (acc : AbsAst.abs_node list) s ->
             mk_stmt patch_bw cfg cfg_rev exp_map s :: acc)
           [] b.bstmts
         |> List.rev
       in
-      SymAst.SBlock bl
+      AbsAst.SBlock bl
   | Cil.Return (Some e, _) ->
-      let node = SExp (match_exp patch_bw sid cfg_rev exp_map e, e) in
+      let node = AbsExp (match_exp patch_bw sid cfg_rev exp_map e, e) in
       let id = match_exp_id patch_bw sid cfg_rev exp_map e in
       let literal = Ast.s_exp e in
-      SymAst.SReturn (Some { node; id; literal })
-  | Cil.Return (None, _) -> SymAst.SReturn None
+      AbsAst.SReturn (Some { node; id; literal })
+  | Cil.Return (None, _) -> AbsAst.SReturn None
   | Cil.Goto (s, _) ->
-      let node = SStmt (SSNull, !s) in
+      let node = AbsStmt (SSNull, !s) in
       let id = "GOTO_DST" in
       let literal = Ast.s_stmt !s in
-      SymAst.SGoto { node; id; literal }
-  | Cil.Break _ -> SymAst.SBreak
-  | Cil.Continue _ -> SymAst.SContinue
+      AbsAst.SGoto { node; id; literal }
+  | Cil.Break _ -> AbsAst.SBreak
+  | Cil.Continue _ -> AbsAst.SContinue
   | _ -> failwith "match_stmt: not implemented"
 
-and mk_sexp patch_bw parent_stmt cfg_rev exp_map e =
-  let node = SExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
+and mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e =
+  let node = AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
   let id = match_exp_id patch_bw parent_stmt cfg_rev exp_map e in
   let literal = Ast.s_exp e in
   { node; id; literal }
 
 and match_exp patch_bw parent_stmt cfg_rev exp_map e =
   match e with
-  | Cil.Const c -> SymAst.SConst (to_sconst c)
+  | Cil.Const c -> AbsAst.SConst (to_sconst c)
   | Cil.Lval l ->
-      let node = SLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l) in
+      let node =
+        AbsLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l)
+      in
       let id = match_lval_id patch_bw parent_stmt cfg_rev exp_map l in
       let literal = Ast.s_lv l in
       SELval { node; id; literal }
   | Cil.SizeOf t -> SSizeOf (to_styp t)
   | Cil.SizeOfE e' ->
-      let node = SExp (match_exp patch_bw parent_stmt cfg_rev exp_map e', e') in
+      let node =
+        AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e', e')
+      in
       let id = match_exp_id patch_bw parent_stmt cfg_rev exp_map e' in
       let literal = Ast.s_exp e' in
       SSizeOfE { node; id; literal }
@@ -472,38 +475,42 @@ and match_exp patch_bw parent_stmt cfg_rev exp_map e =
   | Cil.BinOp (op, e1, e2, t) ->
       SBinOp
         ( to_sbinop op,
-          mk_sexp patch_bw parent_stmt cfg_rev exp_map e1,
-          mk_sexp patch_bw parent_stmt cfg_rev exp_map e2,
+          mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e1,
+          mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e2,
           to_styp t )
   | Cil.UnOp (op, e, t) ->
-      let node = SExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
+      let node = AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
       let id = match_exp_id patch_bw parent_stmt cfg_rev exp_map e in
       let literal = Ast.s_exp e in
       SUnOp (to_sunop op, { node; id; literal }, to_styp t)
   | Cil.CastE (t, e) ->
-      let node = SExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
+      let node = AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
       let id = match_exp_id patch_bw parent_stmt cfg_rev exp_map e in
       let literal = Ast.s_exp e in
       SCastE (to_styp t, { node; id; literal })
   | Cil.Question (e1, e2, e3, t) ->
       SQuestion
-        ( mk_sexp patch_bw parent_stmt cfg_rev exp_map e1,
-          mk_sexp patch_bw parent_stmt cfg_rev exp_map e2,
-          mk_sexp patch_bw parent_stmt cfg_rev exp_map e3,
+        ( mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e1,
+          mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e2,
+          mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e3,
           to_styp t )
   | Cil.AddrOf l ->
-      let node = SLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l) in
+      let node =
+        AbsLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l)
+      in
       let id = match_lval_id patch_bw parent_stmt cfg_rev exp_map l in
       let literal = Ast.s_lv l in
       SAddrOf { node; id; literal }
   | Cil.StartOf l ->
-      let node = SLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l) in
+      let node =
+        AbsLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l)
+      in
       let id = match_lval_id patch_bw parent_stmt cfg_rev exp_map l in
       let literal = Ast.s_lv l in
       SStartOf { node; id; literal }
   (* | Cil.AddrOfLabel stmt ->
       let id = match_stmt_id cfg !stmt.Cil.skind in
-      let node = SStmt (match_stmt id cfg exp_map !stmt, !stmt) in
+      let node = AbsStmt (match_stmt id cfg exp_map !stmt, !stmt) in
       let literal = Ast.s_stmt !stmt in
       SAddrOfLabel { node; id; literal } *)
   | _ -> failwith "match_exp: not implemented"
@@ -512,42 +519,42 @@ and match_lval patch_bw parent_stmt cfg exp_map l =
   let lhost, offset = l in
   let slhost =
     match lhost with
-    | Cil.Var v -> SymAst.SVar { vname = v.vname; vtype = to_styp v.vtype }
+    | Cil.Var v -> AbsAst.SVar { vname = v.vname; vtype = to_styp v.vtype }
     | Cil.Mem e ->
-        let node = SExp (match_exp patch_bw parent_stmt cfg exp_map e, e) in
+        let node = AbsExp (match_exp patch_bw parent_stmt cfg exp_map e, e) in
         let id = match_exp_id patch_bw parent_stmt cfg exp_map e in
         let literal = Ast.s_exp e in
-        SymAst.SMem { node; id; literal }
+        AbsAst.SMem { node; id; literal }
   in
   let soffset = match_offset patch_bw parent_stmt cfg exp_map offset in
   Lval (slhost, soffset)
 
 and match_offset patch_bw parent_stmt cfg exp_map o =
   match o with
-  | Cil.NoOffset -> SymAst.SNoOffset
+  | Cil.NoOffset -> AbsAst.SNoOffset
   | Cil.Field (f, o) ->
       let fcomp = { cname = f.fcomp.cname; cstruct = true } in
       let fname = f.fname in
       let ftype = to_styp f.ftype in
-      SymAst.SField
+      AbsAst.SField
         ( { fcomp; fname; ftype },
           match_offset patch_bw parent_stmt cfg exp_map o )
   | Cil.Index (e, o) ->
-      let node = SExp (match_exp patch_bw parent_stmt cfg exp_map e, e) in
+      let node = AbsExp (match_exp patch_bw parent_stmt cfg exp_map e, e) in
       let id = match_exp_id patch_bw parent_stmt cfg exp_map e in
       let literal = Ast.s_exp e in
-      SymAst.SIndex
+      AbsAst.SIndex
         ({ node; id; literal }, match_offset patch_bw parent_stmt cfg exp_map o)
 
 and match_fieldinfo f =
   {
-    SymAst.fcomp = match_compinfo f.Cil.fcomp;
-    SymAst.fname = f.Cil.fname;
-    SymAst.ftype = to_styp f.Cil.ftype;
+    AbsAst.fcomp = match_compinfo f.Cil.fcomp;
+    AbsAst.fname = f.Cil.fname;
+    AbsAst.ftype = to_styp f.Cil.ftype;
   }
 
 and match_compinfo c =
-  { SymAst.cname = c.Cil.cname; SymAst.cstruct = c.Cil.cstruct }
+  { AbsAst.cname = c.Cil.cname; AbsAst.cstruct = c.Cil.cstruct }
 
 and extract_fun_name g =
   match g with
@@ -561,25 +568,25 @@ and match_ast_path patch_bw cfg cfg_rev exp_map lst acc =
       match hd with
       | Ast.Stmt s ->
           let id = match_stmt_id cfg s.Cil.skind in
-          let node = SStmt (SSNull, s) in
+          let node = AbsStmt (SSNull, s) in
           let literal = Ast.s_stmt s in
           { id; node; literal }
           :: match_ast_path patch_bw cfg cfg_rev exp_map tl (id :: acc)
       | Ast.Exp e ->
           let id = match_exp_id patch_bw (List.hd acc) cfg_rev exp_map e in
-          let node = SExp (SENULL, e) in
+          let node = AbsExp (SENULL, e) in
           let literal = Ast.s_exp e in
           { id; node; literal }
           :: match_ast_path patch_bw cfg cfg_rev exp_map tl acc
       | Ast.Lval l ->
           let id = match_lval_id patch_bw (List.hd acc) cfg_rev exp_map l in
-          let node = SLval (SLNull, l) in
+          let node = AbsLval (SLNull, l) in
           let literal = Ast.s_lv l in
           { id; node; literal }
           :: match_ast_path patch_bw cfg cfg_rev exp_map tl acc
       | Ast.Global g ->
           let id = extract_fun_name g in
-          let node = SGlob (SGNull, g) in
+          let node = AbsGlob (SGNull, g) in
           let literal = Ast.s_glob g in
           { id; node; literal }
           :: match_ast_path patch_bw cfg cfg_rev exp_map tl acc
@@ -592,7 +599,7 @@ and match_stmt_path cfg lst =
       match hd with
       | Ast.Stmt s ->
           let id = match_stmt_id cfg s.Cil.skind in
-          let node = SStmt (SSNull, s) in
+          let node = AbsStmt (SSNull, s) in
           let literal = Ast.s_stmt s in
           { id; node; literal } :: match_stmt_path cfg tl
       | _ -> failwith "match_stmt_path: context failed to be read")
@@ -711,7 +718,7 @@ and to_styp t =
   | Cil.TPtr (t', _) -> SPtr (to_styp t')
   | Cil.TArray (t', _, _) -> SArray (to_styp t')
   | Cil.TNamed (t', _) ->
-      SNamed { sym_tname = t'.Cil.tname; sym_ttype = to_styp t'.ttype }
+      SNamed { abs_tname = t'.Cil.tname; abs_ttype = to_styp t'.ttype }
   | Cil.TFun (t, lst, b, _) ->
       let slist =
         match lst with
@@ -866,7 +873,7 @@ let get_patch_range siblings patch_loc node_map ast_map =
 
 let get_sibling_lst patch_node parent_branch =
   match patch_node.node with
-  | SStmt (_, s) -> (
+  | AbsStmt (_, s) -> (
       match s.Cil.skind with
       | Cil.Block lst -> lst.bstmts
       | Cil.Loop (b, _, _, _) -> b.bstmts
@@ -876,21 +883,21 @@ let get_sibling_lst patch_node parent_branch =
           | FalseBranch -> eb.bstmts
           | _ -> failwith "get_sibling_lst: if statment without branch")
       | _ -> [])
-  | SGlob (_, g) -> (
+  | AbsGlob (_, g) -> (
       match g with
       | Cil.GFun (f, _) -> f.sbody.bstmts
-      | _ -> failwith "define_sym_diff: not implemented")
-  | _ -> failwith "define_sym_diff: not implemented"
+      | _ -> failwith "define_abs_diff: not implemented")
+  | _ -> failwith "define_abs_diff: not implemented"
 
 let rec extract_node_ids node =
   match node.node with
-  | SStmt (s, _) -> node.id :: extract_stmt_ids s
-  | SGlob _ -> [ node.id ]
-  | SExp (e, _) -> node.id :: extract_exp_ids e
-  | SLval (l, _) -> node.id :: extract_lval_ids l
+  | AbsStmt (s, _) -> node.id :: extract_stmt_ids s
+  | AbsGlob _ -> [ node.id ]
+  | AbsExp (e, _) -> node.id :: extract_exp_ids e
+  | AbsLval (l, _) -> node.id :: extract_lval_ids l
   | _ -> []
 
-and extract_stmt_ids (stmt : sym_stmt) =
+and extract_stmt_ids (stmt : abs_stmt) =
   match stmt with
   | SBlock lst -> List.fold_left (fun acc s -> extract_node_ids s @ acc) [] lst
   | SSet (l, e) -> extract_node_ids l @ extract_node_ids e
@@ -909,7 +916,7 @@ and extract_stmt_ids (stmt : sym_stmt) =
   | SGoto s -> extract_node_ids s
   | _ -> []
 
-and extract_exp_ids (exp : sym_exp) =
+and extract_exp_ids (exp : abs_exp) =
   match exp with
   | SELval l -> extract_node_ids l
   | SConst _ -> []
@@ -925,15 +932,15 @@ and extract_exp_ids (exp : sym_exp) =
   | SAddrOfLabel s -> extract_node_ids s
   | _ -> []
 
-and extract_lval_ids (lval : sym_lval) =
+and extract_lval_ids (lval : abs_lval) =
   match lval with
   | Lval (l, o) -> extract_lhost_ids l @ extract_offset_ids o
   | _ -> []
 
-and extract_lhost_ids (lhost : sym_lhost) =
+and extract_lhost_ids (lhost : abs_lhost) =
   match lhost with SVar _ -> [] | SMem e -> extract_node_ids e
 
-and extract_offset_ids (offset : sym_offset) =
+and extract_offset_ids (offset : abs_offset) =
   match offset with
   | SNoOffset -> []
   | SField (_, o) -> extract_offset_ids o
@@ -973,7 +980,7 @@ let get_parent_of_exp_sibs (left_sibs, right_sibs) patch_node =
   then if String.equal patch_node.id "None" then [] else [ patch_node.id ]
   else []
 
-let mk_sym_ctx ctx env maps du_facts (patch_bw : string list * string list) =
+let mk_abs_ctx ctx env maps du_facts (patch_bw : string list * string list) =
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
   let cfg_map = maps.cfg_map in
   let cfg_map_rev = maps.cfg_map |> Utils.reverse_hashtbl in
@@ -996,7 +1003,7 @@ let mk_sym_ctx ctx env maps du_facts (patch_bw : string list * string list) =
   let patch_node =
     try List.rev s_root_path |> List.hd
     with Failure _ ->
-      { node = SGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
+      { node = AbsGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
   in
   let parent_of_exp_sibs = get_parent_of_exp_sibs ctx.patch_bound patch_node in
   let s_left_sibs =
@@ -1077,14 +1084,14 @@ let mk_du_patch_bw dug (src, snk) (ast_before, ast_after) maps =
   in
   (Dug.edges2lst before, Dug.edges2lst after)
 
-let define_sym_diff maps buggy diff du_facts dug src_snk =
+let define_abs_diff maps buggy diff du_facts dug src_snk =
   get_gvars buggy;
   let sdiff =
     List.fold_left
       (fun acc (action, env) ->
         let ctx = D.get_ctx action in
         let du_patch_bw = mk_du_patch_bw dug src_snk ctx.patch_bound maps in
-        let s_context = mk_sym_ctx ctx env maps du_facts du_patch_bw in
+        let s_context = mk_abs_ctx ctx env maps du_facts du_patch_bw in
         mk_sdiff du_patch_bw s_context maps action :: acc)
       [] diff
   in
@@ -1098,7 +1105,7 @@ let define_sym_diff maps buggy diff du_facts dug src_snk =
   (sdiff, patch_comp)
 
 module DiffJson = struct
-  open SymAst
+  open AbsAst
 
   type t = Yojson.Safe.t
 
@@ -1135,8 +1142,8 @@ module DiffJson = struct
     | SPtr t -> `Assoc [ ("ptr", styp_to_sym t) ]
     | SArray t -> `Assoc [ ("array", styp_to_sym t) ]
     | SNamed t ->
-        let tname_json = ("tname", `String t.sym_tname) in
-        let typ_json = ("typ", styp_to_sym t.sym_ttype) in
+        let tname_json = ("tname", `String t.abs_tname) in
+        let typ_json = ("typ", styp_to_sym t.abs_ttype) in
         `Assoc [ ("named", `Assoc [ tname_json; typ_json ]) ]
     | SFun (t, lst, b) ->
         let slist = match lst with Some lst -> lst | None -> [] in
@@ -1160,7 +1167,7 @@ module DiffJson = struct
   let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
 
   let rec mk_json_obj saction =
-    let context_json (context : sym_context) =
+    let context_json (context : abs_context) =
       let func_name_json = ("func_name", `String context.func_name) in
       let sid_lst =
         `List
@@ -1201,12 +1208,12 @@ module DiffJson = struct
     `List
       (List.fold_left (fun acc x -> sstmt_to_json x :: acc) [] lst |> List.rev)
 
-  and sstmt_to_json (sstmt : sym_node) =
+  and sstmt_to_json (sstmt : abs_node) =
     let node = sstmt.node in
     let stmt =
       match node with
-      | SStmt (s, _) -> s
-      | _ -> failwith "sstmt_to_json: undefined sstmt"
+      | AbsStmt (s, _) -> s
+      | _ -> failwith "sstmt_to_json: undefined AbsStmt"
     in
     match stmt with
     | SIf (exp1, tb1, eb1) ->
@@ -1287,12 +1294,12 @@ module DiffJson = struct
         `Assoc [ continue_json ]
     | _ -> `Null
 
-  and sexp_to_json (sexp : SymAst.sym_node) =
+  and sexp_to_json (sexp : AbsAst.abs_node) =
     let node = sexp.node in
     let exp =
       match node with
-      | SExp (e, _) -> e
-      | _ -> failwith "sexp_to_json: undefined sexp"
+      | AbsExp (e, _) -> e
+      | _ -> failwith "sexp_to_json: undefined AbsExp"
     in
     match exp with
     | SConst const ->
@@ -1339,15 +1346,15 @@ module DiffJson = struct
         let literal_json = ("literal", `String sexp.literal) in
         `Assoc [ node_json; id_json; literal_json ]
     | _ ->
-        SymAst.pp_sexp Format.std_formatter exp;
-        failwith "sexp_to_json: undefined sexp"
+        AbsAst.pp_absExp Format.std_formatter exp;
+        failwith "sexp_to_json: undefined AbsExp"
 
-  and slval_to_json (slval : SymAst.sym_node) =
+  and slval_to_json (slval : AbsAst.abs_node) =
     let node = slval.node in
     let lval =
       match node with
-      | SLval (l, _) -> l
-      | _ -> failwith "slval_to_json: undefined slval"
+      | AbsLval (l, _) -> l
+      | _ -> failwith "slval_to_json: undefined AbsLval"
     in
     match lval with
     | SLNull -> `Null
@@ -1391,7 +1398,7 @@ module DiffJson = struct
     let struct_json = ("struct", `Bool c.cstruct) in
     `Assoc [ ("comp", `Assoc [ name_json; struct_json ]) ]
 
-  and sconst_to_json (sconst : SymAst.sym_const) =
+  and sconst_to_json (sconst : AbsAst.abs_const) =
     match sconst with
     | SIntConst i ->
         let type_json = ("type", `String "int") in
@@ -1411,19 +1418,19 @@ module DiffJson = struct
         `Assoc [ type_json; literal_json ]
 end
 
-let to_json sym_list out_dir =
+let to_json abs_list out_dir =
   let oc_diff_json = open_out (out_dir ^ "/diff.json") in
-  let rec make_json (id : int) sym_list acc =
-    match sym_list with
+  let rec make_json (id : int) abs_list acc =
+    match abs_list with
     | [] -> acc
     | s_action :: s_rest ->
         let json_obj = DiffJson.mk_json_obj s_action in
-        if json_obj = `Null then make_json id sym_list acc
+        if json_obj = `Null then make_json id abs_list acc
         else
           let acc = ("diff-" ^ string_of_int id, json_obj) :: acc in
           make_json (id + 1) s_rest acc
   in
-  let actions = `Assoc (List.rev (make_json 0 sym_list [])) in
+  let actions = `Assoc (List.rev (make_json 0 abs_list [])) in
   let json_obj = `Assoc [ ("diffs", actions) ] in
   Yojson.Safe.pretty_to_channel oc_diff_json json_obj;
   close_out oc_diff_json

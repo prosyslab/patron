@@ -1,6 +1,6 @@
 module J = Yojson.Basic.Util
 module D = Diff
-module S = SymDiff
+module A = AbsDiff
 module H = Utils
 
 let translate_by_model id model =
@@ -101,22 +101,22 @@ class expVisitor target =
   end
 
 let rec translate_lval ast model_map exp_map slval =
-  let id = slval.S.SymAst.id in
-  let lval = slval.S.SymAst.node in
+  let id = slval.A.AbsAst.id in
+  let lval = slval.A.AbsAst.node in
   match lval with
-  | S.SymAst.SLval (sym, cil) ->
+  | A.AbsAst.AbsLval (sym, cil) ->
       if List.exists (fun (k, _) -> String.equal id k) model_map then
         let new_id =
           List.find (fun (k, _) -> String.equal id k) model_map |> snd
         in
         let new_exp_str = Hashtbl.find exp_map new_id in
         match (sym, cil) with
-        | S.SymAst.SLNull, _ -> failwith "translate_lval:Lval is null"
-        | S.SymAst.Lval (S.SymAst.SVar _, _), (Cil.Var _, _) -> (
+        | A.AbsAst.SLNull, _ -> failwith "translate_lval:Lval is null"
+        | A.AbsAst.Lval (A.AbsAst.SVar _, _), (Cil.Var _, _) -> (
             let vis = new expVisitor new_exp_str in
             ignore (Cil.visitCilFile vis ast);
             match List.hd !swap_exp with Cil.Lval lval -> lval | _ -> cil)
-        | S.SymAst.Lval (S.SymAst.SMem _, _), (Cil.Mem _, _) -> (
+        | A.AbsAst.Lval (A.AbsAst.SMem _, _), (Cil.Mem _, _) -> (
             let vis = new expVisitor new_exp_str in
             ignore (Cil.visitCilFile vis ast);
             match List.hd !swap_exp with Cil.Lval lval -> lval | _ -> cil)
@@ -125,56 +125,56 @@ let rec translate_lval ast model_map exp_map slval =
   | _ -> failwith "translate_lval: translation target is not an lvalue"
 
 and translate_exp ast (model_map : (string * string) list) exp_map sexp =
-  let id = sexp.S.SymAst.id in
-  let exp = sexp.S.SymAst.node in
+  let id = sexp.A.AbsAst.id in
+  let exp = sexp.A.AbsAst.node in
   match exp with
-  | S.SymAst.SExp (sym, cil) -> (
+  | A.AbsAst.AbsExp (sym, cil) -> (
       match (sym, cil) with
-      | S.SymAst.SConst c, Cil.Const _ ->
+      | A.AbsAst.SConst c, Cil.Const _ ->
           if List.exists (fun (k, _) -> String.equal id k) model_map then
             let new_id =
               List.find (fun (k, _) -> String.equal id k) model_map |> snd
             in
             let new_exp_str = Hashtbl.find exp_map new_id in
             match c with
-            | S.SymAst.SIntConst _ ->
+            | A.AbsAst.SIntConst _ ->
                 Cil.Const
                   (Cil.CInt64 (Int64.of_string new_exp_str, Cil.IInt, None))
-            | S.SymAst.SFloatConst _ ->
+            | A.AbsAst.SFloatConst _ ->
                 Cil.Const
                   (Cil.CReal (float_of_string new_exp_str, Cil.FDouble, None))
-            | S.SymAst.SCharConst _ ->
+            | A.AbsAst.SCharConst _ ->
                 Cil.Const (Cil.CChr (String.get new_exp_str 0))
-            | S.SymAst.SStringConst _ -> Cil.Const (Cil.CStr new_exp_str)
+            | A.AbsAst.SStringConst _ -> Cil.Const (Cil.CStr new_exp_str)
           else (* TODO: casting within constant*)
             cil
-      | S.SymAst.SELval l, Cil.Lval _ ->
+      | A.AbsAst.SELval l, Cil.Lval _ ->
           let lval = translate_lval ast model_map exp_map l in
           Cil.Lval lval
-      | S.SymAst.SBinOp (_, l, r, _), Cil.BinOp (op', _, _, t') ->
+      | A.AbsAst.SBinOp (_, l, r, _), Cil.BinOp (op', _, _, t') ->
           let lval = translate_exp ast model_map exp_map l in
           let rval = translate_exp ast model_map exp_map r in
           Cil.BinOp (op', lval, rval, t')
-      | S.SymAst.SCastE (_, e), Cil.CastE (t, _) ->
+      | A.AbsAst.SCastE (_, e), Cil.CastE (t, _) ->
           let exp = translate_exp ast model_map exp_map e in
           Cil.CastE (t, exp)
-      | S.SymAst.SUnOp (_, t, _), Cil.UnOp (op', _, t') ->
+      | A.AbsAst.SUnOp (_, t, _), Cil.UnOp (op', _, t') ->
           let exp = translate_exp ast model_map exp_map t in
           Cil.UnOp (op', exp, t')
-      | S.SymAst.SSizeOf _, Cil.SizeOf _
-      | S.SymAst.SSizeOfE _, Cil.SizeOfE _
-      | S.SymAst.SSizeOfStr _, Cil.SizeOfStr _
+      | A.AbsAst.SSizeOf _, Cil.SizeOf _
+      | A.AbsAst.SSizeOfE _, Cil.SizeOfE _
+      | A.AbsAst.SSizeOfStr _, Cil.SizeOfStr _
       | _ ->
           Utils.print_ekind cil;
           failwith "translate_exp: not implemented")
   | _ -> failwith "translate_exp: ranslation target is not an expression"
 
 let rec translate_stmt ast model_map cfg exp_map stmt =
-  let node = stmt.S.SymAst.node in
+  let node = stmt.A.AbsAst.node in
   match node with
-  | S.SymAst.SStmt (sym, cil) -> (
+  | A.AbsAst.AbsStmt (sym, cil) -> (
       match (sym, cil.Cil.skind) with
-      | S.SymAst.SIf (scond, sthen_block, selse_block), Cil.If _ ->
+      | A.AbsAst.SIf (scond, sthen_block, selse_block), Cil.If _ ->
           let cond = translate_exp ast model_map exp_map scond in
           let then_block =
             List.fold_left
@@ -194,19 +194,19 @@ let rec translate_stmt ast model_map cfg exp_map stmt =
                  Cil.mkBlock then_block,
                  Cil.mkBlock else_block,
                  Cil.locUnknown ))
-      | S.SymAst.SReturn (Some sym), Cil.Return _ ->
+      | A.AbsAst.SReturn (Some sym), Cil.Return _ ->
           let exp = translate_exp ast model_map exp_map sym in
           Cil.mkStmt (Cil.Return (Some exp, Cil.locUnknown))
-      | S.SymAst.SReturn None, Cil.Return _ ->
+      | A.AbsAst.SReturn None, Cil.Return _ ->
           Cil.mkStmt (Cil.Return (None, Cil.locUnknown))
-      | S.SymAst.SGoto _, Cil.Goto _ -> cil
+      | A.AbsAst.SGoto _, Cil.Goto _ -> cil
       | a, Cil.Instr i -> (
           match (a, List.hd i) with
-          | S.SymAst.SSet (l, r), Cil.Set _ ->
+          | A.AbsAst.SSet (l, r), Cil.Set _ ->
               let lval = translate_lval ast model_map exp_map l in
               let rval = translate_exp ast model_map exp_map r in
               Cil.mkStmt (Cil.Instr [ Cil.Set (lval, rval, Cil.locUnknown) ])
-          | S.SymAst.SCall (Some l, f, args), Cil.Call _ ->
+          | A.AbsAst.SCall (Some l, f, args), Cil.Call _ ->
               let lval = translate_lval ast model_map exp_map l in
               let fun_exp = translate_exp ast model_map exp_map f in
               let args =
@@ -219,7 +219,7 @@ let rec translate_stmt ast model_map cfg exp_map stmt =
               Cil.mkStmt
                 (Cil.Instr
                    [ Cil.Call (Some lval, fun_exp, args, Cil.locUnknown) ])
-          | S.SymAst.SCall (None, f, args), Cil.Call _ ->
+          | A.AbsAst.SCall (None, f, args), Cil.Call _ ->
               let fun_exp = translate_exp ast model_map exp_map f in
               let args =
                 List.fold_left
@@ -265,14 +265,14 @@ let find_patch_fun diff model =
   let get_func str = String.split_on_char '-' str |> List.hd in
   let untranslated_func_name =
     match diff with
-    | S.SInsertStmt (ctx, _)
-    | S.SDeleteStmt (ctx, _)
-    | S.SUpdateExp (ctx, _, _)
-    | S.SInsertExp (ctx, _)
-    | S.SDeleteExp (ctx, _)
-    | S.SInsertLval (ctx, _)
-    | S.SDeleteLval (ctx, _)
-    | S.SUpdateLval (ctx, _, _) ->
+    | A.SInsertStmt (ctx, _)
+    | SDeleteStmt (ctx, _)
+    | SUpdateExp (ctx, _, _)
+    | SInsertExp (ctx, _)
+    | SDeleteExp (ctx, _)
+    | SInsertLval (ctx, _)
+    | SDeleteLval (ctx, _)
+    | SUpdateLval (ctx, _, _) ->
         ctx.func_name
   in
   List.find
@@ -280,7 +280,7 @@ let find_patch_fun diff model =
     model
   |> snd |> get_func
 
-let translate ast sym_diff model_path maps patch_node_ids =
+let translate ast abs_diff model_path maps patch_node_ids =
   Logger.info "Translating patch...";
   let cfg = maps.Maps.cfg_map in
   let exp_map = maps.Maps.exp_map in
@@ -292,7 +292,7 @@ let translate ast sym_diff model_path maps patch_node_ids =
   List.fold_left2
     (fun acc diff parent_id ->
       match diff with
-      | S.SInsertStmt (ctx, stmt) ->
+      | A.SInsertStmt (ctx, stmt) ->
           let new_patch_id =
             if String.equal parent_id "" then -1
             else get_new_patch_id parent_id model_map
@@ -306,28 +306,28 @@ let translate ast sym_diff model_path maps patch_node_ids =
               translated_stmt
           in
           let before, after =
-            compute_patch_loc ctx.S.patch_between model_map node_map ast_map_rev
+            compute_patch_loc ctx.A.patch_between model_map node_map ast_map_rev
           in
           let ctx =
-            D.mk_context [ new_parent_node ] before after ctx.S.sibling_idx
+            D.mk_context [ new_parent_node ] before after ctx.A.sibling_idx
           in
           D.InsertStmt (ctx, translate_stmt ast model_map cfg exp_map stmt)
           :: acc
-      | S.SDeleteStmt (ctx, stmt) ->
+      | SDeleteStmt (ctx, stmt) ->
           let ctx =
-            D.mk_context [ Ast.NotApplicable ] [] [] ctx.S.sibling_idx
+            D.mk_context [ Ast.NotApplicable ] [] [] ctx.A.sibling_idx
           in
           let translated_stmt = translate_stmt ast model_map cfg exp_map stmt in
           D.DeleteStmt (ctx, translated_stmt) :: acc
-      | S.SUpdateExp (ctx, e1, e2) ->
+      | SUpdateExp (ctx, e1, e2) ->
           let new_patch_id = get_new_patch_id parent_id model_map in
           let new_parent_node =
             let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
             translated_stmt
           in
-          let ctx = D.mk_context [ new_parent_node ] [] [] ctx.S.sibling_idx in
+          let ctx = D.mk_context [ new_parent_node ] [] [] ctx.A.sibling_idx in
           let translated_e1 = translate_exp ast model_map exp_map e1 in
           let translated_e2 = translate_exp ast model_map exp_map e2 in
           D.UpdateExp (ctx, translated_e1, translated_e2) :: acc
       | _ -> failwith "translate: not implemented")
-    [] sym_diff patch_node_ids
+    [] abs_diff patch_node_ids

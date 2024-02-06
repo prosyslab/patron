@@ -1,4 +1,4 @@
-module S = SymDiff
+module S = AbsDiff
 module D = Diff
 module EF = EditFunction
 module H = Utils
@@ -80,7 +80,7 @@ let insert_patch new_stmt patch_block before after =
       [] patch_block
     |> List.rev
 
-let rec iter_body stmts parent patch_bw patch =
+let iter_body stmts parent patch_bw patch =
   let before, after = patch_bw in
   List.fold_left
     (fun acc x ->
@@ -203,9 +203,9 @@ let paths2stmts (path1, path2) = (Ast.path2stmts path1, Ast.path2stmts path2)
 
 let apply_action diff donee action =
   match (action, diff) with
-  | D.InsertStmt (ctx, stmt), SymDiff.SInsertStmt (context, _) -> (
+  | D.InsertStmt (ctx, stmt), AbsDiff.SInsertStmt (context, _) -> (
       let parent = List.hd ctx.D.root_path in
-      let target_func = context.SymDiff.func_name in
+      let target_func = context.AbsDiff.func_name in
       match parent with
       | Fun func_name ->
           let patch_bound = paths2stmts ctx.D.patch_bound in
@@ -222,9 +222,9 @@ let apply_action diff donee action =
   | DeleteStmt (_, stmt), _ ->
       let vis = new stmtDeleteVisitor stmt in
       ignore (Cil.visitCilFile vis donee)
-  | UpdateExp (ctx, from_exp, to_exp), SymDiff.SUpdateExp (context, _, _) -> (
+  | UpdateExp (ctx, from_exp, to_exp), AbsDiff.SUpdateExp (context, _, _) -> (
       let parent = List.hd ctx.D.root_path in
-      let target_func = context.SymDiff.func_name in
+      let target_func = context.AbsDiff.func_name in
       match parent with
       | Fun _ -> failwith "UpdateExp: not implemented"
       | Stmt s ->
@@ -251,8 +251,8 @@ let apply_action diff donee action =
          ignore (Cil.visitCilFile vis donee) *)
   | _ -> failwith "Not implemented"
 
-let apply sym_diff donee edit_function =
+let apply abs_diff donee edit_function =
   List.iter2
     (fun action diff -> apply_action diff donee action)
-    edit_function sym_diff;
+    edit_function abs_diff;
   donee
