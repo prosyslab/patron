@@ -8,6 +8,8 @@ type t =
   | Lval of lval
   | NotApplicable
 
+let is_stmt = function Stmt _ -> true | _ -> false
+
 (* for the reference *)
 type edge = t * t
 type subtree = edge list

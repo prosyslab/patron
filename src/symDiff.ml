@@ -257,6 +257,7 @@ include SymAst
 type sym_context = {
   root_path : sym_node list;
   parent_of_patch : sym_node;
+  patch_bound : string list * string list;
   patch_between : string list * string list;
   func_name : string;
   sibling_idx : int;
@@ -868,12 +869,12 @@ let mk_s_sibs maps exp_map path facts =
   |> symbolize_sibs
   |> filter_nodes (Chc.extract_nodes_in_facts facts_lst maps.Maps.node_map)
 
-let mk_sym_ctx ctx env maps du_facts =
+let mk_sym_ctx ctx env maps du_facts patch_bw =
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
   let cfg_map = maps.cfg_map in
   let root_path = List.rev ctx.D.root_path in
   let s_root_path = match_ast_path cfg_map exp_map root_path in
-  let left_sibs, right_sibs = ctx.patch_between in
+  let left_sibs, right_sibs = ctx.patch_bound in
   let s_left_sibs = mk_s_sibs maps exp_map left_sibs du_facts in
   let s_right_sibs = mk_s_sibs maps exp_map right_sibs du_facts in
   let rest_path = List.tl s_root_path in
@@ -886,7 +887,8 @@ let mk_sym_ctx ctx env maps du_facts =
   {
     root_path = rest_path;
     parent_of_patch = patch_node;
-    patch_between = (s_left_sibs, s_right_sibs);
+    patch_bound = (s_left_sibs, s_right_sibs);
+    patch_between = patch_bw;
     func_name = env.D.top_func_name;
     sibling_idx = ctx.D.sibling_idx;
   }
@@ -899,13 +901,67 @@ let extract_ctx_nodes sdiff =
       b @ a @ acc)
     [] sdiff
 
-let define_sym_diff (maps : Maps.t) buggy diff du_facts =
+let map_ast2cf_nodes ast_lst maps =
+  match_ast_path maps.Maps.cfg_map maps.Maps.exp_map ast_lst |> symbolize_sibs
+
+let map_cf2du_nodes cf_lst du_lst =
+  List.fold_left
+    (fun acc v ->
+      try List.find (fun v' -> String.equal v v') du_lst :: acc with _ -> acc)
+    [] cf_lst
+
+let mk_du_patch_bw dug (src, snk) (ast_before, ast_after) maps =
+  let du_nodes = Dug.fold_vertex (fun v acc -> v :: acc) dug [] in
+  let before, after =
+    if (try List.hd ast_before with _ -> List.hd ast_after) |> Ast.is_stmt
+    then
+      let cfg_before = map_ast2cf_nodes ast_before maps in
+      let cfg_after = map_ast2cf_nodes ast_after maps in
+      if cfg_before = [] && cfg_after = [] then
+        failwith
+          "mk_du_patch_bw: no data dependency is found within ast-function \
+           level"
+      else
+        let func_du_before = map_cf2du_nodes cfg_before du_nodes in
+        let func_du_after = map_cf2du_nodes cfg_after du_nodes |> List.rev in
+        if func_du_before = [] && func_du_after = [] then
+          failwith
+            "mk_du_patch_bw: no data dependency is found within ast-function \
+             level"
+        else if func_du_before = [] then
+          let after_patch = List.hd func_du_after in
+          let du_before =
+            Dug.shortest_path dug src after_patch
+            |> Dug.delete_last_edge after_patch
+          in
+          let du_after = Dug.shortest_path dug after_patch snk in
+          (du_before, du_after)
+        else if func_du_after = [] then
+          let before_patch = List.hd func_du_before in
+          let du_before = Dug.shortest_path dug src before_patch in
+          let du_after =
+            Dug.shortest_path dug before_patch snk
+            |> Dug.delete_first_edge before_patch
+          in
+          (du_before, du_after)
+        else
+          let before_patch = List.hd func_du_before in
+          let after_patch = List.hd func_du_after in
+          let du_before = Dug.shortest_path dug src before_patch in
+          let du_after = Dug.shortest_path dug after_patch snk in
+          (du_before, du_after)
+    else failwith "mk_du_patch_bw: not implemented"
+  in
+  (Dug.edges2lst before, Dug.edges2lst after)
+
+let define_sym_diff maps buggy diff du_facts dug src_snk =
   get_gvars buggy;
   let sdiff =
     List.fold_left
       (fun acc (action, env) ->
         let ctx = D.get_ctx action in
-        let s_context = mk_sym_ctx ctx env maps du_facts in
+        let du_patch_bw = mk_du_patch_bw dug src_snk ctx.patch_bound maps in
+        let s_context = mk_sym_ctx ctx env maps du_facts du_patch_bw in
         mk_sdiff s_context maps action :: acc)
       [] diff
   in

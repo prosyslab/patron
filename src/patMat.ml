@@ -34,7 +34,7 @@ let extract_funcs_from_facts facts =
     facts []
   |> List.dedup_and_sort ~compare:String.compare
 
-let reduce_ast_facts maps ast facts =
+let reduce_parent_facts maps ast facts =
   let func_lst = extract_funcs_from_facts facts in
   let interesting_stmts =
     List.fold ~init:[]
@@ -99,7 +99,7 @@ let reduce_facts maps ast src snk alarm_comps du_chc parent_chc =
   let snk_term = Chc.Elt.FDNumeral snk in
   let terms = Chc.add snk_term alarm_comps in
   let reduced_du_facts = fixedpoint func_apps terms Chc.empty |> fst in
-  let reduced_parent_facts = reduce_ast_facts maps ast parent_chc in
+  let reduced_parent_facts = reduce_parent_facts maps ast parent_chc in
   (* (reduced_du_facts, reduced_parent_facts) *)
   (du_chc, reduced_parent_facts)
 
@@ -420,7 +420,9 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   let dug = Chc.to_dug du_rels in
   let sym_diff, patch_comps =
     SymDiff.define_sym_diff buggy_maps buggy_ast ast_diff du_facts'
+      (Dug.copy dug) (src, snk)
   in
+
   if write_out then (
     L.info "Writing out the edit script...";
     SymDiff.to_json sym_diff out_dir);

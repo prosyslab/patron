@@ -161,6 +161,11 @@ let parse_sparrow nodes map chc =
               else failwith "parse_sparrow: incorrect assume fact format"
         | "set" ->
             let arg = find_fact_opt key set_facts in
+            (* if Option.is_some arg then
+                 List.iter
+                   ~f:(fun s -> print_string (s ^ "\t"))
+                   (Option.value_exn arg);
+               print_endline ""; *)
             if Option.is_none arg then CNone
             else
               let arg = Option.value ~default:[] arg in

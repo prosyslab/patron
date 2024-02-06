@@ -208,13 +208,14 @@ let apply_action diff donee action =
       let target_func = context.SymDiff.func_name in
       match parent with
       | Fun func_name ->
-          let patch_bw = paths2stmts ctx.D.patch_between in
-          let vis = new stmtInsertVisitorUnderFun func_name patch_bw stmt in
+          let patch_bound = paths2stmts ctx.D.patch_bound in
+          let vis = new stmtInsertVisitorUnderFun func_name patch_bound stmt in
           ignore (Cil.visitCilFile vis donee)
       | Stmt s ->
-          let patch_bw = paths2stmts ctx.D.patch_between in
+          let patch_bound = paths2stmts ctx.D.patch_bound in
           let vis =
-            new stmtInsertVisitorUnderStmt target_func s.Cil.skind patch_bw stmt
+            new stmtInsertVisitorUnderStmt
+              target_func s.Cil.skind patch_bound stmt
           in
           ignore (Cil.visitCilFile vis donee)
       | _ -> failwith "InsertStmt: Incorrect parent type")

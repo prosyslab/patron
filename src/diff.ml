@@ -17,12 +17,12 @@ type diff_env = {
 
 type context = {
   root_path : Ast.path;
-  patch_between : Ast.path * Ast.path;
+  patch_bound : Ast.path * Ast.path;
   sibling_idx : int;
 }
 
 let mk_context root_path before after sibling_idx =
-  { root_path; patch_between = (before, after); sibling_idx }
+  { root_path; patch_bound = (before, after); sibling_idx }
 
 let mk_diff_env patch_depth parent_branch prev_sibling func =
   { patch_depth; parent_branch; prev_sibling; top_func_name = func }
@@ -77,7 +77,7 @@ let pp_ctx fmt ctx =
   F.fprintf fmt "parents(bottom_up) -> \n";
   F.fprintf fmt "%a\n" Ast.pp_path ctx.root_path;
   F.fprintf fmt "-----------------------------------------\n";
-  let before, after = ctx.patch_between in
+  let before, after = ctx.patch_bound in
   F.fprintf fmt "Before: %a\n" Ast.pp_path before;
   F.fprintf fmt "-----------------------------------------\n";
   F.fprintf fmt "After: %a\n" Ast.pp_path after;
