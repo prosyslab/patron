@@ -422,7 +422,6 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     SymDiff.define_sym_diff buggy_maps buggy_ast ast_diff du_facts'
       (Dug.copy dug) (src, snk)
   in
-
   if write_out then (
     L.info "Writing out the edit script...";
     SymDiff.to_json sym_diff out_dir);
