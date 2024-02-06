@@ -88,15 +88,15 @@ let remove_before_src_after_snk src snk rels =
   let after_deps = fixedpoint rels after_snk Chc.empty |> fst in
   rels |> (Fun.flip Chc.diff) before_deps |> (Fun.flip Chc.diff) after_deps
 
-let reduce_facts maps ast src snk aexps cf_chc ast_chc =
+let reduce_facts maps ast src snk aexps du_chc parent_chc =
   let func_apps =
-    Chc.extract_func_apps cf_chc |> remove_before_src_after_snk src snk
+    Chc.extract_func_apps du_chc |> remove_before_src_after_snk src snk
   in
   let snk_term = Chc.Elt.FDNumeral snk in
   let terms = Chc.add snk_term aexps in
-  let reduced_cf_facts = fixedpoint func_apps terms Chc.empty |> fst in
-  let reduced_ast_facts = reduce_ast_facts maps ast ast_chc in
-  (reduced_cf_facts, reduced_ast_facts)
+  let reduced_du_facts = fixedpoint func_apps terms Chc.empty |> fst in
+  let reduced_parent_facts = reduce_ast_facts maps ast parent_chc in
+  (reduced_du_facts, reduced_parent_facts)
 
 let sort_rule_optimize ref deps =
   let get_args = function
@@ -310,7 +310,7 @@ let need_ast_pattern diff =
 let abstract_bug_pattern facts patch_comps src snk maps diff ast =
   let fst_abs_facts = Chc.abstract_using_patch_comps facts patch_comps snk in
   let fact_lst = Chc.to_list fst_abs_facts in
-  let ast_node_lst = Chc.extract_cf_nodes fact_lst maps.Maps.node_map in
+  let ast_node_lst = Chc.extract_nodes_in_facts fact_lst maps.Maps.node_map in
   if List.length ast_node_lst = 0 then
     failwith "abstract_bug_pattern: no AST nodes corresponding CFG nodes found";
   let parents = extract_parent diff maps.Maps.ast_map in
@@ -336,13 +336,13 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
-    let cf_facts, ast_facts, (src, snk, aexps) =
+    let du_facts, parent_facts, (src, snk, aexps) =
       Parser.make_facts buggy_dir target_alarm ast cfg out_dir target_maps
     in
-    let cf_facts', ast_facts' =
-      reduce_facts target_maps ast src snk aexps cf_facts ast_facts
+    let du_facts', parent_facts' =
+      reduce_facts target_maps ast src snk aexps du_facts parent_facts
     in
-    let combined_facts = Chc.union cf_facts' ast_facts' in
+    let combined_facts = Chc.union du_facts' parent_facts' in
     let z3env = Z3env.get_env () in
     L.info "Try matching with %s..." target_alarm;
     let status =
@@ -398,18 +398,18 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out")
   in
   L.info "CFG Elements Loading Done!";
-  let cf_facts, ast_facts, (src, snk, aexps) =
+  let du_facts, parent_facts, (src, snk, aexps) =
     Parser.make_facts buggy_dir true_alarm buggy_ast buggy_cfg out_dir
       buggy_maps
   in
   L.info "Make Facts in buggy done";
-  let cf_facts', ast_facts' =
-    reduce_facts buggy_maps buggy_ast src snk aexps cf_facts ast_facts
+  let du_facts', parent_facts' =
+    reduce_facts buggy_maps buggy_ast src snk aexps du_facts parent_facts
   in
-  let combined_facts = Chc.union cf_facts' ast_facts' in
+  let combined_facts = Chc.union du_facts' parent_facts' in
   L.info "Mapping CFG Elements to AST nodes...";
   let sym_diff, patch_comps =
-    SymDiff.define_sym_diff buggy_maps buggy_ast ast_diff cf_facts'
+    SymDiff.define_sym_diff buggy_maps buggy_ast ast_diff du_facts'
   in
   if write_out then (
     L.info "Writing out the edit script...";
@@ -419,7 +419,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern =
-    abstract_bug_pattern cf_facts' patch_comps src snk buggy_maps sym_diff
+    abstract_bug_pattern du_facts' patch_comps src snk buggy_maps sym_diff
       buggy_ast
   in
   L.info "Make Bug Pattern done";

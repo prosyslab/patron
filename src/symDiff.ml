@@ -856,9 +856,9 @@ let extract_diff_ids sdiff =
 let symbolize_sibs sibs =
   List.fold_left (fun acc s -> s.id :: acc) [] sibs |> List.rev
 
-let filter_nodes cf_facts nodes =
+let filter_nodes du_facts nodes =
   List.fold_left
-    (fun acc n -> if List.mem n cf_facts then n :: acc else acc)
+    (fun acc n -> if List.mem n du_facts then n :: acc else acc)
     [] nodes
   |> List.rev
 
@@ -866,7 +866,7 @@ let mk_s_sibs maps exp_map path facts =
   let facts_lst = Chc.to_list facts in
   match_ast_path maps.cfg_map exp_map path
   |> symbolize_sibs
-  |> filter_nodes (Chc.extract_cf_nodes facts_lst maps.Maps.node_map)
+  |> filter_nodes (Chc.extract_nodes_in_facts facts_lst maps.Maps.node_map)
 
 let mk_sym_ctx ctx env maps cf_facts =
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in

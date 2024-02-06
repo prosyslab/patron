@@ -179,7 +179,7 @@ let parse_sparrow nodes map chc =
       match cmd with CNone | CSkip _ -> () | _ -> Hashtbl.add map cmd key)
     nodes
 
-let parse_cf_facts datalog_dir fact_file =
+let parse_du_facts datalog_dir fact_file =
   let func_name = file2func fact_file in
   let fact_file_path = Filename.concat datalog_dir fact_file in
   let elt_lst =
@@ -192,16 +192,16 @@ let parse_cf_facts datalog_dir fact_file =
   in
   List.rev elt_lst |> Chc.of_list
 
-let make_cf_facts work_dir cfg map =
-  let cf_facts =
+let make_du_facts work_dir cfg map =
+  let du_facts =
     List.fold_left ~init:Chc.empty
       ~f:(fun facts file ->
-        let chc = parse_cf_facts work_dir file in
+        let chc = parse_du_facts work_dir file in
         Chc.union facts chc)
       Z3env.fact_files
   in
-  parse_sparrow cfg map cf_facts;
-  cf_facts
+  parse_sparrow cfg map du_facts;
+  du_facts
 
 let rec sexp2chc = function
   | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->
@@ -355,7 +355,7 @@ let mk_ast_rels parent_fmt eqnode_fmt maps acc (parent, child)
     in
     (parent_rel :: eqnode_rels) @ acc
 
-let make_ast_facts work_dir maps (globs, stmts) =
+let make_parent_facts work_dir maps (globs, stmts) =
   let parent_tups = mk_parent_tuples globs stmts in
   let parent_oc =
     Filename.concat work_dir "AstParent.facts" |> Out_channel.create
@@ -450,9 +450,9 @@ let make_facts buggy_dir target_alarm ast cfg out_dir maps =
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
   Utils.parse_map alarm_dir maps.Maps.exp_map;
   let ast_nodes = (Ast.extract_globs ast, Ast.extract_stmts ast) in
-  let cf_facts = make_cf_facts alarm_dir cfg maps.cfg_map in
-  let ast_facts = make_ast_facts alarm_dir maps ast_nodes in
-  let facts = Chc.union cf_facts ast_facts in
+  let du_facts = make_du_facts alarm_dir cfg maps.cfg_map in
+  let parent_facts = make_parent_facts alarm_dir maps ast_nodes in
+  let facts = Chc.union du_facts parent_facts in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;
-  (cf_facts, ast_facts, get_alarm alarm_dir)
+  (du_facts, parent_facts, get_alarm alarm_dir)
