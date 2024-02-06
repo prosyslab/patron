@@ -69,11 +69,11 @@ let reduce_ast_facts maps ast facts =
       | _ -> acc)
     facts Chc.empty
 
-let rec fixedpoint rels terms deps =
+let rec fixedpoint ?(ignore_duedge = false) rels terms deps =
   let deps', terms' =
     Chc.fold
       (fun c (deps, terms) ->
-        let is_nec, terms' = Chc.prop_deps terms c in
+        let is_nec, terms' = Chc.prop_deps ~ignore_duedge terms c in
         ((if is_nec then Chc.add c deps else deps), terms'))
       rels (deps, terms)
   in
@@ -84,8 +84,12 @@ let remove_before_src_after_snk src snk rels =
   let src_node, snk_node = (Chc.Elt.FDNumeral src, Chc.Elt.FDNumeral snk) in
   let before_src = Chc.collect_node ~before:true src_node rels in
   let after_snk = Chc.collect_node ~before:false snk_node rels in
-  let before_deps = fixedpoint rels before_src Chc.empty |> fst in
-  let after_deps = fixedpoint rels after_snk Chc.empty |> fst in
+  let before_deps =
+    fixedpoint ~ignore_duedge:true rels before_src Chc.empty |> fst
+  in
+  let after_deps =
+    fixedpoint ~ignore_duedge:true rels after_snk Chc.empty |> fst
+  in
   rels |> (Fun.flip Chc.diff) before_deps |> (Fun.flip Chc.diff) after_deps
 
 let reduce_facts maps ast src snk alarm_comps du_chc parent_chc =
@@ -96,7 +100,8 @@ let reduce_facts maps ast src snk alarm_comps du_chc parent_chc =
   let terms = Chc.add snk_term alarm_comps in
   let reduced_du_facts = fixedpoint func_apps terms Chc.empty |> fst in
   let reduced_parent_facts = reduce_ast_facts maps ast parent_chc in
-  (reduced_du_facts, reduced_parent_facts)
+  (* (reduced_du_facts, reduced_parent_facts) *)
+  (du_chc, reduced_parent_facts)
 
 let sort_rule_optimize ref deps =
   let get_args = function
