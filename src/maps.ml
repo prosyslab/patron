@@ -8,17 +8,14 @@ module CfgNode = struct
 
   type t =
     | CNone
-    | CSet of string * string * loc * string list (* (lv, e, loc) *)
+    | CSet of
+        string * string * loc * string list * string list (* (lv, e, loc) *)
     | CExternal of string * loc * string list (*(lv, loc)*)
     | CAlloc of string * string * loc * string list (*(lv, Array e, _, loc) *)
     | CSalloc of string * string * loc * string list (*(lv, s, loc) *)
     | CFalloc of string * string * loc * string list (*(lv, f, loc) *)
-    | CCall of
-        string
-        * t
-        * loc
-        * string list (*(Some lv, CcallExp(fexp, params, loc))*)
-    | CCallExp of string * string list * loc (*(None, fexp, params, loc)*)
+    | CCall of string * string * string list * loc * string list * string list
+      (*(Some lv, fexp, params, loc))*)
     | CReturn1 of string * loc * string list (*(Some e, loc) *)
     | CReturn2 of loc (*(None, loc) *)
     | CIf of loc (*(_, _, _, loc) *)
@@ -29,14 +26,12 @@ module CfgNode = struct
 
   let pp = function
     | CNone -> "CNone"
-    | CSet (lv, e, _, _) -> F.sprintf "CSet(%s, %s)" lv e
+    | CSet (lv, e, _, _, _) -> F.sprintf "CSet(%s, %s)" lv e
     | CExternal (lv, _, _) -> F.sprintf "CExternal(%s)" lv
     | CAlloc (lv, e, _, _) -> F.sprintf "CAlloc(%s, %s)" lv e
     | CSalloc (lv, s, _, _) -> F.sprintf "CSalloc(%s, %s)" lv s
     | CFalloc (lv, f, _, _) -> F.sprintf "CFalloc(%s, %s)" lv f
-    | CCall (lv, _, _, _) -> F.sprintf "CCall(%s)" lv
-    | CCallExp (fexp, params, _) ->
-        F.sprintf "CCallExp(%s, %s)" fexp (String.concat ~sep:", " params)
+    | CCall (lv, _, _, _, _, _) -> F.sprintf "CCall(%s)" lv
     | CReturn1 (e, _, _) -> F.sprintf "CReturn1(%s)" e
     | CReturn2 _ -> "CReturn2"
     | CIf _ -> "CIf"

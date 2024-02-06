@@ -9,6 +9,8 @@ type t =
   | NotApplicable
 
 let is_stmt = function Stmt _ -> true | _ -> false
+let is_exp = function Exp _ -> true | _ -> false
+let is_lv = function Lval _ -> true | _ -> false
 
 (* for the reference *)
 type edge = t * t

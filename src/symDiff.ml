@@ -481,7 +481,7 @@ and extract_fun_name g =
   | Cil.GFun (f, _) -> f.Cil.svar.Cil.vname
   | _ -> failwith "extract_fun_name: not a function"
 
-and match_ast_path cfg exp_map lst =
+and match_ast_path cfg exp_map lst acc =
   match lst with
   | [] -> []
   | hd :: tl -> (
@@ -490,23 +490,35 @@ and match_ast_path cfg exp_map lst =
           let id = match_stmt_id cfg s.Cil.skind in
           let node = SStmt (SSNull, s) in
           let literal = Ast.s_stmt s in
-          { id; node; literal } :: match_ast_path cfg exp_map tl
+          { id; node; literal } :: match_ast_path cfg exp_map tl (id :: acc)
       | Ast.Exp e ->
           let id = match_exp_id exp_map e in
           let node = SExp (SENULL, e) in
           let literal = Ast.s_exp e in
-          { id; node; literal } :: match_ast_path cfg exp_map tl
+          { id; node; literal } :: match_ast_path cfg exp_map tl acc
       | Ast.Lval l ->
           let id = match_lval_id exp_map l in
           let node = SLval (SLNull, l) in
           let literal = Ast.s_lv l in
-          { id; node; literal } :: match_ast_path cfg exp_map tl
+          { id; node; literal } :: match_ast_path cfg exp_map tl acc
       | Ast.Global g ->
           let id = extract_fun_name g in
           let node = SGlob (SGNull, g) in
           let literal = Ast.s_glob g in
-          { id; node; literal } :: match_ast_path cfg exp_map tl
-      | _ -> failwith "match_context: context failed to be read")
+          { id; node; literal } :: match_ast_path cfg exp_map tl acc
+      | _ -> failwith "match_ast_path: context failed to be read")
+
+and match_stmt_path cfg lst =
+  match lst with
+  | [] -> []
+  | hd :: tl -> (
+      match hd with
+      | Ast.Stmt s ->
+          let id = match_stmt_id cfg s.Cil.skind in
+          let node = SStmt (SSNull, s) in
+          let literal = Ast.s_stmt s in
+          { id; node; literal } :: match_stmt_path cfg tl
+      | _ -> failwith "match_stmt_path: context failed to be read")
 
 and match_exp_id exp_map e =
   let candidate =
@@ -531,23 +543,26 @@ and eq_line loc cloc =
   if loc.Cil.line = cloc.Maps.CfgNode.line && file_name = cloc.file then true
   else false
 
-and match_set_id cfg loc =
+and match_set_id lv cfg loc =
   Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CSet (_, _, cloc, _)
-      | Maps.CfgNode.CAlloc (_, _, cloc, _)
-      | Maps.CfgNode.CFalloc (_, _, cloc, _)
-      | Maps.CfgNode.CSalloc (_, _, cloc, _) ->
-          if eq_line loc cloc then v :: acc else acc
+      | Maps.CfgNode.CSet (_, _, cloc, cmd, _)
+      | Maps.CfgNode.CAlloc (_, _, cloc, cmd)
+      | Maps.CfgNode.CFalloc (_, _, cloc, cmd)
+      | Maps.CfgNode.CSalloc (_, _, cloc, cmd) ->
+          if eq_line loc cloc && String.equal (Ast.s_lv lv) (List.nth cmd 1)
+          then v :: acc
+          else acc
       | _ -> acc)
     cfg []
 
+(* TODO: check func name to tighten *)
 and match_call_id cfg loc =
   Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CCall (_, _, cloc, _) ->
+      | Maps.CfgNode.CCall (_, _, _, cloc, _, _) ->
           if eq_line loc cloc then v :: acc else acc
       | _ -> acc)
     cfg []
@@ -580,14 +595,15 @@ and match_loop_id cfg loc =
       | _ -> acc)
     cfg []
 
+(* 이건 그냥 디유에 있는지만 체크하고 익스프레션은 먼저 매개변수로 부모(자기자신) 받고, 자기자신부터 rev_cfg에서 exp뽑아서 확인하고 없으면 가까운데부터 디유에서 뽑아가면서 cfg_rev에 대보는 식으로 구현 *)
 and match_stmt_id cfg s =
   (*TODO: tighten the string match of stmt by subset*)
   match s with
   | Cil.Instr i -> (
       let instr = List.hd i in
       match instr with
-      | Cil.Set (_, _, loc) ->
-          let matched = match_set_id cfg loc in
+      | Cil.Set (lv, _, loc) ->
+          let matched = match_set_id lv cfg loc in
           if List.length matched >= 1 then List.hd matched else "None"
       | Cil.Call (_, _, _, loc) ->
           let matched = match_call_id cfg loc in
@@ -863,29 +879,40 @@ let filter_nodes du_facts nodes =
     [] nodes
   |> List.rev
 
-let mk_s_sibs maps exp_map path facts =
+let mk_s_sibs maps exp_map path facts acc =
   let facts_lst = Chc.to_list facts in
-  match_ast_path maps.cfg_map exp_map path
+  match_ast_path maps.cfg_map exp_map path acc
   |> symbolize_sibs
   |> filter_nodes (Chc.extract_nodes_in_facts facts_lst maps.Maps.node_map)
+
+let get_parent_of_exp_sibs (left_sibs, right_sibs) patch_node =
+  if
+    try List.hd left_sibs |> fun hd -> Ast.is_exp hd || Ast.is_lv hd
+    with _ -> List.hd right_sibs |> fun hd -> Ast.is_exp hd || Ast.is_lv hd
+  then if String.equal patch_node.id "None" then [] else [ patch_node.id ]
+  else []
 
 let mk_sym_ctx ctx env maps du_facts patch_bw =
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
   let cfg_map = maps.cfg_map in
   let root_path = List.rev ctx.D.root_path in
-  let s_root_path = match_ast_path cfg_map exp_map root_path in
+  let s_root_path = match_ast_path cfg_map exp_map root_path [] in
   let left_sibs, right_sibs = ctx.patch_bound in
-  let s_left_sibs = mk_s_sibs maps exp_map left_sibs du_facts in
-  let s_right_sibs = mk_s_sibs maps exp_map right_sibs du_facts in
-  let rest_path = List.tl s_root_path in
   let prnt_fun = get_parent_fun root_path in
   let patch_node =
-    try List.rev rest_path |> List.hd
+    try List.rev s_root_path |> List.hd
     with Failure _ ->
       { node = SGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
   in
+  let parent_of_exp_sibs = get_parent_of_exp_sibs ctx.patch_bound patch_node in
+  let s_left_sibs =
+    mk_s_sibs maps exp_map left_sibs du_facts parent_of_exp_sibs
+  in
+  let s_right_sibs =
+    mk_s_sibs maps exp_map right_sibs du_facts parent_of_exp_sibs
+  in
   {
-    root_path = rest_path;
+    root_path = s_root_path;
     parent_of_patch = patch_node;
     patch_bound = (s_left_sibs, s_right_sibs);
     patch_between = patch_bw;
@@ -902,7 +929,7 @@ let extract_ctx_nodes sdiff =
     [] sdiff
 
 let map_ast2cf_nodes ast_lst maps =
-  match_ast_path maps.Maps.cfg_map maps.Maps.exp_map ast_lst |> symbolize_sibs
+  match_stmt_path maps.Maps.cfg_map ast_lst |> symbolize_sibs
 
 let map_cf2du_nodes cf_lst du_lst =
   List.fold_left
