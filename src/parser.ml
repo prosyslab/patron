@@ -386,9 +386,9 @@ let make_parent_facts work_dir maps (globs, stmts) =
 let read_and_split file =
   In_channel.read_lines file |> List.map ~f:(fun l -> String.split ~on:'\t' l)
 
-exception Not_impl_aexp
+exception Not_impl_alarm_comps
 
-let get_aexp alarm splited filename =
+let get_alarm_comps alarm splited filename =
   (* TODO: add expression relation that have error e.g. DivExp --> Div relation *)
   match (Filename.basename filename |> Filename.chop_extension, splited) with
   | "AlarmArrayExp", [ a; l; e ] when String.equal a alarm ->
@@ -414,8 +414,8 @@ let get_aexp alarm splited filename =
       Chc.of_list
         [ Chc.Elt.FDNumeral e1; Chc.Elt.FDNumeral e2; Chc.Elt.FDNumeral e3 ]
   | f, _ ->
-      Logger.warn "get_aexp - not implemented: %s" f;
-      raise Not_impl_aexp
+      Logger.warn "get_alarm_comps - not implemented: %s" f;
+      raise Not_impl_alarm_comps
 
 let get_alarm work_dir =
   let src, snk, alarm =
@@ -432,16 +432,16 @@ let get_alarm work_dir =
            Filename.basename f
            |> String.is_substring_at ~pos:0 ~substring:"Alarm")
   in
-  let aexps =
+  let alarm_compss =
     Array.fold
-      ~f:(fun aexps file ->
+      ~f:(fun alarm_comps file ->
         match Filename.concat work_dir file |> read_and_split with
-        | hd :: [] -> get_aexp alarm hd file
-        | [] -> aexps
-        | _ -> aexps (* TEMP *))
+        | hd :: [] -> get_alarm_comps alarm hd file
+        | [] -> alarm_comps
+        | _ -> alarm_comps (* TEMP *))
       ~init:Chc.empty alarm_exp_files
   in
-  (src, snk, aexps)
+  (src, snk, alarm_compss)
 
 let make_facts buggy_dir target_alarm ast cfg out_dir maps =
   let alarm_dir =

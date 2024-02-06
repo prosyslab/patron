@@ -410,7 +410,7 @@ let rec fixedpoint rels terms deps =
 let terms2strs =
   List.map ~f:(function
     | Elt.FDNumeral s -> s
-    | _ -> L.error "abstract_using_patch_comps: wrong terms'")
+    | _ -> L.error "terms2strs: wrong terms")
 
 let filter_by_node =
   List.filter ~f:(fun s ->
@@ -437,13 +437,16 @@ let paths2rels =
         ~init:rels path)
     ~init:empty
 
-let abstract_using_patch_comps chc comps snk =
+let abstract_by_comps chc dug patch_comps snk alarm_comps =
   let du_rels = filter Elt.is_duedge chc in
   let ast_rels = diff chc du_rels in
-  let terms = List.map ~f:(fun s -> Elt.FDNumeral s) comps |> of_list in
+  let terms =
+    List.map ~f:(fun s -> Elt.FDNumeral s) patch_comps
+    |> of_list |> union alarm_comps
+  in
   let abs_ast_rels, terms' = fixedpoint ast_rels terms empty in
   let nodes = to_list terms' |> terms2strs |> filter_by_node in
-  let dug = to_dug du_rels in
+  let dug = Dug.copy dug in
   let paths =
     List.fold_left
       ~f:(fun paths src -> Dug.shortest_path dug src snk :: paths)
@@ -769,7 +772,7 @@ let is_removable rels = function
 
 let collect_removable chcs = filter (is_removable chcs) chcs
 
-let extract_cf_nodes deps node_map =
+let extract_nodes_in_facts deps node_map =
   List.fold_left ~init:[]
     ~f:(fun acc dep ->
       match dep with

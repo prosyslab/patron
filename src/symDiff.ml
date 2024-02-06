@@ -868,14 +868,14 @@ let mk_s_sibs maps exp_map path facts =
   |> symbolize_sibs
   |> filter_nodes (Chc.extract_nodes_in_facts facts_lst maps.Maps.node_map)
 
-let mk_sym_ctx ctx env maps cf_facts =
+let mk_sym_ctx ctx env maps du_facts =
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
   let cfg_map = maps.cfg_map in
   let root_path = List.rev ctx.D.root_path in
   let s_root_path = match_ast_path cfg_map exp_map root_path in
   let left_sibs, right_sibs = ctx.patch_between in
-  let s_left_sibs = mk_s_sibs maps exp_map left_sibs cf_facts in
-  let s_right_sibs = mk_s_sibs maps exp_map right_sibs cf_facts in
+  let s_left_sibs = mk_s_sibs maps exp_map left_sibs du_facts in
+  let s_right_sibs = mk_s_sibs maps exp_map right_sibs du_facts in
   let rest_path = List.tl s_root_path in
   let prnt_fun = get_parent_fun root_path in
   let patch_node =
@@ -899,13 +899,13 @@ let extract_ctx_nodes sdiff =
       b @ a @ acc)
     [] sdiff
 
-let define_sym_diff (maps : Maps.t) buggy diff cf_facts =
+let define_sym_diff (maps : Maps.t) buggy diff du_facts =
   get_gvars buggy;
   let sdiff =
     List.fold_left
       (fun acc (action, env) ->
         let ctx = D.get_ctx action in
-        let s_context = mk_sym_ctx ctx env maps cf_facts in
+        let s_context = mk_sym_ctx ctx env maps du_facts in
         mk_sdiff s_context maps action :: acc)
       [] diff
   in
