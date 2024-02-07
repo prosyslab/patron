@@ -358,20 +358,21 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
         src snk pattern
     in
     Maps.dump target_alarm target_maps out_dir;
-    if Option.is_some status then
+    if Option.is_some status then (
       Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
-    L.info "Matching with %s is done" target_alarm;
-    let ef =
-      EditFunction.translate ast diff
-        (Filename.concat out_dir (target_alarm ^ "_sol.map"))
-        target_maps patch_ids
-    in
-    L.info "Applying patch on the target file ...";
-    let patch_file = Patch.apply diff ast ef in
-    let out_file = String.concat [ out_dir; "/patch_"; target_alarm; ".c" ] in
-    let out_chan = Out_channel.create out_file in
-    Cil.dumpFile Cil.defaultCilPrinter out_chan "patch.c" patch_file;
-    L.info "Patch for %s is done, written at %s" target_alarm out_file
+      L.info "Matching with %s is done" target_alarm;
+      let ef =
+        EditFunction.translate ast diff
+          (Filename.concat out_dir (target_alarm ^ "_sol.map"))
+          target_maps patch_ids
+      in
+      L.info "Applying patch on the target file ...";
+      let patch_file = Patch.apply diff ast ef in
+      let out_file = String.concat [ out_dir; "/patch_"; target_alarm; ".c" ] in
+      let out_chan = Out_channel.create out_file in
+      Cil.dumpFile Cil.defaultCilPrinter out_chan "patch.c" patch_file;
+      L.info "Patch for %s is done, written at %s" target_alarm out_file)
+    else L.info "%s is Not Matched" target_alarm
   with Parser.Not_impl_alarm_comps -> L.info "PASS"
 
 let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
