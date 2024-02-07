@@ -1030,14 +1030,18 @@ let filter_exps_by_func cfg ids func =
   List.filter
     (fun id ->
       let node_opt =
-        Seq.find
-          (fun k ->
-            match k with
-            | Maps.CfgNode.CSet (_, _, _, _, exps)
-            | Maps.CfgNode.CCall (_, _, _, _, _, exps) ->
-                List.mem id exps
-            | _ -> false)
-          cfg_keys
+        Seq.fold_left
+          (fun acc k ->
+            if acc <> None then acc
+            else if
+              match k with
+              | Maps.CfgNode.CSet (_, _, _, _, exps)
+              | Maps.CfgNode.CCall (_, _, _, _, _, exps) ->
+                  List.mem id exps
+              | _ -> false
+            then Some k
+            else acc)
+          None cfg_keys
       in
       if Option.is_none node_opt then false
       else
