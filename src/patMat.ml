@@ -339,13 +339,13 @@ let abstract_bug_pattern du_facts dug patch_comps src snk alarm_comps maps diff
   Chc.Elt.Implies (fact_lst @ smallest_ast_patterns, errtrace)
   |> Chc.Elt.numer2var |> Chc.singleton
 
-let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
+let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
     out_dir patch_ids diff =
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
     let du_facts, parent_facts, (src, snk, alarm_comps) =
-      Parser.make_facts buggy_dir target_alarm ast cfg out_dir target_maps
+      Parser.make_facts donee_dir target_alarm ast cfg out_dir target_maps
     in
     let du_facts', parent_facts' =
       reduce_facts target_maps ast src snk alarm_comps du_facts parent_facts
@@ -374,19 +374,19 @@ let match_bug_for_one_prj pattern buggy_maps buggy_dir target_alarm ast cfg
     L.info "Patch for %s is done, written at %s" target_alarm out_file
   with Parser.Not_impl_alarm_comps -> L.info "PASS"
 
-let is_new_alarm dir ta a =
-  (not (String.equal ta a))
-  && Sys.is_directory (Filename.concat dir ("sparrow-out/taint/datalog/" ^ a))
+let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
+  (not
+     (String.equal buggy_dir donee_dir && String.equal true_alarm target_alarm))
+  && Sys.is_directory
+       (Filename.concat donee_dir ("sparrow-out/taint/datalog/" ^ target_alarm))
 
-let match_with_new_alarms buggy_dir donee_dir true_alarm buggy_maps buggy_ast
+let match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps buggy_ast
     buggy_cfg pattern out_dir patch_ids diff =
-  Sys.readdir (Filename.concat buggy_dir "sparrow-out/taint/datalog")
+  Sys.readdir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
-         if
-           String.equal buggy_dir donee_dir
-           && is_new_alarm buggy_dir true_alarm ta
-         then
-           match_bug_for_one_prj pattern buggy_maps buggy_dir ta buggy_ast
+         L.info "ta: %s" ta;
+         if is_new_alarm buggy_dir true_alarm donee_dir ta then
+           match_bug_for_one_prj pattern buggy_maps donee_dir ta buggy_ast
              buggy_cfg out_dir patch_ids diff)
 
 let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
@@ -442,6 +442,6 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
       pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
-  match_with_new_alarms buggy_dir donee_dir true_alarm buggy_maps donee_ast
+  match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps donee_ast
     buggy_cfg pattern out_dir patch_node_ids abs_diff;
   L.info "Done."

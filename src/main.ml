@@ -1,7 +1,6 @@
 let extract_bug_pattern opts donor_dir donee_dir true_alarm out_dir =
   let buggy_dir = Filename.concat donor_dir "bug" in
   let patch_dir = Filename.concat donor_dir "patch" in
-  let donee_dir = Filename.concat donee_dir "bug" in
   if
     (Sys.file_exists buggy_dir && Sys.file_exists patch_dir
    && Sys.file_exists donee_dir)

@@ -504,9 +504,9 @@ let get_alarm work_dir =
   in
   (src, snk, alarm_compss)
 
-let make_facts buggy_dir target_alarm ast cfg out_dir maps =
+let make_facts target_dir target_alarm ast cfg out_dir maps =
   let alarm_dir =
-    Filename.concat buggy_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
+    Filename.concat target_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
   in
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
   Utils.parse_map alarm_dir maps.Maps.exp_map;
