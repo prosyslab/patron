@@ -477,7 +477,7 @@ let rels =
     ("SAllocExp", [ expr; str_literal ]);
     ("Skip", [ node ]);
     ("EvalLv", [ node; lval; loc ]);
-    (* ("Assume", []); *)
+    ("Assume", [ node; expr ]);
     ("AstParent", [ ast_node; ast_node ]);
     ("EqNode", [ node; ast_node ]);
     ("ErrTrace", [ node; node ]);
@@ -607,7 +607,7 @@ let prop_deps ?(ignore_duedge = false) terms = function
       else (false, terms)
   | FuncApply ("Set", [ n; lv; e ]) ->
       if mem n terms && mem lv terms then (true, add e terms) else (false, terms)
-  | FuncApply ("Return", [ n; e ]) ->
+  | FuncApply ("Assume", [ n; e ]) | FuncApply ("Return", [ n; e ]) ->
       if mem n terms then (true, add e terms) else (false, terms)
   | FuncApply ("Arg", [ arg_list; _; e ]) ->
       if mem arg_list terms then (true, add e terms) else (false, terms)
@@ -763,7 +763,7 @@ let to_dug du_rels =
 let road_to_node terms = function
   | Elt.FuncApply ("Set", [ n; lv; e ]) ->
       if mem e terms || mem lv terms then (true, add n terms) else (false, terms)
-  | FuncApply ("Return", [ n; e ]) ->
+  | FuncApply ("Assume", [ n; e ]) | FuncApply ("Return", [ n; e ]) ->
       if mem e terms then (true, add n terms) else (false, terms)
   | FuncApply ("Arg", [ arg_list; _; e ]) ->
       if mem e terms then (true, add arg_list terms) else (false, terms)

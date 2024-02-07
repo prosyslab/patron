@@ -4,7 +4,8 @@ module Hashtbl = Stdlib.Hashtbl
 
 let match_func z3env f =
   match f with
-  | "AstParent" -> z3env.Z3env.ast_parent
+  | "Assume" -> z3env.Z3env.assume
+  | "AstParent" -> z3env.ast_parent
   | "EqNode" -> z3env.eq_node
   | "Src" -> z3env.src
   | "Snk" -> z3env.snk

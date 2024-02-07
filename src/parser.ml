@@ -229,7 +229,8 @@ let parse_sparrow nodes map chc =
             mk_ccall key set_facts args_facts callexp_facts libcall_facts
               (facts4exp, facts4lv, evallv_facts)
               loc cmd
-        | "assume" -> mk_cassume key assume_facts loc (List.tl_exn cmd)
+        | "assume" -> CNone
+        (* mk_cassume key assume_facts loc (List.tl_exn cmd) *)
         | "set" ->
             mk_cset key set_facts (facts4exp, facts4lv, evallv_facts) loc cmd
         | "alloc" -> mk_calloc key alloc_exp_facts loc (List.tl_exn cmd)

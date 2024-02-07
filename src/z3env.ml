@@ -33,6 +33,7 @@ type t = {
   set : Z3.FuncDecl.func_decl;
   alloc : Z3.FuncDecl.func_decl;
   salloc : Z3.FuncDecl.func_decl;
+  assume : Z3.FuncDecl.func_decl;
   lval_exp : Z3.FuncDecl.func_decl;
   var : Z3.FuncDecl.func_decl;
   index : Z3.FuncDecl.func_decl;
@@ -97,6 +98,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.set;
   Z3.Fixedpoint.register_relation solver env.alloc;
   Z3.Fixedpoint.register_relation solver env.salloc;
+  Z3.Fixedpoint.register_relation solver env.assume;
   Z3.Fixedpoint.register_relation solver env.lval_exp;
   Z3.Fixedpoint.register_relation solver env.var;
   Z3.Fixedpoint.register_relation solver env.index;
@@ -149,7 +151,7 @@ let fact_files =
     "Set.facts";
     "Skip.facts";
     "UnOpExp.facts";
-    (* "Assume.facts"; *)
+    "Assume.facts";
     "EvalLv.facts";
   ]
 
@@ -213,6 +215,9 @@ let mk_env () =
   let salloc =
     Z3.FuncDecl.mk_func_decl_s z3ctx "SAllocExp" [ expr; str_literal ]
       boolean_sort
+  in
+  let assume =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Assume" [ node; expr ] boolean_sort
   in
   let lval_exp =
     Z3.FuncDecl.mk_func_decl_s z3ctx "LvalExp" [ expr; lval ] boolean_sort
@@ -344,6 +349,7 @@ let mk_env () =
       set;
       alloc;
       salloc;
+      assume;
       lval_exp;
       var;
       index;
