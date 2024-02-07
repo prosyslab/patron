@@ -253,8 +253,6 @@ let compute_patch_loc (before, after) model_map node_map ast_map_rev =
       else
         List.fold_left
           (fun acc x ->
-            print_endline "@@@@@@@@@@@";
-            print_endline x;
             Hashtbl.find node_map x |> fun x ->
             let x_int = int_of_string x in
             (Hashtbl.find ast_map_rev x_int |> Ast.ast2stmt) :: acc)
