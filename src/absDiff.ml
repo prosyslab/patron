@@ -447,7 +447,7 @@ and match_stmt patch_bw sid cfg cfg_rev exp_map s =
   | Cil.Continue _ -> AbsAst.SContinue
   | _ -> failwith "match_stmt: not implemented"
 
-and mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e =
+and mk_absexp patch_bw parent_stmt cfg_rev exp_map e =
   let node = AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
   let id = match_exp_id patch_bw parent_stmt cfg_rev exp_map e in
   let literal = Ast.s_exp e in
@@ -475,8 +475,8 @@ and match_exp patch_bw parent_stmt cfg_rev exp_map e =
   | Cil.BinOp (op, e1, e2, t) ->
       SBinOp
         ( to_sbinop op,
-          mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e1,
-          mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e2,
+          mk_absexp patch_bw parent_stmt cfg_rev exp_map e1,
+          mk_absexp patch_bw parent_stmt cfg_rev exp_map e2,
           to_styp t )
   | Cil.UnOp (op, e, t) ->
       let node = AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
@@ -490,9 +490,9 @@ and match_exp patch_bw parent_stmt cfg_rev exp_map e =
       SCastE (to_styp t, { node; id; literal })
   | Cil.Question (e1, e2, e3, t) ->
       SQuestion
-        ( mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e1,
-          mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e2,
-          mk_AbsExp patch_bw parent_stmt cfg_rev exp_map e3,
+        ( mk_absexp patch_bw parent_stmt cfg_rev exp_map e1,
+          mk_absexp patch_bw parent_stmt cfg_rev exp_map e2,
+          mk_absexp patch_bw parent_stmt cfg_rev exp_map e3,
           to_styp t )
   | Cil.AddrOf l ->
       let node =
@@ -893,8 +893,9 @@ let rec extract_node_ids node =
   match node.node with
   | AbsStmt (s, _) -> node.id :: extract_stmt_ids s
   | AbsGlob _ -> [ node.id ]
-  | AbsExp (e, _) -> node.id :: extract_exp_ids e
-  | AbsLval (l, _) -> node.id :: extract_lval_ids l
+  | AbsExp (e, _) -> if node.id = "None" then extract_exp_ids e else [ node.id ]
+  | AbsLval (l, _) ->
+      if node.id = "None" then extract_lval_ids l else [ node.id ]
   | _ -> []
 
 and extract_stmt_ids (stmt : abs_stmt) =
@@ -984,16 +985,6 @@ let mk_abs_ctx ctx env maps du_facts (patch_bw : string list * string list) =
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
   let cfg_map = maps.cfg_map in
   let cfg_map_rev = maps.cfg_map |> Utils.reverse_hashtbl in
-  (* Hashtbl.iter
-       (fun k v ->
-         match v with
-         | Maps.CfgNode.CCall (_, _, _, _, _, exps) ->
-             print_string (k ^ " -> " ^ String.concat "\t" exps ^ "\n")
-         | Maps.CfgNode.CSet (_, _, _, _, exps) ->
-             print_string (k ^ " -> " ^ String.concat "\t" exps ^ "\n")
-         | _ -> ())
-       cfg_map_rev;
-     assert false; *)
   let root_path = List.rev ctx.D.root_path in
   let s_root_path =
     match_ast_path patch_bw cfg_map cfg_map_rev exp_map root_path []
@@ -1028,7 +1019,39 @@ let extract_ctx_nodes sdiff =
     (fun acc sd ->
       let ctx = get_ctx sd in
       let b, a = ctx.patch_between in
-      b @ a @ acc)
+      List.filter
+        (fun n -> Core.String.is_prefix ~prefix:ctx.func_name n)
+        (b @ a)
+      @ acc)
+    [] sdiff
+
+let filter_exps_by_func cfg ids func =
+  let cfg_keys = Hashtbl.to_seq_keys cfg in
+  List.filter
+    (fun id ->
+      let node_opt =
+        Seq.find
+          (fun k ->
+            match k with
+            | Maps.CfgNode.CSet (_, _, _, _, exps)
+            | Maps.CfgNode.CCall (_, _, _, _, _, exps) ->
+                List.mem id exps
+            | _ -> false)
+          cfg_keys
+      in
+      if Option.is_none node_opt then false
+      else
+        Option.get node_opt |> Hashtbl.find cfg |> fun node_s ->
+        Core.String.is_prefix ~prefix:func node_s)
+    ids
+
+let extract_patch_related_exp sdiff cfg =
+  List.fold_left
+    (fun acc d ->
+      let ctx = get_ctx d in
+      let func = ctx.func_name in
+      let ids = extract_diff_ids d in
+      filter_exps_by_func cfg ids func @ acc)
     [] sdiff
 
 let map_ast2cf_nodes ast_lst maps =
@@ -1084,6 +1107,13 @@ let mk_du_patch_bw dug (src, snk) (ast_before, ast_after) maps =
   in
   (Dug.edges2lst before, Dug.edges2lst after)
 
+let mk_patch_comp cfg sdiff =
+  let du_nodes = extract_ctx_nodes sdiff in
+  let exps = extract_patch_related_exp sdiff cfg in
+  List.append du_nodes exps
+  |> List.sort_uniq Stdlib.compare
+  |> List.filter (fun x -> x <> "None")
+
 let define_abs_diff maps buggy diff du_facts dug src_snk =
   get_gvars buggy;
   let sdiff =
@@ -1095,13 +1125,7 @@ let define_abs_diff maps buggy diff du_facts dug src_snk =
         mk_sdiff du_patch_bw s_context maps action :: acc)
       [] diff
   in
-  let patch_comp =
-    extract_ctx_nodes sdiff
-    |> List.append
-         (List.fold_left (fun acc d -> extract_diff_ids d @ acc) [] sdiff)
-    |> List.sort_uniq Stdlib.compare
-    |> List.filter (fun x -> x <> "None")
-  in
+  let patch_comp = mk_patch_comp maps.cfg_map sdiff in
   (sdiff, patch_comp)
 
 module DiffJson = struct
