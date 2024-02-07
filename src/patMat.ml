@@ -184,23 +184,25 @@ let extract_parent abs_diff (ast_map : (Ast.t, int) Hashtbl.t) =
     parent_of_patch
   |> List.rev
 
-let rec go_up parent_tups ast_node_lst (parent, _) acc =
+let rec go_up parent_tups ast_node_lst (parent, child) acc =
   let candidates =
     List.fold_left ~init:[]
       ~f:(fun cand (parent', child') ->
-        if String.equal parent parent' then (parent', child') :: cand else cand)
+        if String.equal parent parent' && not (String.equal child child') then
+          (parent', child') :: cand
+        else cand)
       parent_tups
   in
   if List.length candidates = 0 then
-    let upper_node_opt =
-      List.find ~f:(fun (_, c') -> String.equal parent c') acc
+    let upper_tups_opt =
+      List.find ~f:(fun (_, c') -> String.equal parent c') parent_tups
     in
-    let upper_node =
-      if Option.is_none upper_node_opt then
+    let upper_tups =
+      if Option.is_none upper_tups_opt then
         failwith "compute_ast_pattern: common ancestor not found"
-      else Option.value_exn upper_node_opt
+      else Option.value_exn upper_tups_opt
     in
-    go_up parent_tups ast_node_lst upper_node (upper_node :: acc)
+    go_up parent_tups ast_node_lst upper_tups (upper_tups :: acc)
   else if
     List.exists
       ~f:(fun (_, c') ->
@@ -214,16 +216,16 @@ let rec go_up parent_tups ast_node_lst (parent, _) acc =
     :: acc
   else
     let down = fold_down parent_tups ast_node_lst candidates [] in
-    let upper_node_opt =
+    let upper_tups_opt =
       List.find ~f:(fun (_, c') -> String.equal parent c') acc
     in
-    let upper_node =
-      if Option.is_none upper_node_opt then
+    let upper_tups =
+      if Option.is_none upper_tups_opt then
         failwith "common ancestor not found!"
-      else Option.value_exn upper_node_opt
+      else Option.value_exn upper_tups_opt
     in
     if List.length down = 0 then
-      go_up parent_tups ast_node_lst upper_node (upper_node :: acc)
+      go_up parent_tups ast_node_lst upper_tups (upper_tups :: acc)
     else acc @ down
 
 and go_down parent_tups ast_node_lst (p, c) acc =
@@ -255,12 +257,15 @@ and fold_down parent_tups ast_node_lst candidates acc =
       go_down parent_tups ast_node_lst edge (edge :: acc) @ acc')
     candidates
 
-let mk_ast_bug_pattern node_map solution =
+let search_eq_ast_rel ast_facts fa = Chc.find fa ast_facts
+
+let mk_ast_bug_pattern ast_facts node_map solution =
   List.fold_left ~init:[]
     ~f:(fun acc (p, c) ->
       let p = Chc.Elt.FDNumeral ("AstNode-" ^ p) in
       let c = Chc.Elt.FDNumeral ("AstNode-" ^ c) in
-      Chc.Elt.FuncApply ("AstParent", [ p; c ]) :: acc)
+      (Chc.Elt.FuncApply ("AstParent", [ p; c ]) |> search_eq_ast_rel ast_facts)
+      :: acc)
     solution
   |> fun x ->
   List.fold_left ~init:x
@@ -270,18 +275,22 @@ let mk_ast_bug_pattern node_map solution =
       let p_ast = Chc.Elt.FDNumeral ("AstNode-" ^ p) in
       let c_ast = Chc.Elt.FDNumeral ("AstNode-" ^ c) in
       if Option.is_some p_cfg && Option.is_some c_cfg then
-        Chc.Elt.FuncApply
-          ("EqNode", [ FDNumeral (Option.value_exn p_cfg); p_ast ])
-        :: Chc.Elt.FuncApply
-             ("EqNode", [ FDNumeral (Option.value_exn c_cfg); c_ast ])
+        (Chc.Elt.FuncApply
+           ("EqNode", [ FDNumeral (Option.value_exn p_cfg); p_ast ])
+        |> search_eq_ast_rel ast_facts)
+        :: (Chc.Elt.FuncApply
+              ("EqNode", [ FDNumeral (Option.value_exn c_cfg); c_ast ])
+           |> search_eq_ast_rel ast_facts)
         :: acc
       else if Option.is_some p_cfg then
-        Chc.Elt.FuncApply
-          ("EqNode", [ FDNumeral (Option.value_exn p_cfg); p_ast ])
+        (Chc.Elt.FuncApply
+           ("EqNode", [ FDNumeral (Option.value_exn p_cfg); p_ast ])
+        |> search_eq_ast_rel ast_facts)
         :: acc
       else if Option.is_some c_cfg then
-        Chc.Elt.FuncApply
-          ("EqNode", [ FDNumeral (Option.value_exn c_cfg); c_ast ])
+        (Chc.Elt.FuncApply
+           ("EqNode", [ FDNumeral (Option.value_exn c_cfg); c_ast ])
+        |> search_eq_ast_rel ast_facts)
         :: acc
       else acc)
     solution
@@ -295,25 +304,33 @@ let mk_parent_tups_str func stmts ast_map =
            :: acc
          else acc)
 
-let compute_ast_pattern ast_node_lst patch_node patch_func maps ast =
+let greedy_search_common_ancestor func stmts ast_map ast_node_lst
+    parent_of_patch =
+  let parent_tups = mk_parent_tups_str [ func ] stmts ast_map in
+  let init =
+    List.find_exn ~f:(fun (p, _) -> String.equal p parent_of_patch) parent_tups
+  in
+  go_up parent_tups ast_node_lst init []
+
+let compute_ast_pattern ast_facts ast_node_lst parent_of_patch patch_func maps
+    ast =
   if String.equal patch_func "None" then failwith "compute_ast_pattern: no func";
   let ast_map = maps.Maps.ast_map in
   let node_map = maps.Maps.node_map |> Utils.reverse_hashtbl in
   L.info "Compute AST pattern...";
   let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
   let func = Utils.extract_target_func ast patch_func in
-  let parent_tups = mk_parent_tups_str [ func ] stmts ast_map in
-  let init =
-    List.find_exn ~f:(fun (p, _) -> String.equal p patch_node) parent_tups
+  let solution =
+    greedy_search_common_ancestor func stmts ast_map ast_node_lst
+      parent_of_patch
   in
-  let solution = go_up parent_tups ast_node_lst init [ init ] in
-  mk_ast_bug_pattern node_map solution
+  mk_ast_bug_pattern ast_facts node_map solution
 
 let need_ast_pattern diff =
   match List.hd_exn diff with AbsDiff.SUpdateExp _ -> false | _ -> true
 
-let abstract_bug_pattern du_facts dug patch_comps src snk alarm_comps maps diff
-    ast =
+let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
+    maps diff ast =
   let fst_abs_facts =
     Chc.abstract_by_comps du_facts dug patch_comps snk alarm_comps
   in
@@ -327,7 +344,9 @@ let abstract_bug_pattern du_facts dug patch_comps src snk alarm_comps maps diff
       ~f:(fun acc (patch_node, patch_func) ->
         if need_ast_pattern diff |> not || String.is_empty patch_node then acc
         else
-          compute_ast_pattern ast_node_lst patch_node patch_func maps ast @ acc)
+          compute_ast_pattern ast_facts ast_node_lst patch_node patch_func maps
+            ast
+          @ acc)
       parents
   in
   let errtrace =
@@ -430,8 +449,8 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern =
-    abstract_bug_pattern du_facts' dug patch_comps src snk alarm_comps
-      buggy_maps abs_diff buggy_ast
+    abstract_bug_pattern du_facts' parent_facts' dug patch_comps src snk
+      alarm_comps buggy_maps abs_diff buggy_ast
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
