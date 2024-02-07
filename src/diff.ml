@@ -374,7 +374,7 @@ and get_followup_diff_stmt parent prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs =
   let inserted_stmts = find_eq_stmt_in_tl depth hd1 tl2 [] in
   if List.is_empty inserted_stmts then
     let deleted_stmts = find_eq_stmt_in_tl depth hd2 tl1 [] in
-    if List.is_empty deleted_stmts |> not then
+    if List.is_empty deleted_stmts then
       let env = mk_diff_env depth prnt_brnch prev_node func in
       let ctx =
         mk_context parent (Ast.stmts2path left_sibs) (Ast.stmts2path tl1)
