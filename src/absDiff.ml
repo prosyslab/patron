@@ -1067,44 +1067,40 @@ let map_cf2du_nodes cf_lst du_lst =
 let mk_du_patch_bw dug (src, snk) (ast_before, ast_after) maps =
   let du_nodes = Dug.fold_vertex (fun v acc -> v :: acc) dug [] in
   let before, after =
-    if (try List.hd ast_before with _ -> List.hd ast_after) |> Ast.is_stmt
-    then
-      let cfg_before = map_ast2cf_nodes ast_before maps in
-      let cfg_after = map_ast2cf_nodes ast_after maps in
-      if cfg_before = [] && cfg_after = [] then
+    let cfg_before = map_ast2cf_nodes ast_before maps in
+    let cfg_after = map_ast2cf_nodes ast_after maps in
+    if cfg_before = [] && cfg_after = [] then
+      failwith
+        "mk_du_patch_bw: no data dependency is found within ast-function level"
+    else
+      let func_du_before = map_cf2du_nodes cfg_before du_nodes in
+      let func_du_after = map_cf2du_nodes cfg_after du_nodes |> List.rev in
+      if func_du_before = [] && func_du_after = [] then
         failwith
           "mk_du_patch_bw: no data dependency is found within ast-function \
            level"
+      else if func_du_before = [] then
+        let after_patch = List.hd func_du_after in
+        let du_before =
+          Dug.shortest_path dug src after_patch
+          |> Dug.delete_last_edge after_patch
+        in
+        let du_after = Dug.shortest_path dug after_patch snk in
+        (du_before, du_after)
+      else if func_du_after = [] then
+        let before_patch = List.hd func_du_before in
+        let du_before = Dug.shortest_path dug src before_patch in
+        let du_after =
+          Dug.shortest_path dug before_patch snk
+          |> Dug.delete_first_edge before_patch
+        in
+        (du_before, du_after)
       else
-        let func_du_before = map_cf2du_nodes cfg_before du_nodes in
-        let func_du_after = map_cf2du_nodes cfg_after du_nodes |> List.rev in
-        if func_du_before = [] && func_du_after = [] then
-          failwith
-            "mk_du_patch_bw: no data dependency is found within ast-function \
-             level"
-        else if func_du_before = [] then
-          let after_patch = List.hd func_du_after in
-          let du_before =
-            Dug.shortest_path dug src after_patch
-            |> Dug.delete_last_edge after_patch
-          in
-          let du_after = Dug.shortest_path dug after_patch snk in
-          (du_before, du_after)
-        else if func_du_after = [] then
-          let before_patch = List.hd func_du_before in
-          let du_before = Dug.shortest_path dug src before_patch in
-          let du_after =
-            Dug.shortest_path dug before_patch snk
-            |> Dug.delete_first_edge before_patch
-          in
-          (du_before, du_after)
-        else
-          let before_patch = List.hd func_du_before in
-          let after_patch = List.hd func_du_after in
-          let du_before = Dug.shortest_path dug src before_patch in
-          let du_after = Dug.shortest_path dug after_patch snk in
-          (du_before, du_after)
-    else failwith "mk_du_patch_bw: not implemented"
+        let before_patch = List.hd func_du_before in
+        let after_patch = List.hd func_du_after in
+        let du_before = Dug.shortest_path dug src before_patch in
+        let du_after = Dug.shortest_path dug after_patch snk in
+        (du_before, du_after)
   in
   (Dug.edges2lst before, Dug.edges2lst after)
 
@@ -1115,13 +1111,66 @@ let mk_patch_comp cfg sdiff =
   |> List.sort_uniq Stdlib.compare
   |> List.filter (fun x -> x <> "None")
 
+let rec split_stmt_bw stmt_lst stmt acc =
+  match stmt_lst with
+  | [] -> ([], [])
+  | hd :: tl ->
+      if Ast.isom_stmt hd stmt then (acc, tl)
+      else split_stmt_bw tl stmt (hd :: acc)
+
+let rec collect_bws rp stmt acc =
+  match rp with
+  | [] -> acc
+  | hd :: tl ->
+      if Ast.is_stmt hd then
+        let s = Ast.ast2stmt hd in
+        match s.Cil.skind with
+        | Cil.Block lst | Cil.Loop (lst, _, _, _) ->
+            split_stmt_bw lst.Cil.bstmts stmt [] :: acc |> collect_bws tl s
+        | Cil.If (_, tb, eb, _) ->
+            let tb_b, tb_a = split_stmt_bw tb.Cil.bstmts stmt [] in
+            if tb_b = [] && tb_a = [] then
+              split_stmt_bw eb.Cil.bstmts stmt [] :: acc |> collect_bws tl s
+            else (tb_b, tb_a) :: acc |> collect_bws tl s
+        | _ -> failwith "collect_bws: not implemented"
+      else if Ast.is_glob hd || Ast.is_fun hd then acc
+      else failwith "collect_bws: not implemented"
+
+let mk_ast_patch_bw top_func_name root_path bw =
+  let children_of_func =
+    Utils.extract_target_func (Ast.get_buggy_ast ()) top_func_name |> fun g ->
+    match g with
+    | Cil.GFun (f, _) -> f.sbody.bstmts
+    | _ -> failwith "mk_ast_patch_bw: not a function"
+  in
+  let top_stmt =
+    List.fold_left
+      (fun acc s -> if Ast.is_stmt s then Ast.ast2stmt s :: acc else acc)
+      [] root_path
+    |> List.hd
+  in
+  let b1, a1 = split_stmt_bw children_of_func top_stmt [] in
+  let b2, a2 =
+    collect_bws (List.tl root_path) (List.hd root_path |> Ast.ast2stmt) []
+    |> List.fold_left
+         (fun (acc_b, acc_a) (b, a) -> (b @ acc_b, acc_a @ a))
+         ([], [])
+  in
+  let b3, a3 = bw |> fun (b, a) -> (Ast.path2stmts b, Ast.path2stmts a) in
+  let before = b1 @ b2 @ b3 |> Ast.stmts2path in
+  let after = a3 @ a2 @ a1 |> Ast.stmts2path in
+  (before, after)
+
 let define_abs_diff maps buggy diff du_facts dug src_snk =
   get_gvars buggy;
   let sdiff =
     List.fold_left
       (fun acc (action, env) ->
         let ctx = D.get_ctx action in
-        let du_patch_bw = mk_du_patch_bw dug src_snk ctx.patch_bound maps in
+        let ast_patch_bw =
+          mk_ast_patch_bw env.Diff.top_func_name ctx.root_path ctx.patch_bound
+        in
+        let du_patch_bw = mk_du_patch_bw dug src_snk ast_patch_bw maps in
         let s_context = mk_abs_ctx ctx env maps du_facts du_patch_bw in
         mk_sdiff du_patch_bw s_context maps action :: acc)
       [] diff

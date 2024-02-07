@@ -19,6 +19,7 @@ let is_fun = function Fun _ -> true | _ -> false
 let is_stmt = function Stmt _ -> true | _ -> false
 let is_exp = function Exp _ -> true | _ -> false
 let is_lv = function Lval _ -> true | _ -> false
+let is_blk = function Cil.Block _ | Cil.Loop _ | Cil.If _ -> true | _ -> false
 
 (* for the reference *)
 type edge = t * t
@@ -153,6 +154,9 @@ let s_node cil =
   | Lval l -> s_lv l
   | Fun f -> "function:" ^ f
   | NotApplicable -> "NotApplicable"
+
+let pp_path fmt path =
+  List.iter (fun node -> Format.fprintf fmt "%s\n -->\n" (s_node node)) path
 
 let is_empty_instr stmt =
   match stmt.Cil.skind with Cil.Instr [] -> true | _ -> false

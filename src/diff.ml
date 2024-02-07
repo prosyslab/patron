@@ -159,6 +159,20 @@ let rec find_direct_parent root_path =
       | Ast.Stmt _ | Ast.Global _ | Ast.Fun _ -> hd
       | _ -> find_direct_parent tl)
 
+let find_first_block_parent root_path =
+  let rec aux = function
+    | Ast.Stmt s -> (
+        match s.Cil.skind with
+        | Block _ | Loop _ | If _ -> s
+        | _ ->
+            (try List.tl_exn root_path
+             with _ ->
+               failwith "find_first_block_parent: block parent does not exist")
+            |> find_direct_parent |> aux)
+    | _ -> failwith "find_first_block_parent: block parent does not exist"
+  in
+  find_direct_parent root_path |> aux
+
 let search_parent_sibs_fun parent_stmt func =
   let rec aux parent_stmt stmt_lst acc =
     match stmt_lst with
@@ -458,10 +472,11 @@ and get_followup_diff_stmt parent prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs =
       mk_diff_stmt Deletion parent prnt_brnch depth deleted_stmts left_sibs
         right_siblings
   else
-    let right_siblings = compute_right_siblings_stmt inserted_stmts tl1 in
     let inserted_stmts = hd2 :: List.rev (List.tl_exn inserted_stmts) in
+    (* let right_siblings = compute_right_siblings_stmt inserted_stmts tl1 in *)
+    (* prolly have to count the #of delete stmt for right sib *)
     mk_diff_stmt Insertion parent prnt_brnch depth inserted_stmts left_sibs
-      right_siblings
+      (hd1 :: tl1)
 
 and compute_diff_stmt parent prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs =
   match (hd1.Cil.skind, hd2.Cil.skind) with
