@@ -717,9 +717,8 @@ let update_rule head_name new_body chcs =
   remove target chcs |> add new_rule
 
 let add_fact z3env maps solver f =
-  if (Elt.is_duedge f || Elt.is_assume f) |> not then
-    let fact = Elt.to_z3 z3env maps f in
-    Z3.Fixedpoint.add_rule solver fact None
+  let fact = Elt.to_z3 z3env maps f in
+  Z3.Fixedpoint.add_rule solver fact None
 
 let add_rule z3env maps solver r =
   if Elt.is_duedge r |> not then
@@ -829,6 +828,9 @@ let paths2rels =
     ~init:empty
 
 let abstract_by_comps chc dug patch_comps snk alarm_comps =
+  L.info "patch_comps: %s" (String.concat ~sep:", " patch_comps);
+  L.info "alarm_comps: %s"
+    (alarm_comps |> to_list |> terms2strs |> String.concat ~sep:", ");
   let du_rels = filter Elt.is_duedge chc in
   let ast_rels = diff chc du_rels in
   let terms =
@@ -837,6 +839,7 @@ let abstract_by_comps chc dug patch_comps snk alarm_comps =
   in
   let abs_ast_rels, terms' = fixedpoint ast_rels terms empty in
   let nodes = to_list terms' |> terms2strs |> filter_by_node in
+  L.info "nodes: %s" (String.concat ~sep:", " nodes);
   let dug = Dug.copy dug in
   let paths =
     List.fold_left
