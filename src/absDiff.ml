@@ -1121,6 +1121,11 @@ let define_abs_diff maps buggy diff du_facts dug src_snk =
     List.fold_left
       (fun acc (action, env) ->
         let ctx = D.get_ctx action in
+        print_endline "@@";
+        let b, a = ctx.patch_bound in
+        print_endline "check";
+        List.iter (fun x -> Ast.s_node x |> print_endline) b;
+        List.iter (fun x -> Ast.s_node x |> print_endline) a;
         let du_patch_bw = mk_du_patch_bw dug src_snk ctx.patch_bound maps in
         let s_context = mk_abs_ctx ctx env maps du_facts du_patch_bw in
         mk_sdiff du_patch_bw s_context maps action :: acc)

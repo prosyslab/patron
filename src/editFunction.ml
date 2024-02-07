@@ -253,6 +253,8 @@ let compute_patch_loc (before, after) model_map node_map ast_map_rev =
       else
         List.fold_left
           (fun acc x ->
+            print_endline "@@@@@@@@@@@";
+            print_endline x;
             Hashtbl.find node_map x |> fun x ->
             let x_int = int_of_string x in
             (Hashtbl.find ast_map_rev x_int |> Ast.ast2stmt) :: acc)
@@ -306,7 +308,7 @@ let translate ast abs_diff model_path maps patch_node_ids =
               translated_stmt
           in
           let before, after =
-            compute_patch_loc ctx.A.patch_between model_map node_map ast_map_rev
+            compute_patch_loc ctx.A.patch_bound model_map node_map ast_map_rev
           in
           let ctx =
             D.mk_context [ new_parent_node ] before after ctx.A.sibling_idx

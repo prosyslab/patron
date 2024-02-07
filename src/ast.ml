@@ -8,6 +8,14 @@ type t =
   | Lval of lval
   | NotApplicable
 
+let buggy_ast = ref [ Cil.dummyFile ]
+
+let get_buggy_ast () =
+  if !buggy_ast |> List.length <> 1 then List.hd !buggy_ast
+  else failwith "No buggy AST"
+
+let is_glob = function Global _ -> true | _ -> false
+let is_fun = function Fun _ -> true | _ -> false
 let is_stmt = function Stmt _ -> true | _ -> false
 let is_exp = function Exp _ -> true | _ -> false
 let is_lv = function Lval _ -> true | _ -> false

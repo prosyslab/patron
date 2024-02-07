@@ -72,7 +72,13 @@ let parse_ast target_dir inline_funcs =
   let cil = Frontc.parse file () in
   Rmtmps.removeUnusedTemps cil;
   Cil.visitCilFile (new blockVisitor) cil;
-  if List.length inline_funcs <> 0 then Inline.perform inline_funcs cil else cil
+  let post_processed_cil =
+    if List.length inline_funcs <> 0 then Inline.perform inline_funcs cil
+    else cil
+  in
+  if List.length !Ast.buggy_ast = 1 then
+    Ast.buggy_ast := post_processed_cil :: !Ast.buggy_ast;
+  post_processed_cil
 
 let mk_term s =
   if Z3utils.is_binop s || Z3utils.is_unop s then Chc.Elt.FDNumeral s

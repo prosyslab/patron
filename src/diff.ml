@@ -151,6 +151,68 @@ let pp_edit_script fmt es =
 let process_cil_exp_list lst =
   List.fold_left ~f:(fun acc exp -> Ast.Exp exp :: acc) ~init:[] lst |> List.rev
 
+let rec find_direct_parent root_path =
+  match root_path with
+  | [] -> failwith "search_parent_sibs_of_exp: failed to find exp's parent"
+  | hd :: tl -> (
+      match hd with
+      | Ast.Stmt _ | Ast.Global _ | Ast.Fun _ -> hd
+      | _ -> find_direct_parent tl)
+
+let search_parent_sibs_fun parent_stmt func =
+  let rec aux parent_stmt stmt_lst acc =
+    match stmt_lst with
+    | [] -> ([], [])
+    | hd :: tl ->
+        if Ast.eq_stmt parent_stmt.Cil.skind hd.Cil.skind then (List.rev acc, tl)
+        else aux parent_stmt tl (hd :: acc)
+  in
+  let ast = Ast.get_buggy_ast () in
+  Utils.extract_target_func_stmt_lst ast func |> fun stmt_lst ->
+  aux parent_stmt stmt_lst []
+
+let search_parent_sibs_glob parent_stmt glob =
+  let rec aux parent_stmt stmt_lst acc =
+    match stmt_lst with
+    | [] -> ([], [])
+    | hd :: tl ->
+        if Ast.eq_stmt parent_stmt.Cil.skind hd.Cil.skind then (List.rev acc, tl)
+        else aux parent_stmt tl (hd :: acc)
+  in
+  match glob with
+  | Cil.GFun (f, _) -> aux parent_stmt f.Cil.sbody.Cil.bstmts []
+  | _ -> failwith "search_parent_sibs_glob: unexpected global type"
+
+let search_parent_sibs_stmt parent_stmt stmt =
+  let rec aux parent_stmt stmt_lst acc =
+    match stmt_lst with
+    | [] -> ([], [])
+    | hd :: tl ->
+        if Ast.eq_stmt parent_stmt.Cil.skind hd.Cil.skind then (List.rev acc, tl)
+        else aux parent_stmt tl (hd :: acc)
+  in
+  match stmt.Cil.skind with
+  | Loop (blk, _, _, _) | Block blk -> aux parent_stmt blk.Cil.bstmts []
+  | If (_, t_blk, e_blk, _) ->
+      let tb_out = aux parent_stmt t_blk.Cil.bstmts [] in
+      if fst tb_out |> List.is_empty && snd tb_out |> List.is_empty then
+        aux parent_stmt e_blk.Cil.bstmts []
+      else tb_out
+  | _ -> failwith "search_parent_sibs_stmt: unexpected stmt type"
+
+let search_parent_sibs_of_exp root_path =
+  let parent = find_direct_parent root_path in
+  if Ast.is_glob parent || Ast.is_fun parent then
+    failwith "search_parent_sibs_of_exp: unexpected parent type"
+  else
+    let parent_stmt = Ast.ast2stmt parent in
+    let grand_parent = find_direct_parent (List.tl_exn root_path) in
+    match grand_parent with
+    | Ast.Stmt s -> search_parent_sibs_stmt parent_stmt s
+    | Ast.Global g -> search_parent_sibs_glob parent_stmt g
+    | Ast.Fun f -> search_parent_sibs_fun parent_stmt f
+    | _ -> failwith "search_parent_sibs_of_exp: unexpected grand parent type"
+
 let rec mk_diff_exp code parent depth exp_lst left_sibs right_sibs =
   match exp_lst with
   | [] -> []
@@ -158,9 +220,10 @@ let rec mk_diff_exp code parent depth exp_lst left_sibs right_sibs =
       let prev_node = List.hd left_sibs |> Ast.exp2ast in
       let func = extract_func_name parent in
       let env = mk_diff_env depth [] prev_node func in
+      let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
       let context =
-        mk_context parent (Ast.exps2path left_sibs) (Ast.exps2path right_sibs)
-          (List.length left_sibs)
+        mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
+          (List.length l_sibs)
       in
       match code with
       | Insertion ->
@@ -193,14 +256,15 @@ let compute_right_siblings_exp diffs rest =
 
 let get_followup_diff_exp code parent depth exp1 exp2 expl1 expl2 left_sibs =
   let prev_node = List.hd left_sibs |> Ast.exp2ast in
-  let right_sibs = compute_right_siblings_exp expl1 expl2 in
+  (* let right_sibs = compute_right_siblings_exp expl1 expl2 in *)
   match code with
   | Update ->
       let func = extract_func_name parent in
       let env = mk_diff_env depth [] prev_node func in
+      let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
       let ctx =
-        mk_context parent (Ast.exps2path left_sibs) (Ast.exps2path right_sibs)
-          (List.length left_sibs)
+        mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
+          (List.length l_sibs)
       in
       [ (UpdateExp (ctx, exp1, exp2), env) ]
   | _ ->
@@ -210,9 +274,10 @@ let get_followup_diff_exp code parent depth exp1 exp2 expl1 expl2 left_sibs =
         if List.is_empty deleted_exps then
           let func = extract_func_name parent in
           let env = mk_diff_env depth [] prev_node func in
+          let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
           let ctx =
-            mk_context parent (Ast.exps2path left_sibs) (Ast.exps2path expl1)
-              (List.length left_sibs)
+            mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
+              (List.length l_sibs)
           in
           [ (UpdateExp (ctx, exp1, exp2), env) ]
         else
@@ -276,7 +341,11 @@ and fold_param2 parent depth el1 el2 left_sibs =
 let extract_call parent depth lv1 e1 el1 lv2 e2 el2 =
   let func = extract_func_name parent in
   let env = mk_diff_env depth [] Ast.NotApplicable func in
-  let ctx = mk_context parent [] [] 0 in
+  let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
+  let ctx =
+    mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
+      (List.length l_sibs)
+  in
   let lval_diff =
     match (lv1, lv2) with
     | None, Some lv -> [ (InsertLval (ctx, lv), env) ]
@@ -294,7 +363,11 @@ let extract_call parent depth lv1 e1 el1 lv2 e2 el2 =
 let extract_set parent depth lv1 e1 lv2 e2 =
   let func = extract_func_name parent in
   let env = mk_diff_env depth [] Ast.NotApplicable func in
-  let ctx = mk_context parent [] [] 0 in
+  let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
+  let ctx =
+    mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
+      (List.length l_sibs)
+  in
   let lval_diff =
     if Ast.eq_lval lv1 lv2 then [] else [ (UpdateLval (ctx, lv1, lv2), env) ]
   in
@@ -364,9 +437,7 @@ and fold_continue_point_stmt parent prnt_brnch depth h1 h2 tl1 tl2 es acc =
       | _ -> fold_stmts2 parent prnt_brnch depth tl1 tl2 acc)
 
 and compute_right_siblings_stmt diffs rest =
-  match List.hd diffs with
-  | Some next -> next :: find_continue_point_stmt next rest
-  | None -> []
+  List.slice rest (List.length diffs) (List.length rest)
 
 and get_followup_diff_stmt parent prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs =
   let prev_node = List.hd left_sibs |> Ast.stmt2ast in
@@ -382,8 +453,8 @@ and get_followup_diff_stmt parent prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs =
       in
       [ (InsertStmt (ctx, hd2), env); (DeleteStmt (ctx, hd1), env) ]
     else
-      let right_siblings = compute_right_siblings_stmt deleted_stmts tl1 in
       let deleted_stmts = hd1 :: List.rev (List.tl_exn deleted_stmts) in
+      let right_siblings = compute_right_siblings_stmt deleted_stmts tl1 in
       mk_diff_stmt Deletion parent prnt_brnch depth deleted_stmts left_sibs
         right_siblings
   else
@@ -569,12 +640,12 @@ and get_followup_diff_glob depth glob1 glob2 tl1 tl2 left_sibs =
       in
       [ (InsertGlobal (ctx, glob2), env); (DeleteGlobal (ctx, glob1), env) ]
     else
-      let right_siblings = compute_right_siblings_glob deleted_globs tl1 in
       let deleted_globs = glob1 :: List.tl_exn deleted_globs in
+      let right_siblings = compute_right_siblings_glob deleted_globs tl1 in
       mk_diff_glob Deletion depth deleted_globs left_sibs right_siblings
   else
-    let right_siblings = compute_right_siblings_glob inserted_globs tl1 in
     let inserted_globs = glob2 :: List.tl_exn inserted_globs in
+    let right_siblings = compute_right_siblings_glob inserted_globs tl1 in
     mk_diff_glob Insertion depth inserted_globs left_sibs right_siblings
 
 and compute_diff_glob depth glob1 glob2 tl1 tl2 left_sbis =
