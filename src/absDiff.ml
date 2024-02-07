@@ -1019,20 +1019,17 @@ let extract_ctx_nodes sdiff =
     (fun acc sd ->
       let ctx = get_ctx sd in
       let b, a = ctx.patch_between in
-      List.filter
-        (fun n -> Core.String.is_prefix ~prefix:ctx.func_name n)
-        (b @ a)
-      @ acc)
+      [ List.rev b |> List.hd; List.hd a ] @ acc)
     [] sdiff
 
 let filter_exps_by_func cfg ids func =
   let cfg_keys = Hashtbl.to_seq_keys cfg in
-  List.filter
-    (fun id ->
+  List.fold_left
+    (fun acc id ->
       let node_opt =
         Seq.fold_left
-          (fun acc k ->
-            if acc <> None then acc
+          (fun acc' k ->
+            if acc' <> None then acc'
             else if
               match k with
               | Maps.CfgNode.CSet (_, _, _, _, exps)
@@ -1040,16 +1037,16 @@ let filter_exps_by_func cfg ids func =
                   List.mem id exps
               | _ -> false
             then Some k
-            else acc)
+            else acc')
           None cfg_keys
       in
-      if Option.is_none node_opt then false
+      if Option.is_none node_opt then acc
       else
         Option.get node_opt |> Hashtbl.find cfg |> fun node_s ->
-        Core.String.is_prefix ~prefix:func node_s)
-    ids
+        if Core.String.is_prefix ~prefix:func node_s then id :: acc else acc)
+    [] ids
 
-let extract_patch_related_exp sdiff cfg =
+let extract_patch_related_exps sdiff cfg =
   List.fold_left
     (fun acc d ->
       let ctx = get_ctx d in
@@ -1113,7 +1110,7 @@ let mk_du_patch_bw dug (src, snk) (ast_before, ast_after) maps =
 
 let mk_patch_comp cfg sdiff =
   let du_nodes = extract_ctx_nodes sdiff in
-  let exps = extract_patch_related_exp sdiff cfg in
+  let exps = extract_patch_related_exps sdiff cfg in
   List.append du_nodes exps
   |> List.sort_uniq Stdlib.compare
   |> List.filter (fun x -> x <> "None")
