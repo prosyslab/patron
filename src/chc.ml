@@ -293,10 +293,6 @@ module Elt = struct
         Z3.Boolean.mk_ite z3env.z3ctx is_zero one zero
     | CNeg e -> Z3.BitVector.mk_neg z3env.z3ctx (to_z3 z3env maps e)
     | FuncApply (f, args) ->
-        if String.equal f "AllocExp" then
-          L.info "args: %s"
-            (List.map ~f:(function FDNumeral s -> s | _ -> assert false) args
-            |> String.concat ~sep:", ");
         Z3.FuncDecl.apply
           (Z3utils.match_func z3env f)
           (List.map ~f:(to_z3 z3env maps) args)
