@@ -355,8 +355,11 @@ let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  Chc.Elt.Implies (fact_lst @ smallest_ast_patterns, errtrace)
-  |> Chc.Elt.numer2var |> Chc.singleton
+  let pattern_in_numeral =
+    Chc.Elt.Implies (fact_lst @ smallest_ast_patterns, errtrace)
+  in
+  ( pattern_in_numeral |> Chc.singleton,
+    pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton )
 
 let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
     out_dir patch_ids diff =
@@ -403,7 +406,6 @@ let match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps buggy_ast
     buggy_cfg pattern out_dir patch_ids diff =
   Sys.readdir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
-         L.info "ta: %s" ta;
          if is_new_alarm buggy_dir true_alarm donee_dir ta then
            match_bug_for_one_prj pattern buggy_maps donee_dir ta buggy_ast
              buggy_cfg out_dir patch_ids diff)
@@ -448,7 +450,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     extract_parent abs_diff buggy_maps.Maps.ast_map |> List.map ~f:fst
   in
   Maps.dump_ast "buggy" buggy_maps out_dir;
-  let pattern =
+  let pattern_in_numeral, pattern =
     abstract_bug_pattern du_facts' parent_facts' dug patch_comps src snk
       alarm_comps buggy_maps abs_diff buggy_ast
   in
@@ -461,6 +463,11 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
       pattern
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy" buggy_maps out_dir;
+  L.info "Try matching with buggy numeral...";
+  ( Chc.match_and_log z3env out_dir "buggy_numer" buggy_maps combined_facts src
+      snk pattern_in_numeral
+  |> fun status -> assert (Option.is_some status) );
+  Maps.dump "buggy_numer" buggy_maps out_dir;
   match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps donee_ast
     buggy_cfg pattern out_dir patch_node_ids abs_diff;
   L.info "Done."

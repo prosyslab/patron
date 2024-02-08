@@ -71,7 +71,7 @@ let parse_ans ans =
 
 let match_ans buggy_maps target_maps target_alarm out_dir =
   let buggy_ans =
-    Filename.concat out_dir "buggy_ans.smt2" |> In_channel.read_all
+    Filename.concat out_dir "buggy_numer_ans.smt2" |> In_channel.read_all
   in
   let target_ans =
     Filename.concat out_dir (target_alarm ^ "_ans.smt2") |> In_channel.read_all
