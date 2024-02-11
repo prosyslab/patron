@@ -516,7 +516,8 @@ let make_facts target_dir target_alarm ast cfg out_dir maps =
     Filename.concat target_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
   in
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
-  Utils.parse_map alarm_dir maps.Maps.exp_map;
+  Utils.parse_map alarm_dir maps.Maps.exp_map "Exp.map";
+  Utils.parse_map alarm_dir maps.Maps.lval_map "Lval.map";
   let ast_nodes = (Ast.extract_globs ast, Ast.extract_stmts ast) in
   let du_facts = make_du_facts alarm_dir cfg maps.cfg_map in
   let parent_facts = make_parent_facts alarm_dir maps ast_nodes in

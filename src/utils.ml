@@ -98,54 +98,13 @@ let print_global_type glob =
   | Cil.GPragma _ -> print_endline "GPragma"
   | _ -> print_endline "Other"
 
-let trim_node_str str =
-  Str.global_replace (Str.regexp " ") ""
-    (Str.global_replace (Str.regexp "?") "\\\\"
-       (Str.global_replace (Str.regexp "\\\\") ""
-          (Str.global_replace (Str.regexp "\\\\\\") "?" str)))
-
-let explode s =
-  let rec exp i l = if i < 0 then l else exp (i - 1) (s.[i] :: l) in
-  exp (String.length s - 1) []
-
-let rev =
-  let rec rev_append acc l =
-    match l with [] -> acc | h :: t -> rev_append (h :: acc) t
-  in
-  fun l -> rev_append [] l
-
-let rec search_seq s1 s2 =
-  match s2 with
-  | [] -> true
-  | hd :: tl ->
-      let rec search s1 s2 =
-        match s1 with
-        | [] -> false
-        | hd1 :: tl1 -> if hd1 = hd then search_seq tl1 tl else search tl1 s2
-      in
-      search s1 s2
-
-(* is s2 in s1? *)
-let subset s1 s2 =
-  let simplify s =
-    Str.global_replace (Str.regexp "->") "" s
-    |> Str.global_replace (Str.regexp " ") ""
-    |> Str.global_replace (Str.regexp "(") ""
-    |> Str.global_replace (Str.regexp ")") ""
-  in
-  let s1 = simplify s1 in
-  let s2 = simplify s2 in
-  let set1 = explode s1 in
-  let set2 = explode s2 in
-  search_seq set1 set2
-
 let print_ikind instr =
   match instr with
   | Cil.Call _ -> print_endline "Call"
   | Cil.Set _ -> print_endline "Set"
   | Cil.Asm _ -> print_endline "Asm"
 
-let pp_skind sk =
+let string_of_skind sk =
   match sk with
   | Cil.Instr _ -> "Instr"
   | Cil.Return _ -> "Return"
@@ -178,8 +137,8 @@ let read_lines name =
   close_in file;
   lines
 
-let parse_map path map =
-  let path = path ^ "/Exp.map" in
+let parse_map path map file_name =
+  let path = path ^ "/" ^ file_name in
   let lines = read_lines path in
   List.iter
     (fun line ->

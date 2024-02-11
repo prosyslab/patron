@@ -5,22 +5,6 @@ module H = Utils
 
 let is_patched = ref false
 
-(* let check_parent parent instr =
-   match parent with
-   | D.CilElement.EStmt s -> (
-       match s.skind with
-       | Cil.Instr i -> (
-           match (List.hd i, instr) with
-           | Cil.Call (l, e, _, loc1), Cil.Call (l', e', _', loc2) ->
-               l = l' && e = e' && loc1 = loc2
-           | Cil.Set (l, e, loc1), Cil.Set (l', e', loc2) ->
-               l = l' && e = e' && loc1 = loc2
-           | _ -> false)
-       | _ -> false)
-   | _ ->
-       failwith
-         "check_parent: an expression cannot be inserted without the parent" *)
-
 let check_sibling_exp sibling exp_list =
   match sibling with
   | Ast.Exp e -> List.exists (fun x -> Ast.isom_exp x e) exp_list
@@ -32,13 +16,6 @@ let check_stmt stmt stmt_list =
   List.exists (fun x -> Ast.isom_stmt x stmt) stmt_list
 
 let check_exp exp exp_list = List.exists (fun x -> Ast.isom_exp x exp) exp_list
-
-(* let check_parent_stmt parent node =
-   match parent.Cil.skind with
-   | Cil.Loop (b, _, _, _) -> H.eq_block b node
-   | Cil.Block b -> H.eq_block b node
-   | Cil.If (_, b1, b2, _) -> H.eq_block b1 node || H.eq_block b2 node
-   | _ -> failwith "check_parent_stmt: parent is not a stmt" *)
 
 let get_sibling_exp sibling exp_list =
   match sibling with
@@ -61,20 +38,20 @@ let get_sibling_stmt sibling stmt_list =
   | Ast.Stmt s -> List.find (fun x -> Ast.isom_stmt x s) stmt_list
   | _ -> failwith "get_sibling_stmt: sibling of a stmt must be a stmt"
 
+let mk_patch_blk old_blk node new_stmt =
+  List.fold_left
+    (fun acc s ->
+      if Utils.eq_stmt_line node.Cil.skind s.Cil.skind then s :: new_stmt :: acc
+      else s :: acc)
+    [] old_blk
+  |> List.rev
+
 let insert_patch func new_stmt patch_block before after =
   let block_size = List.length patch_block in
   if before = [] && after = [] then patch_block @ [ new_stmt ]
   else if before = [] then
     let after = List.hd after in
-    let new_blk =
-      List.fold_left
-        (fun acc s ->
-          if Utils.eq_stmt_line after.Cil.skind s.Cil.skind then
-            s :: new_stmt :: acc
-          else s :: acc)
-        [] patch_block
-      |> List.rev
-    in
+    let new_blk = mk_patch_blk patch_block after new_stmt in
     if List.length new_blk = block_size then (
       Logger.info "Could not find the appropriate patch location";
       Logger.info
@@ -86,15 +63,7 @@ let insert_patch func new_stmt patch_block before after =
       new_blk)
   else
     let before = List.rev before |> List.hd in
-    let new_blk =
-      List.fold_left
-        (fun acc s ->
-          if Utils.eq_stmt_line before.Cil.skind s.Cil.skind then
-            new_stmt :: s :: acc
-          else s :: acc)
-        [] patch_block
-      |> List.rev
-    in
+    let new_blk = mk_patch_blk patch_block before new_stmt in
     if List.length new_blk = block_size then (
       Logger.info "Could not find the appropriate patch location";
       Logger.info
@@ -240,48 +209,58 @@ class expUpdateVisitor target_func parent from_exp to_exp =
                  | Cil.Loop (b, loc, t1,*)
 let paths2stmts (path1, path2) = (Ast.path2stmts path1, Ast.path2stmts path2)
 
+let apply_insert_stmt ctx stmt donee =
+  Logger.info "Applying InsertStmt...";
+  is_patched := false;
+  let parent = List.hd ctx.D.root_path in
+  match parent with
+  | Fun func_name ->
+      let patch_bound = paths2stmts ctx.D.patch_bound in
+      let vis = new stmtInsertVisitorUnderFun func_name patch_bound stmt in
+      ignore (Cil.visitCilFile vis donee);
+      if not !is_patched then Logger.warn "failed to apply InsertStmt"
+      else Logger.info "Successfully applied InsertStmt at %s" func_name
+  | Stmt s ->
+      let patch_bound = paths2stmts ctx.D.patch_bound in
+      let vis =
+        new stmtInsertVisitorUnderStmt ctx.top_func_name s patch_bound stmt
+      in
+      ignore (Cil.visitCilFile vis donee);
+      if not !is_patched then Logger.warn "failed to apply InsertStmt"
+      else Logger.info "Successfully applied InsertStmt at %s" ctx.top_func_name
+  | _ -> failwith "InsertStmt: Incorrect parent type"
+
+let apply_delete_stmt ctx stmt donee =
+  Logger.info "Applying DeleteStmt...";
+  is_patched := false;
+  let vis = new stmtDeleteVisitor stmt in
+  ignore (Cil.visitCilFile vis donee);
+  if not !is_patched then Logger.info "failed to apply DeleteStmt"
+  else Logger.info "Successfully applied DeleteStmt at %s" ctx.D.top_func_name
+
+let apply_update_exp conc_ctx abs_ctx from_exp to_exp donee =
+  Logger.info "Applying UpdateExp...";
+  let parent = List.hd conc_ctx.D.root_path in
+  let target_func = abs_ctx.AbsDiff.func_name in
+  is_patched := false;
+  match parent with
+  | Fun _ -> failwith "UpdateExp: not implemented"
+  | Stmt s ->
+      let vis = new expUpdateVisitor target_func s from_exp to_exp in
+      ignore (Cil.visitCilFile vis donee);
+      if not !is_patched then Logger.warn "failed to apply UpdateExp"
+      else Logger.info "Successfully applied UpdateExp at %s" target_func
+  | _ -> failwith "UpdateExp: Incorrect parent type"
+
 let apply_action diff donee action =
   match (action, diff) with
-  | D.InsertStmt (ctx, stmt), AbsDiff.SInsertStmt _ -> (
-      Logger.info "Applying InsertStmt...";
-      is_patched := false;
-      let parent = List.hd ctx.D.root_path in
-      match parent with
-      | Fun func_name ->
-          let patch_bound = paths2stmts ctx.D.patch_bound in
-          let vis = new stmtInsertVisitorUnderFun func_name patch_bound stmt in
-          ignore (Cil.visitCilFile vis donee);
-          if not !is_patched then Logger.warn "failed to apply InsertStmt"
-          else Logger.info "Successfully applied InsertStmt"
-      | Stmt s ->
-          let patch_bound = paths2stmts ctx.D.patch_bound in
-          let vis =
-            new stmtInsertVisitorUnderStmt ctx.top_func_name s patch_bound stmt
-          in
-          ignore (Cil.visitCilFile vis donee);
-          if not !is_patched then Logger.warn "failed to apply InsertStmt"
-          else Logger.info "Successfully applied InsertStmt"
-      | _ -> failwith "InsertStmt: Incorrect parent type")
-  | DeleteStmt (_, stmt), _ ->
-      Logger.info "Applying DeleteStmt...";
-      is_patched := false;
-      let vis = new stmtDeleteVisitor stmt in
-      ignore (Cil.visitCilFile vis donee);
-      if not !is_patched then Logger.info "failed to apply DeleteStmt"
-      else Logger.info "Successfully applied DeleteStmt"
-  | UpdateExp (ctx, from_exp, to_exp), AbsDiff.SUpdateExp (context, _, _) -> (
-      Logger.info "Applying UpdateExp...";
-      let parent = List.hd ctx.D.root_path in
-      let target_func = context.AbsDiff.func_name in
-      is_patched := false;
-      match parent with
-      | Fun _ -> failwith "UpdateExp: not implemented"
-      | Stmt s ->
-          let vis = new expUpdateVisitor target_func s from_exp to_exp in
-          ignore (Cil.visitCilFile vis donee);
-          if not !is_patched then Logger.warn "failed to apply UpdateExp"
-          else Logger.info "Successfully applied UpdateExp"
-      | _ -> failwith "UpdateExp: Incorrect parent type")
+  | D.InsertStmt (ctx, stmt), AbsDiff.SInsertStmt _ ->
+      apply_insert_stmt ctx stmt donee
+  | DeleteStmt (ctx, stmt), AbsDiff.SDeleteStmt _ ->
+      apply_delete_stmt ctx stmt donee
+  | UpdateExp (conc_ctx, from_exp, to_exp), AbsDiff.SUpdateExp (abs_ctx, _, _)
+    ->
+      apply_update_exp conc_ctx abs_ctx from_exp to_exp donee
   (* | InsertExp (context, exp) ->
          let vis = new expInsertVisitorInstr context exp in
          ignore (Cil.visitCilFile vis donee)

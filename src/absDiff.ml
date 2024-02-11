@@ -683,7 +683,8 @@ and match_assume_id cfg loc cond =
     (fun k v acc ->
       match k with
       | Maps.CfgNode.CAssume (_, ccond, cloc) ->
-          if eq_line loc cloc && Ast.s_exp cond |> H.subset ccond then v :: acc
+          if eq_line loc cloc && Ast.s_exp cond |> String.equal ccond then
+            v :: acc
           else acc
       | _ -> acc)
     cfg []
