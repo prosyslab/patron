@@ -399,10 +399,13 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
     if Option.is_some status then
       Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
     L.info "Matching with %s is done" target_alarm;
+    let patch_parent_lst =
+      extract_parent diff buggy_maps.Maps.ast_map |> List.map ~f:fst
+    in
     let ef =
       EditFunction.translate ast diff
         (Filename.concat out_dir (target_alarm ^ "_sol.map"))
-        target_maps
+        target_maps patch_parent_lst parent_facts
     in
     L.info "Applying patch on the target file ...";
     let patch_file = Patch.apply diff ast ef in
