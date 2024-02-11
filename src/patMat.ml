@@ -328,8 +328,22 @@ let compute_ast_pattern ast_facts ast_node_lst parent_of_patch patch_func maps
   in
   mk_ast_bug_pattern ast_facts node_map solution
 
-let need_ast_pattern diff =
-  match List.hd_exn diff with AbsDiff.SUpdateExp _ -> false | _ -> true
+let need_ast_pattern = function
+  | AbsDiff.SUpdateExp _ | SInsertExp _ | SDeleteExp _ | SUpdateLval _
+  | SInsertLval _ | SDeleteLval _ ->
+      false
+  | _ -> true
+
+let find_eq_rel ast_facts patch_node =
+  let patch_node = Chc.Elt.FDNumeral ("AstNode-" ^ patch_node) in
+  let ast_fact_lst = Chc.to_list ast_facts in
+  List.find_exn
+    ~f:(fun fact ->
+      match fact with
+      | Chc.Elt.FuncApply ("EqNode", [ _; p ]) ->
+          if Chc.Elt.equal patch_node p then true else false
+      | _ -> false)
+    ast_fact_lst
 
 let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
     maps diff ast =
@@ -342,14 +356,14 @@ let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
     failwith "abstract_bug_pattern: no AST nodes corresponding CFG nodes found";
   let parents = extract_parent diff maps.Maps.ast_map in
   let smallest_ast_patterns =
-    List.fold_left ~init:[]
-      ~f:(fun acc (patch_node, patch_func) ->
-        if need_ast_pattern diff |> not || String.is_empty patch_node then acc
-        else
+    List.fold2_exn ~init:[]
+      ~f:(fun acc (patch_node, patch_func) action ->
+        if need_ast_pattern action then
           compute_ast_pattern ast_facts ast_node_lst patch_node patch_func maps
             ast
-          @ acc)
-      parents
+          @ acc
+        else find_eq_rel ast_facts patch_node :: acc)
+      parents diff
   in
   let errtrace =
     Chc.Elt.FuncApply

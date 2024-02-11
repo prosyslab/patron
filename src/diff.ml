@@ -78,9 +78,9 @@ let pp_ctx fmt ctx =
   F.fprintf fmt "%a\n" Ast.pp_path ctx.root_path;
   F.fprintf fmt "-----------------------------------------\n";
   let before, after = ctx.patch_bound in
-  F.fprintf fmt "Before: %a\n" Ast.pp_path before;
+  F.fprintf fmt "Before: %a\n" Ast.pp_path (List.rev before);
   F.fprintf fmt "-----------------------------------------\n";
-  F.fprintf fmt "After: %a\n" Ast.pp_path after;
+  F.fprintf fmt "After: %a\n" Ast.pp_path (List.rev after);
   F.fprintf fmt "-----------------------------------------\n"
 
 let pp_diff fmt action =
@@ -178,7 +178,7 @@ let search_parent_sibs_fun parent_stmt func =
     match stmt_lst with
     | [] -> ([], [])
     | hd :: tl ->
-        if Ast.eq_stmt parent_stmt.Cil.skind hd.Cil.skind then (List.rev acc, tl)
+        if Ast.eq_stmt parent_stmt.Cil.skind hd.Cil.skind then (acc, tl)
         else aux parent_stmt tl (hd :: acc)
   in
   let ast = Ast.get_buggy_ast () in
@@ -190,7 +190,7 @@ let search_parent_sibs_glob parent_stmt glob =
     match stmt_lst with
     | [] -> ([], [])
     | hd :: tl ->
-        if Ast.eq_stmt parent_stmt.Cil.skind hd.Cil.skind then (List.rev acc, tl)
+        if Ast.eq_stmt parent_stmt.Cil.skind hd.Cil.skind then (acc, tl)
         else aux parent_stmt tl (hd :: acc)
   in
   match glob with
@@ -202,7 +202,7 @@ let search_parent_sibs_stmt parent_stmt stmt =
     match stmt_lst with
     | [] -> ([], [])
     | hd :: tl ->
-        if Ast.eq_stmt parent_stmt.Cil.skind hd.Cil.skind then (List.rev acc, tl)
+        if Ast.eq_stmt parent_stmt.Cil.skind hd.Cil.skind then (acc, tl)
         else aux parent_stmt tl (hd :: acc)
   in
   match stmt.Cil.skind with

@@ -3,6 +3,8 @@ module D = Diff
 module EF = EditFunction
 module H = Utils
 
+let is_patched = ref false
+
 (* let check_parent parent instr =
    match parent with
    | D.CilElement.EStmt s -> (
@@ -178,10 +180,11 @@ class stmtInsertVisitorUnderStmt target_func parent patch_bw stmt =
     inherit Cil.nopCilVisitor
 
     method! vfunc (f : Cil.fundec) =
-      if f.svar.vname = target_func then
+      if f.svar.vname = target_func then (
         let stmts = f.sbody.bstmts in
         let new_stmts = iter_body target_func stmts parent patch_bw stmt in
-        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
+        is_patched := true;
+        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } })
       else DoChildren
   end
 
@@ -190,11 +193,12 @@ class stmtInsertVisitorUnderFun target_func patch_bw stmt =
     inherit Cil.nopCilVisitor
 
     method! vfunc (f : Cil.fundec) =
-      if f.svar.vname = target_func then
+      if f.svar.vname = target_func then (
         let stmts = f.sbody.bstmts in
         let before, after = patch_bw in
         let new_stmts = insert_patch target_func stmt stmts before after in
-        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
+        is_patched := true;
+        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } })
       else DoChildren
   end
 
@@ -203,8 +207,9 @@ class stmtDeleteVisitor stmt =
     inherit Cil.nopCilVisitor
 
     method! vblock (b : Cil.block) =
-      if check_stmt stmt b.bstmts then
-        ChangeTo { b with bstmts = delete_elt_stmt stmt b.bstmts }
+      if check_stmt stmt b.bstmts then (
+        is_patched := true;
+        ChangeTo { b with bstmts = delete_elt_stmt stmt b.bstmts })
       else DoChildren
   end
 
@@ -213,10 +218,11 @@ class expUpdateVisitor target_func parent from_exp to_exp =
     inherit Cil.nopCilVisitor
 
     method! vfunc (f : Cil.fundec) =
-      if f.svar.vname = target_func then
+      if f.svar.vname = target_func then (
         let stmts = f.sbody.bstmts in
         let new_stmts = replace_exp_in_stmts stmts parent from_exp to_exp in
-        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
+        is_patched := true;
+        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } })
       else DoChildren
   end
 
@@ -237,30 +243,44 @@ let paths2stmts (path1, path2) = (Ast.path2stmts path1, Ast.path2stmts path2)
 let apply_action diff donee action =
   match (action, diff) with
   | D.InsertStmt (ctx, stmt), AbsDiff.SInsertStmt _ -> (
+      Logger.info "Applying InsertStmt...";
+      is_patched := false;
       let parent = List.hd ctx.D.root_path in
       match parent with
       | Fun func_name ->
           let patch_bound = paths2stmts ctx.D.patch_bound in
           let vis = new stmtInsertVisitorUnderFun func_name patch_bound stmt in
-          ignore (Cil.visitCilFile vis donee)
+          ignore (Cil.visitCilFile vis donee);
+          if not !is_patched then Logger.warn "failed to apply InsertStmt"
+          else Logger.info "Successfully applied InsertStmt"
       | Stmt s ->
           let patch_bound = paths2stmts ctx.D.patch_bound in
           let vis =
             new stmtInsertVisitorUnderStmt ctx.top_func_name s patch_bound stmt
           in
-          ignore (Cil.visitCilFile vis donee)
+          ignore (Cil.visitCilFile vis donee);
+          if not !is_patched then Logger.warn "failed to apply InsertStmt"
+          else Logger.info "Successfully applied InsertStmt"
       | _ -> failwith "InsertStmt: Incorrect parent type")
   | DeleteStmt (_, stmt), _ ->
+      Logger.info "Applying DeleteStmt...";
+      is_patched := false;
       let vis = new stmtDeleteVisitor stmt in
-      ignore (Cil.visitCilFile vis donee)
+      ignore (Cil.visitCilFile vis donee);
+      if not !is_patched then Logger.info "failed to apply DeleteStmt"
+      else Logger.info "Successfully applied DeleteStmt"
   | UpdateExp (ctx, from_exp, to_exp), AbsDiff.SUpdateExp (context, _, _) -> (
+      Logger.info "Applying UpdateExp...";
       let parent = List.hd ctx.D.root_path in
       let target_func = context.AbsDiff.func_name in
+      is_patched := false;
       match parent with
       | Fun _ -> failwith "UpdateExp: not implemented"
       | Stmt s ->
           let vis = new expUpdateVisitor target_func s from_exp to_exp in
-          ignore (Cil.visitCilFile vis donee)
+          ignore (Cil.visitCilFile vis donee);
+          if not !is_patched then Logger.warn "failed to apply UpdateExp"
+          else Logger.info "Successfully applied UpdateExp"
       | _ -> failwith "UpdateExp: Incorrect parent type")
   (* | InsertExp (context, exp) ->
          let vis = new expInsertVisitorInstr context exp in
@@ -280,10 +300,11 @@ let apply_action diff donee action =
      | UpdateLval (context, _from, _to) ->
          let vis = new lvalUpdateVisitorInstr context _from _to in
          ignore (Cil.visitCilFile vis donee) *)
-  | _ -> failwith "Not implemented"
+  | _ -> failwith "apply_action:Not implemented"
 
 let apply abs_diff donee edit_function =
+  Logger.info "%d actions to apply" (List.length edit_function);
   List.iter2
     (fun action diff -> apply_action diff donee action)
-    edit_function abs_diff;
+    edit_function (List.rev abs_diff);
   donee

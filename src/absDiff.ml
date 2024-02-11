@@ -1033,7 +1033,13 @@ let extract_ctx_nodes sdiff =
     (fun acc sd ->
       let ctx = get_ctx sd in
       let b, a = ctx.patch_between in
-      [ List.rev b |> List.hd; List.hd a ] @ acc)
+      let right_before = try Some (List.rev b |> List.hd) with _ -> None in
+      let right_after = try Some (List.hd a) with _ -> None in
+      ([ right_before; right_after ]
+      |> List.fold_left
+           (fun acc x -> if Option.is_none x then acc else Option.get x :: acc)
+           [])
+      @ acc)
     [] sdiff
 
 let filter_exps_by_func cfg ids func =
@@ -1170,8 +1176,10 @@ let mk_ast_patch_bw top_func_name root_path bw =
          (fun (acc_b, acc_a) (b, a) -> (b @ acc_b, acc_a @ a))
          ([], [])
   in
-  let b3, a3 = bw |> fun (b, a) -> (Ast.path2stmts b, Ast.path2stmts a) in
-  let before = b1 @ b2 @ b3 |> Ast.stmts2path in
+  let b3, a3 =
+    bw |> fun (b, a) -> (Ast.path2stmts b |> List.rev, Ast.path2stmts a)
+  in
+  let before = List.rev b1 @ b2 @ b3 |> Ast.stmts2path in
   let after = a3 @ a2 @ a1 |> Ast.stmts2path in
   (before, after)
 
