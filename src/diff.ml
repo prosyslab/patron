@@ -12,20 +12,20 @@ type diff_env = {
   patch_depth : int;
   parent_branch : parent_branch list;
   prev_sibling : Ast.t;
-  top_func_name : string;
 }
 
 type context = {
   root_path : Ast.path;
   patch_bound : Ast.path * Ast.path;
   sibling_idx : int;
+  top_func_name : string;
 }
 
-let mk_context root_path before after sibling_idx =
-  { root_path; patch_bound = (before, after); sibling_idx }
+let mk_context root_path before after sibling_idx top_func_name =
+  { root_path; patch_bound = (before, after); sibling_idx; top_func_name }
 
-let mk_diff_env patch_depth parent_branch prev_sibling func =
-  { patch_depth; parent_branch; prev_sibling; top_func_name = func }
+let mk_diff_env patch_depth parent_branch prev_sibling =
+  { patch_depth; parent_branch; prev_sibling }
 
 let extract_func_name root_path =
   List.fold_left
@@ -69,11 +69,11 @@ let get_ctx diff =
 
 let pp_env fmt env =
   F.fprintf fmt "Depth: %d\n" env.patch_depth;
-  F.fprintf fmt "Previous Sibling Node: \n%s\n" (Ast.s_node env.prev_sibling);
-  F.fprintf fmt "Parent Function: %s\n" env.top_func_name
+  F.fprintf fmt "Previous Sibling Node: \n%s\n" (Ast.s_node env.prev_sibling)
 
 let pp_ctx fmt ctx =
   F.fprintf fmt "Context Summary:\n";
+  F.fprintf fmt "Parent Function: %s\n" ctx.top_func_name;
   F.fprintf fmt "parents(bottom_up) -> \n";
   F.fprintf fmt "%a\n" Ast.pp_path ctx.root_path;
   F.fprintf fmt "-----------------------------------------\n";
@@ -233,11 +233,11 @@ let rec mk_diff_exp code parent depth exp_lst left_sibs right_sibs =
   | hd :: tl -> (
       let prev_node = List.hd left_sibs |> Ast.exp2ast in
       let func = extract_func_name parent in
-      let env = mk_diff_env depth [] prev_node func in
+      let env = mk_diff_env depth [] prev_node in
       let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
       let context =
         mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
-          (List.length l_sibs)
+          (List.length l_sibs) func
       in
       match code with
       | Insertion ->
@@ -274,11 +274,11 @@ let get_followup_diff_exp code parent depth exp1 exp2 expl1 expl2 left_sibs =
   match code with
   | Update ->
       let func = extract_func_name parent in
-      let env = mk_diff_env depth [] prev_node func in
+      let env = mk_diff_env depth [] prev_node in
       let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
       let ctx =
         mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
-          (List.length l_sibs)
+          (List.length l_sibs) func
       in
       [ (UpdateExp (ctx, exp1, exp2), env) ]
   | _ ->
@@ -287,11 +287,11 @@ let get_followup_diff_exp code parent depth exp1 exp2 expl1 expl2 left_sibs =
         let deleted_exps = find_eq_exp_in_tl depth exp2 expl1 [] in
         if List.is_empty deleted_exps then
           let func = extract_func_name parent in
-          let env = mk_diff_env depth [] prev_node func in
+          let env = mk_diff_env depth [] prev_node in
           let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
           let ctx =
             mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
-              (List.length l_sibs)
+              (List.length l_sibs) func
           in
           [ (UpdateExp (ctx, exp1, exp2), env) ]
         else
@@ -339,26 +339,27 @@ and fold_param2 parent depth el1 el2 left_sibs =
       else
         es @ fold_continue_point_param parent depth hd1 hd2 tl1 tl2 es left_sibs
   | [], hd :: tl ->
-      let env = mk_diff_env depth [] prev_node func in
+      let env = mk_diff_env depth [] prev_node in
       let context =
         mk_context parent (Ast.exps2path left_sibs) [] (List.length left_sibs)
+          func
       in
       (InsertExp (context, hd), env) :: fold_param2 parent depth [] tl left_sibs
   | hd :: tl, [] ->
-      let env = mk_diff_env depth [] prev_node func in
+      let env = mk_diff_env depth [] prev_node in
       let context =
         mk_context parent (Ast.exps2path left_sibs) (Ast.exps2path tl)
-          (List.length left_sibs)
+          (List.length left_sibs) func
       in
       (DeleteExp (context, hd), env) :: fold_param2 parent depth tl [] left_sibs
 
 let extract_call parent depth lv1 e1 el1 lv2 e2 el2 =
   let func = extract_func_name parent in
-  let env = mk_diff_env depth [] Ast.NotApplicable func in
+  let env = mk_diff_env depth [] Ast.NotApplicable in
   let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
   let ctx =
     mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
-      (List.length l_sibs)
+      (List.length l_sibs) func
   in
   let lval_diff =
     match (lv1, lv2) with
@@ -376,11 +377,11 @@ let extract_call parent depth lv1 e1 el1 lv2 e2 el2 =
 
 let extract_set parent depth lv1 e1 lv2 e2 =
   let func = extract_func_name parent in
-  let env = mk_diff_env depth [] Ast.NotApplicable func in
+  let env = mk_diff_env depth [] Ast.NotApplicable in
   let l_sibs, r_sibs = search_parent_sibs_of_exp parent in
   let ctx =
     mk_context parent (Ast.stmts2path l_sibs) (Ast.stmts2path r_sibs)
-      (List.length l_sibs)
+      (List.length l_sibs) func
   in
   let lval_diff =
     if Ast.eq_lval lv1 lv2 then [] else [ (UpdateLval (ctx, lv1, lv2), env) ]
@@ -420,10 +421,10 @@ let rec mk_diff_stmt code parent prnt_brnch depth stmt_lst acc_left acc_right =
   | [] -> []
   | hd :: tl -> (
       let func = extract_func_name parent in
-      let env = mk_diff_env depth prnt_brnch prev_node func in
+      let env = mk_diff_env depth prnt_brnch prev_node in
       let ctx =
         mk_context parent (Ast.stmts2path acc_left) (Ast.stmts2path acc_right)
-          (List.length acc_left)
+          (List.length acc_left) func
       in
       let rest_diff =
         mk_diff_stmt code parent prnt_brnch depth tl acc_left acc_right
@@ -460,10 +461,10 @@ and get_followup_diff_stmt parent prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs =
   if List.is_empty inserted_stmts then
     let deleted_stmts = find_eq_stmt_in_tl depth hd2 tl1 [] in
     if List.is_empty deleted_stmts then
-      let env = mk_diff_env depth prnt_brnch prev_node func in
+      let env = mk_diff_env depth prnt_brnch prev_node in
       let ctx =
         mk_context parent (Ast.stmts2path left_sibs) (Ast.stmts2path tl1)
-          (List.length left_sibs)
+          (List.length left_sibs) func
       in
       [ (InsertStmt (ctx, hd2), env); (DeleteStmt (ctx, hd1), env) ]
     else
@@ -560,17 +561,18 @@ and fold_stmts2 parent prnt_brnch depth stmts1 stmts2 left_sibs =
       decide_next_step_glob parent prnt_brnch depth es s1 s2 ss1 ss2
         updated_left_sibs left_sibs
   | [], s2 :: ss2 ->
-      let env = mk_diff_env depth prnt_brnch prev_node func in
+      let env = mk_diff_env depth prnt_brnch prev_node in
       let ctx =
         mk_context parent (Ast.stmts2path left_sibs) [] (List.length left_sibs)
+          func
       in
       (InsertStmt (ctx, s2), env)
       :: fold_stmts2 parent prnt_brnch depth [] ss2 left_sibs
   | s1 :: ss1, [] ->
-      let env = mk_diff_env depth prnt_brnch prev_node func in
+      let env = mk_diff_env depth prnt_brnch prev_node in
       let ctx =
         mk_context parent (Ast.stmts2path left_sibs) (Ast.stmts2path ss1)
-          (List.length left_sibs)
+          (List.length left_sibs) func
       in
       (DeleteStmt (ctx, s1), env)
       :: fold_stmts2 parent prnt_brnch depth ss1 [] left_sibs
@@ -609,10 +611,10 @@ let rec mk_diff_glob code depth glob_lst acc_left acc_right =
   | [] -> []
   | hd :: tl -> (
       let parent = [ Ast.NotApplicable ] in
-      let env = mk_diff_env depth [] prev_node "None" in
+      let env = mk_diff_env depth [] prev_node in
       let ctx =
         mk_context parent (Ast.globs2path acc_left) (Ast.globs2path acc_right)
-          (List.length acc_left)
+          (List.length acc_left) "None"
       in
       match code with
       | Insertion ->
@@ -648,10 +650,10 @@ and get_followup_diff_glob depth glob1 glob2 tl1 tl2 left_sibs =
     let deleted_globs = find_eq_glob_in_tl glob2 tl1 [] in
     if List.is_empty deleted_globs then
       let parent = [ Ast.NotApplicable ] in
-      let env = mk_diff_env depth [] prev_node "None" in
+      let env = mk_diff_env depth [] prev_node in
       let ctx =
         mk_context parent (Ast.globs2path left_sibs) (Ast.globs2path tl1)
-          (List.length left_sibs)
+          (List.length left_sibs) "None"
       in
       [ (InsertGlobal (ctx, glob2), env); (DeleteGlobal (ctx, glob1), env) ]
     else
@@ -709,17 +711,18 @@ and fold_globals2 depth doner_gobals patch_globals left_sibs =
         left_sibs
   | [], hd2 :: tl2 ->
       let parent = [] in
-      let env = mk_diff_env depth [] prev_node "None" in
+      let env = mk_diff_env depth [] prev_node in
       let ctx =
         mk_context parent (Ast.globs2path left_sibs) [] (List.length left_sibs)
+          "None"
       in
       (InsertGlobal (ctx, hd2), env) :: fold_globals2 depth [] tl2 left_sibs
   | hd1 :: tl1, [] ->
       let parent = [] in
-      let env = mk_diff_env depth [] prev_node "None" in
+      let env = mk_diff_env depth [] prev_node in
       let ctx =
         mk_context parent (Ast.globs2path left_sibs) (Ast.globs2path tl1)
-          (List.length left_sibs)
+          (List.length left_sibs) "None"
       in
       (DeleteGlobal (ctx, hd1), env) :: fold_globals2 depth tl1 [] left_sibs
 

@@ -176,7 +176,9 @@ let extract_parent abs_diff (ast_map : (Ast.t, int) Hashtbl.t) =
   List.fold_left ~init:[]
     ~f:(fun acc (p, f) ->
       match p with
-      | AbsDiff.AbsAst.AbsGlob _ -> ("", f) :: acc
+      | AbsDiff.AbsAst.AbsGlob (_, g) ->
+          (Ast.glob2ast (Some g) |> Hashtbl.find ast_map |> string_of_int, f)
+          :: acc
       | AbsStmt (_, s) ->
           (Ast.stmt2ast (Some s) |> Hashtbl.find ast_map |> string_of_int, f)
           :: acc
@@ -362,7 +364,7 @@ let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
     pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton )
 
 let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
-    out_dir patch_ids diff =
+    out_dir diff =
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
@@ -380,21 +382,20 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
         src snk pattern
     in
     Maps.dump target_alarm target_maps out_dir;
-    if Option.is_some status then (
+    if Option.is_some status then
       Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
-      L.info "Matching with %s is done" target_alarm;
-      let ef =
-        EditFunction.translate ast diff
-          (Filename.concat out_dir (target_alarm ^ "_sol.map"))
-          target_maps patch_ids
-      in
-      L.info "Applying patch on the target file ...";
-      let patch_file = Patch.apply diff ast ef in
-      let out_file = String.concat [ out_dir; "/patch_"; target_alarm; ".c" ] in
-      let out_chan = Out_channel.create out_file in
-      Cil.dumpFile Cil.defaultCilPrinter out_chan "patch.c" patch_file;
-      L.info "Patch for %s is done, written at %s" target_alarm out_file)
-    else L.info "%s is Not Matched" target_alarm
+    L.info "Matching with %s is done" target_alarm;
+    let ef =
+      EditFunction.translate ast diff
+        (Filename.concat out_dir (target_alarm ^ "_sol.map"))
+        target_maps
+    in
+    L.info "Applying patch on the target file ...";
+    let patch_file = Patch.apply diff ast ef in
+    let out_file = String.concat [ out_dir; "/patch_"; target_alarm; ".c" ] in
+    let out_chan = Out_channel.create out_file in
+    Cil.dumpFile Cil.defaultCilPrinter out_chan "patch.c" patch_file;
+    L.info "Patch for %s is done, written at %s" target_alarm out_file
   with Parser.Not_impl_alarm_comps -> L.info "PASS"
 
 let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
@@ -404,12 +405,12 @@ let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
        (Filename.concat donee_dir ("sparrow-out/taint/datalog/" ^ target_alarm))
 
 let match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps buggy_ast
-    buggy_cfg pattern out_dir patch_ids diff =
+    buggy_cfg pattern out_dir diff =
   Sys.readdir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
          if is_new_alarm buggy_dir true_alarm donee_dir ta then
            match_bug_for_one_prj pattern buggy_maps donee_dir ta buggy_ast
-             buggy_cfg out_dir patch_ids diff)
+             buggy_cfg out_dir diff)
 
 let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     out_dir =
@@ -418,7 +419,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   let buggy_ast = Parser.parse_ast buggy_dir inline_funcs in
   let patch_ast = Parser.parse_ast patch_dir inline_funcs in
   let donee_ast =
-    if String.equal buggy_dir donee_dir then patch_ast
+    if String.equal (buggy_dir ^ "/bug") donee_dir then patch_ast
     else Parser.parse_ast donee_dir inline_funcs
   in
   L.info "Constructing AST diff...";
@@ -447,9 +448,6 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   if write_out then (
     L.info "Writing out the edit script...";
     AbsDiff.to_json abs_diff out_dir);
-  let patch_node_ids =
-    extract_parent abs_diff buggy_maps.Maps.ast_map |> List.map ~f:fst
-  in
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern_in_numeral, pattern =
     abstract_bug_pattern du_facts' parent_facts' dug patch_comps src snk
@@ -470,5 +468,5 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy_numer" buggy_maps out_dir;
   match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps donee_ast
-    buggy_cfg pattern out_dir patch_node_ids abs_diff;
+    buggy_cfg pattern out_dir abs_diff;
   L.info "Done."

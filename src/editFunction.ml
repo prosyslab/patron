@@ -116,10 +116,12 @@ let rec translate_lval ast model_map exp_map slval =
             let vis = new expVisitor new_exp_str in
             ignore (Cil.visitCilFile vis ast);
             match List.hd !swap_exp with Cil.Lval lval -> lval | _ -> cil)
-        | A.AbsAst.Lval (A.AbsAst.SMem _, _), (Cil.Mem _, _) -> (
-            let vis = new expVisitor new_exp_str in
-            ignore (Cil.visitCilFile vis ast);
-            match List.hd !swap_exp with Cil.Lval lval -> lval | _ -> cil)
+        | A.AbsAst.Lval (A.AbsAst.SMem _, _), (Cil.Mem _, _) ->
+            (* TODO: add lval_map and support this  *)
+            (* let vis = new expVisitor new_exp_str in
+                 ignore (Cil.visitCilFile vis ast);
+                 match List.hd !swap_exp with Cil.Lval lval -> lval | _ -> *)
+            cil
         | _ -> failwith "translate_lval: not implemented"
       else cil
   | _ -> failwith "translate_lval: translation target is not an lvalue"
@@ -220,7 +222,7 @@ let rec translate_stmt ast model_map cfg exp_map stmt =
                 (Cil.Instr
                    [ Cil.Call (Some lval, fun_exp, args, Cil.locUnknown) ])
           | A.AbsAst.SCall (None, f, args), Cil.Call _ ->
-              let fun_exp = translate_exp ast model_map exp_map f in
+              let fun_exp = AbsDiff.get_original_exp f in
               let args =
                 List.fold_left
                   (fun acc arg ->
@@ -253,9 +255,11 @@ let compute_patch_loc (before, after) model_map node_map ast_map_rev =
       else
         List.fold_left
           (fun acc x ->
-            Hashtbl.find node_map x |> fun x ->
-            let x_int = int_of_string x in
-            (Hashtbl.find ast_map_rev x_int |> Ast.ast2stmt) :: acc)
+            try
+              Hashtbl.find node_map x |> fun x ->
+              let x_int = int_of_string x in
+              (Hashtbl.find ast_map_rev x_int |> Ast.ast2stmt) :: acc
+            with Not_found -> acc)
           [] x
         |> Ast.stmts2path
   in
@@ -280,7 +284,48 @@ let find_patch_fun diff model =
     model
   |> snd |> get_func
 
-let translate ast abs_diff model_path maps patch_node_ids =
+let extract_id_from_term term =
+  match term with
+  | Chc.Elt.FDNumeral id ->
+      Str.global_replace (Str.regexp "AstNode-") "" id |> int_of_string
+  | _ -> failwith "extract_id_from_term: unexpected type"
+
+let find_func_name_of_stmt stmt_id parent_facts ast_map =
+  let facts = Chc.to_list parent_facts in
+  let rec aux id =
+    List.fold_left
+      (fun acc fact ->
+        match fact with
+        | Chc.Elt.FuncApply ("AstParent", [ parent_term; child_term ]) ->
+            if extract_id_from_term child_term = id then
+              let parent_id = extract_id_from_term parent_term in
+              let parent_node = Hashtbl.find ast_map parent_id in
+              if Ast.is_glob parent_node || Ast.is_fun parent_node then
+                parent_node :: acc
+              else aux parent_id @ acc
+            else acc
+        | _ -> acc)
+      [] facts
+  in
+  aux stmt_id |> List.hd |> fun g ->
+  match g with
+  | Ast.Global g -> Ast.glob2func_name g
+  | Ast.Fun f -> f
+  | _ -> failwith "find_func_name_of_stmt: unexpected type"
+
+let get_parent_of_stmt parent_id model_map ast_map parent_facts =
+  let new_patch_id = get_new_patch_id parent_id model_map in
+  let translated_stmt = Hashtbl.find ast_map new_patch_id in
+  let func_name =
+    match translated_stmt with
+    | Ast.Global g -> Ast.glob2func_name g
+    | Ast.Fun f -> f
+    | Ast.Stmt _ -> find_func_name_of_stmt new_patch_id parent_facts ast_map
+    | _ -> failwith "get_parent_of_stmt: unexpected type"
+  in
+  (translated_stmt, func_name)
+
+let translate ast abs_diff model_path maps patch_node_ids parent_facts =
   Logger.info "Translating patch...";
   let cfg = maps.Maps.cfg_map in
   let exp_map = maps.Maps.exp_map in
@@ -293,39 +338,36 @@ let translate ast abs_diff model_path maps patch_node_ids =
     (fun acc diff parent_id ->
       match diff with
       | A.SInsertStmt (ctx, stmt) ->
-          let new_patch_id =
-            if String.equal parent_id "" then -1
-            else get_new_patch_id parent_id model_map
-          in
-          let new_parent_node =
-            if new_patch_id = -1 then
-              let translated_func_name = find_patch_fun diff model_map in
-              Ast.Fun translated_func_name
-            else
-              let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
-              translated_stmt
+          let new_parent_node, new_func_name =
+            get_parent_of_stmt parent_id model_map ast_map_rev parent_facts
           in
           let before, after =
             compute_patch_loc ctx.A.patch_bound model_map node_map ast_map_rev
           in
           let ctx =
             D.mk_context [ new_parent_node ] before after ctx.A.sibling_idx
+              new_func_name
           in
           D.InsertStmt (ctx, translate_stmt ast model_map cfg exp_map stmt)
           :: acc
       | SDeleteStmt (ctx, stmt) ->
+          let new_parent_node, new_func_name =
+            get_parent_of_stmt parent_id model_map ast_map_rev parent_facts
+          in
           let ctx =
-            D.mk_context [ Ast.NotApplicable ] [] [] ctx.A.sibling_idx
+            D.mk_context [ new_parent_node ] [] [] ctx.A.sibling_idx
+              new_func_name
           in
           let translated_stmt = translate_stmt ast model_map cfg exp_map stmt in
           D.DeleteStmt (ctx, translated_stmt) :: acc
       | SUpdateExp (ctx, e1, e2) ->
-          let new_patch_id = get_new_patch_id parent_id model_map in
-          let new_parent_node =
-            let translated_stmt = Hashtbl.find ast_map_rev new_patch_id in
-            translated_stmt
+          let new_parent_node, new_func_name =
+            get_parent_of_stmt parent_id model_map ast_map_rev parent_facts
           in
-          let ctx = D.mk_context [ new_parent_node ] [] [] ctx.A.sibling_idx in
+          let ctx =
+            D.mk_context [ new_parent_node ] [] [] ctx.A.sibling_idx
+              new_func_name
+          in
           let translated_e1 = translate_exp ast model_map exp_map e1 in
           let translated_e2 = translate_exp ast model_map exp_map e2 in
           D.UpdateExp (ctx, translated_e1, translated_e2) :: acc

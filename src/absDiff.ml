@@ -97,6 +97,21 @@ module AbsAst = struct
   and abs_global = SGNull | SGFun | GVar of string * string
   and abs_node = { node : t; id : string; literal : string }
 
+  let get_original_exp node =
+    match node.node with
+    | AbsExp (_, e) -> e
+    | _ -> failwith "get_original_exp: not an expression"
+
+  let get_original_lv node =
+    match node.node with
+    | AbsLval (_, l) -> l
+    | _ -> failwith "get_original_lv: not a lval"
+
+  let get_original_stmt node =
+    match node.node with
+    | AbsStmt (_, s) -> s
+    | _ -> failwith "get_original_stmt: not a statement"
+
   let rec pp_node fmt e =
     match e.node with
     | Null -> Format.fprintf fmt "SNull"
@@ -681,7 +696,6 @@ and match_loop_id cfg loc =
       | _ -> acc)
     cfg []
 
-(* 이건 그냥 디유에 있는지만 체크하고 익스프레션은 먼저 매개변수로 부모(자기자신) 받고, 자기자신부터 rev_cfg에서 exp뽑아서 확인하고 없으면 가까운데부터 디유에서 뽑아가면서 cfg_rev에 대보는 식으로 구현 *)
 and match_stmt_id cfg s =
   (*TODO: tighten the string match of stmt by subset*)
   match s with
@@ -981,7 +995,7 @@ let get_parent_of_exp_sibs (left_sibs, right_sibs) patch_node =
   then if String.equal patch_node.id "None" then [] else [ patch_node.id ]
   else []
 
-let mk_abs_ctx ctx env maps du_facts (patch_bw : string list * string list) =
+let mk_abs_ctx ctx maps du_facts (patch_bw : string list * string list) =
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
   let cfg_map = maps.cfg_map in
   let cfg_map_rev = maps.cfg_map |> Utils.reverse_hashtbl in
@@ -1010,7 +1024,7 @@ let mk_abs_ctx ctx env maps du_facts (patch_bw : string list * string list) =
     parent_of_patch = patch_node;
     patch_bound = (s_left_sibs, s_right_sibs);
     patch_between = patch_bw;
-    func_name = env.D.top_func_name;
+    func_name = ctx.D.top_func_name;
     sibling_idx = ctx.D.sibling_idx;
   }
 
@@ -1165,13 +1179,13 @@ let define_abs_diff maps buggy diff du_facts dug src_snk =
   get_gvars buggy;
   let sdiff =
     List.fold_left
-      (fun acc (action, env) ->
+      (fun acc (action, _) ->
         let ctx = D.get_ctx action in
         let ast_patch_bw =
-          mk_ast_patch_bw env.Diff.top_func_name ctx.root_path ctx.patch_bound
+          mk_ast_patch_bw ctx.Diff.top_func_name ctx.root_path ctx.patch_bound
         in
         let du_patch_bw = mk_du_patch_bw dug src_snk ast_patch_bw maps in
-        let s_context = mk_abs_ctx ctx env maps du_facts du_patch_bw in
+        let s_context = mk_abs_ctx ctx maps du_facts du_patch_bw in
         mk_sdiff du_patch_bw s_context maps action :: acc)
       [] diff
   in

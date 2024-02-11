@@ -317,3 +317,8 @@ let extract_stmts file =
   !cil_stmts
 
 let extract_globs file = file.Cil.globals
+
+let glob2func_name glob =
+  match glob with
+  | Cil.GFun (func_info, _) -> func_info.svar.vname
+  | _ -> failwith "Not a function"

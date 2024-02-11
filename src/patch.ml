@@ -59,39 +59,72 @@ let get_sibling_stmt sibling stmt_list =
   | Ast.Stmt s -> List.find (fun x -> Ast.isom_stmt x s) stmt_list
   | _ -> failwith "get_sibling_stmt: sibling of a stmt must be a stmt"
 
-let insert_patch new_stmt patch_block before after =
-  if before = [] && after = [] then new_stmt :: patch_block
+let insert_patch func new_stmt patch_block before after =
+  let block_size = List.length patch_block in
+  if before = [] && after = [] then patch_block @ [ new_stmt ]
   else if before = [] then
     let after = List.hd after in
-    List.fold_left
-      (fun acc s ->
-        if Utils.eq_stmt_line after.Cil.skind s.Cil.skind then
-          s :: new_stmt :: acc
-        else s :: acc)
-      [] patch_block
-    |> List.rev
+    let new_blk =
+      List.fold_left
+        (fun acc s ->
+          if Utils.eq_stmt_line after.Cil.skind s.Cil.skind then
+            s :: new_stmt :: acc
+          else s :: acc)
+        [] patch_block
+      |> List.rev
+    in
+    if List.length new_blk = block_size then (
+      Logger.info "Could not find the appropriate patch location";
+      Logger.info
+        "Appending the new statement to the end of the block in function %s"
+        func;
+      patch_block @ [ new_stmt ])
+    else (
+      Logger.info "Successfully added patch under function %s" func;
+      new_blk)
   else
     let before = List.rev before |> List.hd in
-    List.fold_left
-      (fun acc s ->
-        if Utils.eq_stmt_line before.Cil.skind s.Cil.skind then
-          new_stmt :: s :: acc
-        else s :: acc)
-      [] patch_block
-    |> List.rev
+    let new_blk =
+      List.fold_left
+        (fun acc s ->
+          if Utils.eq_stmt_line before.Cil.skind s.Cil.skind then
+            new_stmt :: s :: acc
+          else s :: acc)
+        [] patch_block
+      |> List.rev
+    in
+    if List.length new_blk = block_size then (
+      Logger.info "Could not find the appropriate patch location";
+      Logger.info
+        "Appending the new statement to the end of the block in function %s"
+        func;
+      patch_block @ [ new_stmt ])
+    else (
+      Logger.info "Successfully added patch under function %s" func;
+      new_blk)
 
-let iter_body stmts parent patch_bw patch =
+let iter_body func stmts parent patch_bw patch =
   let before, after = patch_bw in
   List.fold_left
     (fun acc x ->
-      match (x.Cil.skind, parent) with
+      match (x.Cil.skind, parent.Cil.skind) with
       | Cil.Loop (b, loc, t1, t2), Cil.Loop (_, loc', _, _) ->
-          if loc.Cil.line = loc'.Cil.line then
-            let new_body = insert_patch patch b.bstmts before after in
+          if loc.Cil.line = loc'.Cil.line || Ast.isom_stmt x parent then
+            let new_body = insert_patch func patch b.bstmts before after in
             let new_block = { b with bstmts = new_body } in
             let new_stmt =
               { x with skind = Cil.Loop (new_block, loc, t1, t2) }
             in
+            new_stmt :: acc
+          else x :: acc
+      | Cil.If (e, b1, b2, loc), Cil.If (_, _, _, loc') ->
+          (* TODO: bring branch info *)
+          if loc.Cil.line = loc'.Cil.line || Ast.isom_stmt x parent then
+            let new_b1 = insert_patch func patch b1.bstmts before after in
+            (* let new_b2 = insert_patch patch b2.bstmts before after in *)
+            let new_block1 = { b1 with bstmts = new_b1 } in
+            (* let new_block2 = { b2 with bstmts = new_b2 } in *)
+            let new_stmt = { x with skind = Cil.If (e, new_block1, b2, loc) } in
             new_stmt :: acc
           else x :: acc
       | _ -> x :: acc)
@@ -147,7 +180,7 @@ class stmtInsertVisitorUnderStmt target_func parent patch_bw stmt =
     method! vfunc (f : Cil.fundec) =
       if f.svar.vname = target_func then
         let stmts = f.sbody.bstmts in
-        let new_stmts = iter_body stmts parent patch_bw stmt in
+        let new_stmts = iter_body target_func stmts parent patch_bw stmt in
         ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
       else DoChildren
   end
@@ -160,7 +193,7 @@ class stmtInsertVisitorUnderFun target_func patch_bw stmt =
       if f.svar.vname = target_func then
         let stmts = f.sbody.bstmts in
         let before, after = patch_bw in
-        let new_stmts = insert_patch stmt stmts before after in
+        let new_stmts = insert_patch target_func stmt stmts before after in
         ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } }
       else DoChildren
   end
@@ -203,9 +236,8 @@ let paths2stmts (path1, path2) = (Ast.path2stmts path1, Ast.path2stmts path2)
 
 let apply_action diff donee action =
   match (action, diff) with
-  | D.InsertStmt (ctx, stmt), AbsDiff.SInsertStmt (context, _) -> (
+  | D.InsertStmt (ctx, stmt), AbsDiff.SInsertStmt _ -> (
       let parent = List.hd ctx.D.root_path in
-      let target_func = context.AbsDiff.func_name in
       match parent with
       | Fun func_name ->
           let patch_bound = paths2stmts ctx.D.patch_bound in
@@ -214,8 +246,7 @@ let apply_action diff donee action =
       | Stmt s ->
           let patch_bound = paths2stmts ctx.D.patch_bound in
           let vis =
-            new stmtInsertVisitorUnderStmt
-              target_func s.Cil.skind patch_bound stmt
+            new stmtInsertVisitorUnderStmt ctx.top_func_name s patch_bound stmt
           in
           ignore (Cil.visitCilFile vis donee)
       | _ -> failwith "InsertStmt: Incorrect parent type")
