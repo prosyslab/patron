@@ -1003,14 +1003,15 @@ let mk_s_sibs patch_bw cfg_rev maps exp_map path facts acc =
   |> filter_nodes (Chc.extract_nodes_in_facts facts_lst maps.Maps.node_map)
 
 let get_parent_of_exp_sibs (left_sibs, right_sibs) patch_node =
-  if
+  if List.is_empty left_sibs && List.is_empty right_sibs then []
+  else if
     try List.hd_exn left_sibs |> fun hd -> Ast.is_exp hd || Ast.is_lv hd
     with _ ->
       List.hd_exn right_sibs |> fun hd -> Ast.is_exp hd || Ast.is_lv hd
   then if String.equal patch_node.id "None" then [] else [ patch_node.id ]
   else []
 
-let mk_abs_ctx ctx maps du_facts (patch_bw : string list * string list) =
+let mk_abs_ctx ctx maps du_facts patch_bw =
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
   let cfg_map = maps.cfg_map in
   let cfg_map_rev = maps.cfg_map |> Utils.reverse_hashtbl in

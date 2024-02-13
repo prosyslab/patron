@@ -366,6 +366,7 @@ let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
       ~f:(fun acc (parent, func) ->
         compute_ast_pattern ast_facts ast_node_lst parent func maps ast @ acc)
       parents
+    |> Stdlib.List.sort_uniq Chc.Elt.compare
   in
   let errtrace =
     Chc.Elt.FuncApply
