@@ -678,7 +678,7 @@ and match_return_id cfg loc =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CReturn1 (_, cloc, _) ->
+      | Maps.CfgNode.CReturn1 (_, cloc, _, _) ->
           if eq_line loc cloc then v :: acc else acc
       | Maps.CfgNode.CReturn2 cloc -> if eq_line loc cloc then v :: acc else acc
       | _ -> acc)
@@ -688,7 +688,7 @@ and match_assume_id cfg loc cond =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CAssume (_, ccond, cloc) ->
+      | Maps.CfgNode.CAssume (_, ccond, cloc, _, _) ->
           if eq_line loc cloc && Ast.s_exp cond |> String.equal ccond then
             v :: acc
           else acc

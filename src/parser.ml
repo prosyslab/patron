@@ -169,6 +169,13 @@ let collect_call_exps key lv exp args facts_lst =
   collect_exps (exp :: (args @ exps)) e_facts []
   |> Stdlib.List.sort_uniq String.compare
 
+let collect_assume_exps cond_exp facts_bundle =
+  let e_facts, l_facts, _ = facts_bundle in
+  let init_facts = collect_exps [ cond_exp ] e_facts [] in
+  let lvs = filter_lv init_facts in
+  collect_exps (filter_exp init_facts @ lv2exps_facts lvs l_facts []) e_facts []
+  |> Stdlib.List.sort_uniq String.compare
+
 let mk_ccall key set_facts arg_facts callexp_facts libcal_facts facts_bundle loc
     cmd =
   let arg = find_in_fact key set_facts in
@@ -190,19 +197,19 @@ let mk_ccall key set_facts arg_facts callexp_facts libcal_facts facts_bundle loc
 let mk_creturn key return_facts loc cmd =
   let arg = find_in_fact key return_facts in
   if List.is_empty arg then Maps.CfgNode.CNone
-  else if List.length arg <> 0 then
-    Maps.CfgNode.CReturn1 (List.hd_exn arg, parse_loc loc, cmd)
-  else Maps.CfgNode.CReturn2 (parse_loc loc)
+  else Maps.CfgNode.CReturn1 (List.hd_exn arg, parse_loc loc, cmd, arg)
 
-(*FIXME: use facts to collect accurate exps *)
-let mk_cassume key assume_facts loc _ =
+(*WARNNING: this is not verified *)
+let mk_cassume key assume_facts facts_bundle loc cmd =
   let arg = find_in_fact key assume_facts in
   if List.is_empty arg then Maps.CfgNode.CNone
-  else if List.hd_exn arg |> String.equal "true" then
-    Maps.CfgNode.CAssume (true, List.nth_exn arg 1, parse_loc loc)
-  else if List.hd_exn arg |> String.equal "false" then
-    Maps.CfgNode.CAssume (false, List.nth_exn arg 1, parse_loc loc)
-  else failwith "parse_sparrow: incorrect assume fact format"
+  else
+    let cond_exp = List.hd_exn arg in
+    let cond_bool = String.is_prefix ~prefix:"!" cond_exp |> not in
+    let exps = collect_assume_exps cond_exp facts_bundle in
+    if cond_bool then
+      Maps.CfgNode.CAssume (true, cond_exp, parse_loc loc, cmd, exps)
+    else Maps.CfgNode.CAssume (false, cond_exp, parse_loc loc, cmd, exps)
 
 let mk_calloc key alloc_facts loc cmd =
   let arg = find_in_fact key alloc_facts in
@@ -211,7 +218,6 @@ let mk_calloc key alloc_facts loc cmd =
 
 let parse_sparrow nodes map chc =
   let set_facts = parse_facts chc "Set" in
-  (* let call_facts = parse_facts chc "Call" in *)
   let callexp_facts = parse_facts chc "CallExp" in
   let libcall_facts = parse_facts chc "LibCallExp" in
   let args_facts = parse_facts chc "Arg" in
@@ -230,13 +236,15 @@ let parse_sparrow nodes map chc =
       let cmd =
         match List.hd_exn cmd with
         | "skip" -> Maps.CfgNode.CSkip (parse_loc loc)
-        | "return" -> mk_creturn key return_facts loc (List.tl_exn cmd)
+        | "return" -> mk_creturn key return_facts loc cmd
         | "call" ->
             mk_ccall key set_facts args_facts callexp_facts libcall_facts
               (facts4exp, facts4lv, evallv_facts)
               loc cmd
-        | "assume" -> CNone
-        (* mk_cassume key assume_facts loc (List.tl_exn cmd) *)
+        | "assume" ->
+            mk_cassume key assume_facts
+              (facts4exp, facts4lv, evallv_facts)
+              loc cmd
         | "set" ->
             mk_cset key set_facts (facts4exp, facts4lv, evallv_facts) loc cmd
         | "alloc" -> mk_calloc key alloc_exp_facts loc (List.tl_exn cmd)
@@ -370,9 +378,9 @@ let lookup_eq_nodes ast_node cfg =
       (match (stmt_node.Cil.skind, cnode) with
       | Cil.Instr i, cn -> eq_instrs i cn
       | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc
-      | Cil.If (_, _, _, loc), Maps.CfgNode.CAssume (_, _, cloc) ->
+      | Cil.If (_, _, _, loc), Maps.CfgNode.CAssume (_, _, cloc, _, _) ->
           AbsDiff.eq_line loc cloc
-      | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc, _)
+      | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc, _, _)
       | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
           AbsDiff.eq_line loc cloc
       | _ -> false)

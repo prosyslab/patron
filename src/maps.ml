@@ -7,6 +7,7 @@ module CfgNode = struct
   type loc = { file : string; line : int }
 
   type t =
+    (* last two string lists are cmds and exps respectively *)
     | CNone
     | CSet of
         string * string * loc * string list * string list (* (lv, e, loc) *)
@@ -16,10 +17,11 @@ module CfgNode = struct
     | CFalloc of string * string * loc * string list (*(lv, f, loc) *)
     | CCall of string * string * string list * loc * string list * string list
       (*(Some lv, fexp, params, loc))*)
-    | CReturn1 of string * loc * string list (*(Some e, loc) *)
+    | CReturn1 of string * loc * string list * string list (*(Some e, loc) *)
     | CReturn2 of loc (*(None, loc) *)
     | CIf of loc (*(_, _, _, loc) *)
-    | CAssume of bool * string * loc (*(e, _, loc) *)
+    | CAssume of
+        bool * string * loc * string list * string list (*(e, _, loc) *)
     | CLoop of loc (*loc *)
     | CAsm of loc (*(_, _, _, _, _, loc) *)
     | CSkip of loc (*(_, loc)*)
@@ -32,10 +34,10 @@ module CfgNode = struct
     | CSalloc (lv, s, _, _) -> F.sprintf "CSalloc(%s, %s)" lv s
     | CFalloc (lv, f, _, _) -> F.sprintf "CFalloc(%s, %s)" lv f
     | CCall (lv, _, _, _, _, _) -> F.sprintf "CCall(%s)" lv
-    | CReturn1 (e, _, _) -> F.sprintf "CReturn1(%s)" e
+    | CReturn1 (e, _, _, _) -> F.sprintf "CReturn1(%s)" e
     | CReturn2 _ -> "CReturn2"
     | CIf _ -> "CIf"
-    | CAssume (_, e, _) -> F.sprintf "CAssume(%s)" e
+    | CAssume (_, e, _, _, _) -> F.sprintf "CAssume(%s)" e
     | CLoop _ -> "CLoop"
     | CAsm _ -> "CAsm"
     | CSkip _ -> "CSkip"
