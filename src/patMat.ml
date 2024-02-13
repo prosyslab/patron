@@ -386,6 +386,19 @@ let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
   ( pattern_in_numeral |> Chc.singleton,
     pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton )
 
+let mk_file_diff orig_path patch_path target_alarm out_dir =
+  Sys.command
+    (String.concat
+       [
+         "diff -u ";
+         orig_path;
+         " ";
+         patch_path;
+         " > ";
+         Filename.concat out_dir ("result_" ^ target_alarm ^ "_diff.patch");
+       ])
+  |> ignore
+
 let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
     out_dir diff =
   let target_maps = Maps.create_maps () in
@@ -417,11 +430,17 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
         target_maps patch_parent_lst parent_facts
     in
     L.info "Applying patch on the target file ...";
+    let out_file_orig =
+      String.concat [ out_dir; "/orig_"; target_alarm; ".c" ]
+    in
+    Patch.write_out out_file_orig ast;
     let patch_file = Patch.apply diff ast ef in
-    let out_file = String.concat [ out_dir; "/patch_"; target_alarm; ".c" ] in
-    let out_chan = Out_channel.create out_file in
-    Cil.dumpFile Cil.defaultCilPrinter out_chan "patch.c" patch_file;
-    L.info "Patch for %s is done, written at %s" target_alarm out_file
+    let out_file_patch =
+      String.concat [ out_dir; "/patch_"; target_alarm; ".c" ]
+    in
+    Patch.write_out out_file_patch patch_file;
+    L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
+    mk_file_diff out_file_orig out_file_patch target_alarm out_dir
   with Parser.Not_impl_alarm_comps -> L.info "PASS"
 
 let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
@@ -450,7 +469,6 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
-  Diff.pp_edit_script F.std_formatter ast_diff;
   L.info "Loading CFG Elements...";
   let buggy_cfg =
     Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out")

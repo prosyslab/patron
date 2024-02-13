@@ -281,6 +281,10 @@ let apply_action diff donee action =
          ignore (Cil.visitCilFile vis donee) *)
   | _ -> failwith "apply_action:Not implemented"
 
+let write_out path ast =
+  let out_chan_orig = Core.Out_channel.create path in
+  Cil.dumpFile Cil.defaultCilPrinter out_chan_orig path ast
+
 let apply abs_diff donee edit_function =
   Logger.info "%d actions to apply" (List.length edit_function);
   List.iter2
