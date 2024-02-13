@@ -17,7 +17,7 @@ for installed_switch in $(opam switch list --short); do
 done
 
 if [ "$switch_exists" = "no" ]; then
-  opam switch create $PATRON_OPAM_SWITCH $OCAML_VERSION
+  opam switch create $PATRON_OPAM_SWITCH ocaml-base-compiler.$OCAML_VERSION
 else
   opam switch $PATRON_OPAM_SWITCH
 fi
@@ -26,7 +26,7 @@ eval $(SHELL=bash opam config env --switch=$PATRON_OPAM_SWITCH)
 
 opam pin add git@github.com:prosyslab/logger.git -n
 opam pin add cil git@github.com:prosyslab/cil.git -n
-opam install -j $NCPU dune cil z3 core core_unix yojson logger ocamlgraph batteries ppx_compare
+opam install -j $NCPU dune cil z3 core core_unix yojson logger ocamlgraph batteries ppx_compare memtrace
 opam install -j $NCPU ocamlformat.0.24.1 merlin ocp-index ocp-indent ocaml-lsp-server  # for development
 make
 
