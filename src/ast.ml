@@ -43,7 +43,11 @@ let lval2ast element =
   match element with None -> NotApplicable | Some x -> Lval x
 
 let ast2stmt element =
-  match element with Stmt x -> x | _ -> failwith "Not a statement"
+  match element with
+  | Stmt x -> x
+  | Exp _ -> failwith "Exp"
+  | Global _ -> failwith "glob"
+  | _ -> failwith "Not a statement"
 
 let path2stmts path = List.map ast2stmt path
 let compare = compare
@@ -322,3 +326,5 @@ let glob2func_name glob =
   match glob with
   | Cil.GFun (func_info, _) -> func_info.svar.vname
   | _ -> failwith "Not a function"
+
+let eq_exp_ref e1 e2 = String.equal e1 e2 || String.equal e1 ("&" ^ e2)

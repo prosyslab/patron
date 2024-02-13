@@ -328,11 +328,19 @@ let compute_ast_pattern ast_facts ast_node_lst parent_of_patch patch_func maps
   in
   mk_ast_bug_pattern ast_facts node_map solution
 
-let need_ast_pattern = function
+let need_ast_pattern action =
+  match action with
   | AbsDiff.SUpdateExp _ | SInsertExp _ | SDeleteExp _ | SUpdateLval _
   | SInsertLval _ | SDeleteLval _ ->
       false
   | _ -> true
+
+let is_patch_under_func parent ast_map =
+  Stdlib.Hashtbl.fold
+    (fun k v acc -> if int_of_string parent = v then k :: acc else acc)
+    ast_map []
+  |> List.hd_exn
+  |> fun node -> Ast.is_glob node || Ast.is_fun node
 
 let find_eq_rel ast_facts patch_node =
   let patch_node = Chc.Elt.FDNumeral ("AstNode-" ^ patch_node) in
@@ -358,7 +366,8 @@ let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
   let smallest_ast_patterns =
     List.fold2_exn ~init:[]
       ~f:(fun acc (patch_node, patch_func) action ->
-        if need_ast_pattern action then
+        if is_patch_under_func patch_node maps.Maps.ast_map then acc
+        else if need_ast_pattern action then
           compute_ast_pattern ast_facts ast_node_lst patch_node patch_func maps
             ast
           @ acc
@@ -441,6 +450,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
+  Diff.pp_edit_script F.std_formatter ast_diff;
   L.info "Loading CFG Elements...";
   let buggy_cfg =
     Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out")

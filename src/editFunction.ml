@@ -16,19 +16,18 @@ let translate_node_lst lst model =
 let of_exp node =
   match node with Ast.Exp e -> e | _ -> failwith "extract_cil: not exp"
 
-let eq_exp_str e1 e2 = String.equal e1 e2 || String.equal e1 ("&" ^ e2)
 let swap_exp = ref []
 let swap_stmt = ref []
 
 let search_call target lv_opt args =
   (if Option.is_none lv_opt |> not then
    let l_str = Option.get lv_opt |> Ast.s_lv in
-   if eq_exp_str l_str target then
+   if String.equal l_str target then
      swap_exp := Cil.Lval (Option.get lv_opt) :: !swap_exp);
   let args_str = List.map Ast.s_exp args in
-  if List.exists (fun arg -> eq_exp_str arg target) args_str then (
-    ( List.find (fun arg -> eq_exp_str arg target) args_str |> fun x ->
-      List.find (fun arg -> Ast.s_exp arg |> eq_exp_str x) args )
+  if List.exists (fun arg -> String.equal arg target) args_str then (
+    ( List.find (fun arg -> String.equal arg target) args_str |> fun x ->
+      List.find (fun arg -> Ast.s_exp arg |> String.equal x) args )
     |> fun x ->
     swap_exp := x :: !swap_exp;
     true)
@@ -36,17 +35,17 @@ let search_call target lv_opt args =
 
 let search_set target lval exp =
   let l_str = Ast.s_lv lval in
-  if eq_exp_str l_str target then (
+  if String.equal l_str target then (
     swap_exp := Cil.Lval lval :: !swap_exp;
     true)
   else
     let exp_str = Ast.s_exp exp in
-    if eq_exp_str exp_str target then true
+    if String.equal exp_str target then true
     else
       match exp with
       | Cil.CastE (_, e) ->
           let e_str = Ast.s_exp e in
-          if eq_exp_str e_str target then (
+          if String.equal e_str target then (
             swap_exp := e :: !swap_exp;
             true)
           else false
