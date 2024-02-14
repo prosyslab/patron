@@ -263,10 +263,11 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   let combined_facts = Chc.union du_facts' parent_facts' in
   L.info "Mapping CFG Elements to AST nodes...";
   let dug = Dug.of_facts du_facts' in
-  let abs_diff, patch_comps =
+  let abs_diff =
     AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff du_facts'
       (Dug.copy dug) (src, snk)
   in
+  let patch_comps = AbsDiff.mk_patch_comp buggy_maps.cfg_map abs_diff in
   if write_out then (
     L.info "Writing out the edit script...";
     AbsDiff.to_json abs_diff out_dir);

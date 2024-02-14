@@ -129,6 +129,10 @@ let of_facts rels =
       let src, dst = Chc.Elt.extract_src_dst rel in
       let src_info, g' = process_vertex g src ast_rels in
       let dst_info, g'' = process_vertex g' dst ast_rels in
-      let lvs = Chc.inter src_info.defs dst_info.uses in
+      let lvs =
+        if Chc.is_empty src_info.defs then dst_info.uses
+        else if Chc.is_empty dst_info.uses then src_info.defs
+        else Chc.inter src_info.defs dst_info.uses
+      in
       add_edge_e (src, lvs, dst) g'')
     du_rels dug

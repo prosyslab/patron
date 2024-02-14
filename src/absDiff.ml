@@ -1212,20 +1212,16 @@ let mk_ast_patch_bw top_func_name root_path bw =
 
 let define_abs_diff maps buggy diff du_facts dug src_snk =
   get_gvars buggy;
-  let sdiff =
-    List.fold_left
-      ~f:(fun acc (action, _) ->
-        let ctx = D.get_ctx action in
-        let ast_patch_bw =
-          mk_ast_patch_bw ctx.Diff.top_func_name ctx.root_path ctx.patch_bound
-        in
-        let du_patch_bw = mk_du_patch_bw dug src_snk ast_patch_bw maps in
-        let s_context = mk_abs_ctx ctx maps du_facts du_patch_bw in
-        mk_sdiff du_patch_bw s_context maps action :: acc)
-      ~init:[] diff
-  in
-  let patch_comp = mk_patch_comp maps.Maps.cfg_map sdiff in
-  (sdiff, patch_comp)
+  List.fold_left
+    ~f:(fun acc (action, _) ->
+      let ctx = D.get_ctx action in
+      let ast_patch_bw =
+        mk_ast_patch_bw ctx.Diff.top_func_name ctx.root_path ctx.patch_bound
+      in
+      let du_patch_bw = mk_du_patch_bw dug src_snk ast_patch_bw maps in
+      let s_context = mk_abs_ctx ctx maps du_facts du_patch_bw in
+      mk_sdiff du_patch_bw s_context maps action :: acc)
+    ~init:[] diff
 
 module DiffJson = struct
   open AbsAst

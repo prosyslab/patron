@@ -217,7 +217,7 @@ let mk_calloc key alloc_facts loc cmd =
   if List.is_empty arg then Maps.CfgNode.CNone
   else CAlloc (List.hd_exn arg, List.nth_exn arg 1, parse_loc loc, cmd)
 
-let parse_sparrow nodes map chc =
+let parse_sparrow nodes cfg_map chc =
   let set_facts = parse_facts chc "Set" in
   let callexp_facts = parse_facts chc "CallExp" in
   let libcall_facts = parse_facts chc "LibCallExp" in
@@ -253,7 +253,7 @@ let parse_sparrow nodes map chc =
         | "salloc" -> CNone
         | _ -> L.error "parse_sparrow: unknown command %s" (List.hd_exn cmd)
       in
-      match cmd with CNone | CSkip _ -> () | _ -> Hashtbl.add map cmd key)
+      match cmd with CNone | CSkip _ -> () | _ -> Hashtbl.add cfg_map cmd key)
     nodes
 
 let parse_du_facts datalog_dir fact_file =
@@ -269,7 +269,7 @@ let parse_du_facts datalog_dir fact_file =
   in
   List.rev elt_lst |> Chc.of_list
 
-let make_du_facts work_dir cfg map =
+let make_du_facts work_dir cfg cfg_map =
   let du_facts =
     List.fold_left ~init:Chc.empty
       ~f:(fun facts file ->
@@ -277,7 +277,7 @@ let make_du_facts work_dir cfg map =
         Chc.union facts chc)
       Z3env.fact_files
   in
-  parse_sparrow cfg map du_facts;
+  parse_sparrow cfg cfg_map du_facts;
   du_facts
 
 let rec sexp2chc = function
