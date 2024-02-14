@@ -42,6 +42,8 @@ module Elt = struct
     | Const of Z.t
     | Implies of t list * t
 
+  let numer s = FDNumeral s
+
   let compare a b =
     match (a, b) with
     | FDNumeral x, FDNumeral y | Var x, Var y -> String.compare x y
@@ -53,6 +55,92 @@ module Elt = struct
     | FDNumeral x, FDNumeral y | Var x, Var y -> String.equal x y
     | Const x, Const y -> Z.equal x y
     | _, _ -> compare a b = 0
+
+  let collect_vars term =
+    let module EltSet = Set.Make (String) in
+    let rec cv_set term =
+      match term with
+      | Lt (t1, t2)
+      | Gt (t1, t2)
+      | Le (t1, t2)
+      | Ge (t1, t2)
+      | Eq (t1, t2)
+      | Ne (t1, t2)
+      | And (t1, t2)
+      | Or (t1, t2)
+      | CLt (t1, t2)
+      | CGt (t1, t2)
+      | CLe (t1, t2)
+      | CGe (t1, t2)
+      | CEq (t1, t2)
+      | CNe (t1, t2)
+      | Add (t1, t2)
+      | Mul (t1, t2)
+      | Sub (t1, t2)
+      | Div (t1, t2)
+      | Mod (t1, t2)
+      | BvShl (t1, t2)
+      | BvShr (t1, t2)
+      | BvAnd (t1, t2)
+      | BvOr (t1, t2)
+      | BvXor (t1, t2) ->
+          EltSet.union (cv_set t1) (cv_set t2)
+      | Not t | CBNot t | CLNot t | CNeg t -> cv_set t
+      | FuncApply (_, args) ->
+          List.fold_left ~init:EltSet.empty
+            ~f:(fun vars arg -> cv_set arg |> EltSet.union vars)
+            args
+      | Var v -> EltSet.singleton v
+      | FDNumeral _ | Const _ -> EltSet.empty
+      | Implies (cons, hd) ->
+          List.fold_left ~init:EltSet.empty
+            ~f:(fun vars c -> cv_set c |> EltSet.union vars)
+            cons
+          |> EltSet.union (cv_set hd)
+    in
+    EltSet.fold (fun v l -> v :: l) (cv_set term) []
+
+  let rec pp fmt term =
+    let module EltSet = Set.Make (String) in
+    match term with
+    | Lt (t1, t2) -> F.fprintf fmt "(%a < %a)" pp t1 pp t2
+    | Gt (t1, t2) -> F.fprintf fmt "(%a > %a)" pp t1 pp t2
+    | Le (t1, t2) -> F.fprintf fmt "(%a <= %a)" pp t1 pp t2
+    | Ge (t1, t2) -> F.fprintf fmt "(%a >= %a)" pp t1 pp t2
+    | Eq (t1, t2) -> F.fprintf fmt "(%a = %a)" pp t1 pp t2
+    | Ne (t1, t2) -> F.fprintf fmt "(%a != %a)" pp t1 pp t2
+    | And (t1, t2) -> F.fprintf fmt "(%a /\\ %a)" pp t1 pp t2
+    | Or (t1, t2) -> F.fprintf fmt "(%a \\/ %a)" pp t1 pp t2
+    | Not t -> F.fprintf fmt "(not %a)" pp t
+    | CLt (t1, t2) -> F.fprintf fmt "(Lt %a %a)" pp t1 pp t2
+    | CGt (t1, t2) -> F.fprintf fmt "(Gt %a %a)" pp t1 pp t2
+    | CLe (t1, t2) -> F.fprintf fmt "(Le %a %a)" pp t1 pp t2
+    | CGe (t1, t2) -> F.fprintf fmt "(Ge %a %a)" pp t1 pp t2
+    | CEq (t1, t2) -> F.fprintf fmt "(Eq %a %a)" pp t1 pp t2
+    | CNe (t1, t2) -> F.fprintf fmt "(Ne %a %a)" pp t1 pp t2
+    | CBNot t -> F.fprintf fmt "(BNot %a)" pp t
+    | CLNot t -> F.fprintf fmt "(LNot %a)" pp t
+    | CNeg t -> F.fprintf fmt "(Neg %a)" pp t
+    | FuncApply (fn, args) ->
+        List.map ~f:(fun arg -> F.asprintf "%a" pp arg) args
+        |> String.concat ~sep:" " |> F.fprintf fmt "(%s %s)" fn
+    | Add (t1, t2) -> F.fprintf fmt "(%a + %a)" pp t1 pp t2
+    | Mul (t1, t2) -> F.fprintf fmt "(%a * %a)" pp t1 pp t2
+    | Sub (t1, t2) -> F.fprintf fmt "(%a - %a)" pp t1 pp t2
+    | Div (t1, t2) -> F.fprintf fmt "(%a / %a)" pp t1 pp t2
+    | Mod (t1, t2) -> F.fprintf fmt "(%a mod %a)" pp t1 pp t2
+    | BvShl (t1, t2) -> F.fprintf fmt "(%a bvshl %a)" pp t1 pp t2
+    | BvShr (t1, t2) -> F.fprintf fmt "(%a bvshr %a)" pp t1 pp t2
+    | BvAnd (t1, t2) -> F.fprintf fmt "(%a bvand %a)" pp t1 pp t2
+    | BvOr (t1, t2) -> F.fprintf fmt "(%a bvor %a)" pp t1 pp t2
+    | BvXor (t1, t2) -> F.fprintf fmt "(%a bvxor %a)" pp t1 pp t2
+    | Var s | FDNumeral s -> F.fprintf fmt "%s" s
+    | Const i -> F.fprintf fmt "%Ld" (Z.to_int64 i)
+    | Implies (cons, hd) as impl ->
+        let vars = collect_vars impl |> String.concat ~sep:" " in
+        List.map ~f:(fun c -> F.asprintf "%a" pp c) cons
+        |> String.concat ~sep:",\n    "
+        |> F.fprintf fmt "(\\forall %s.\n  %a <-\n    %s)" vars pp hd
 
   let rec chc2sexp = function
     | Lt (t1, t2) -> Sexp.List [ Sexp.Atom "<"; chc2sexp t1; chc2sexp t2 ]
@@ -93,6 +181,7 @@ module Elt = struct
         Sexp.List (Sexp.Atom fn :: List.map ~f:chc2sexp args)
     | Implies (cons, hd) -> Sexp.List (chc2sexp hd :: List.map ~f:chc2sexp cons)
 
+  let duedge src dst = FuncApply ("DUEdge", [ numer src; numer dst ])
   let is_rel = function FuncApply _ -> true | _ -> false
   let is_rule = function Implies _ -> true | _ -> false
   let is_duedge = function FuncApply ("DUEdge", _) -> true | _ -> false
@@ -131,10 +220,7 @@ module Elt = struct
     | FuncApply ("DUEdge", [ FDNumeral src; FDNumeral dst ]) -> (src, dst)
     | _ -> L.error "extract_src_dst: wrong relation"
 
-  let terms2strs =
-    List.map ~f:(function
-      | FDNumeral s -> s
-      | _ -> L.error "terms2strs: wrong terms")
+  let numers2strs = List.map ~f:(F.asprintf "%a" pp)
 
   let rec numer2var = function
     | Lt (t1, t2) -> Lt (numer2var t1, numer2var t2)
@@ -350,96 +436,9 @@ module Elt = struct
         Z3.Boolean.mk_implies z3env.z3ctx cons (to_z3 z3env maps hd)
 end
 
-include Set.Make (struct
-  type t = Elt.t
-
-  let compare = Stdlib.compare
-end)
+include Set.Make (Elt)
 
 let to_list s = fold (fun c l -> c :: l) s []
-
-let rec collect_vars = function
-  | Elt.Lt (t1, t2)
-  | Gt (t1, t2)
-  | Le (t1, t2)
-  | Ge (t1, t2)
-  | Eq (t1, t2)
-  | Ne (t1, t2)
-  | And (t1, t2)
-  | Or (t1, t2)
-  | CLt (t1, t2)
-  | CGt (t1, t2)
-  | CLe (t1, t2)
-  | CGe (t1, t2)
-  | CEq (t1, t2)
-  | CNe (t1, t2)
-  | Add (t1, t2)
-  | Mul (t1, t2)
-  | Sub (t1, t2)
-  | Div (t1, t2)
-  | Mod (t1, t2)
-  | BvShl (t1, t2)
-  | BvShr (t1, t2)
-  | BvAnd (t1, t2)
-  | BvOr (t1, t2)
-  | BvXor (t1, t2) ->
-      union (collect_vars t1) (collect_vars t2)
-  | Not t | CBNot t | CLNot t | CNeg t -> collect_vars t
-  | FuncApply (_, args) ->
-      List.fold_left ~init:empty
-        ~f:(fun vars arg -> collect_vars arg |> union vars)
-        args
-  | Var _ as v -> singleton v
-  | FDNumeral _ | Const _ -> empty
-  | Implies (cons, hd) ->
-      List.fold_left ~init:empty
-        ~f:(fun vars c -> collect_vars c |> union vars)
-        cons
-      |> union (collect_vars hd)
-
-let rec pp_chc fmt = function
-  | Elt.Lt (t1, t2) -> F.fprintf fmt "(%a < %a)" pp_chc t1 pp_chc t2
-  | Gt (t1, t2) -> F.fprintf fmt "(%a > %a)" pp_chc t1 pp_chc t2
-  | Le (t1, t2) -> F.fprintf fmt "(%a <= %a)" pp_chc t1 pp_chc t2
-  | Ge (t1, t2) -> F.fprintf fmt "(%a >= %a)" pp_chc t1 pp_chc t2
-  | Eq (t1, t2) -> F.fprintf fmt "(%a = %a)" pp_chc t1 pp_chc t2
-  | Ne (t1, t2) -> F.fprintf fmt "(%a != %a)" pp_chc t1 pp_chc t2
-  | And (t1, t2) -> F.fprintf fmt "(%a /\\ %a)" pp_chc t1 pp_chc t2
-  | Or (t1, t2) -> F.fprintf fmt "(%a \\/ %a)" pp_chc t1 pp_chc t2
-  | Not t -> F.fprintf fmt "(not %a)" pp_chc t
-  | CLt (t1, t2) -> F.fprintf fmt "(Lt %a %a)" pp_chc t1 pp_chc t2
-  | CGt (t1, t2) -> F.fprintf fmt "(Gt %a %a)" pp_chc t1 pp_chc t2
-  | CLe (t1, t2) -> F.fprintf fmt "(Le %a %a)" pp_chc t1 pp_chc t2
-  | CGe (t1, t2) -> F.fprintf fmt "(Ge %a %a)" pp_chc t1 pp_chc t2
-  | CEq (t1, t2) -> F.fprintf fmt "(Eq %a %a)" pp_chc t1 pp_chc t2
-  | CNe (t1, t2) -> F.fprintf fmt "(Ne %a %a)" pp_chc t1 pp_chc t2
-  | CBNot t -> F.fprintf fmt "(BNot %a)" pp_chc t
-  | CLNot t -> F.fprintf fmt "(LNot %a)" pp_chc t
-  | CNeg t -> F.fprintf fmt "(Neg %a)" pp_chc t
-  | FuncApply (fn, args) ->
-      List.map ~f:(fun arg -> F.asprintf "%a" pp_chc arg) args
-      |> String.concat ~sep:" " |> F.fprintf fmt "(%s %s)" fn
-  | Add (t1, t2) -> F.fprintf fmt "(%a + %a)" pp_chc t1 pp_chc t2
-  | Mul (t1, t2) -> F.fprintf fmt "(%a * %a)" pp_chc t1 pp_chc t2
-  | Sub (t1, t2) -> F.fprintf fmt "(%a - %a)" pp_chc t1 pp_chc t2
-  | Div (t1, t2) -> F.fprintf fmt "(%a / %a)" pp_chc t1 pp_chc t2
-  | Mod (t1, t2) -> F.fprintf fmt "(%a mod %a)" pp_chc t1 pp_chc t2
-  | BvShl (t1, t2) -> F.fprintf fmt "(%a bvshl %a)" pp_chc t1 pp_chc t2
-  | BvShr (t1, t2) -> F.fprintf fmt "(%a bvshr %a)" pp_chc t1 pp_chc t2
-  | BvAnd (t1, t2) -> F.fprintf fmt "(%a bvand %a)" pp_chc t1 pp_chc t2
-  | BvOr (t1, t2) -> F.fprintf fmt "(%a bvor %a)" pp_chc t1 pp_chc t2
-  | BvXor (t1, t2) -> F.fprintf fmt "(%a bvxor %a)" pp_chc t1 pp_chc t2
-  | Var s | FDNumeral s -> F.fprintf fmt "%s" s
-  | Const i -> F.fprintf fmt "%Ld" (Z.to_int64 i)
-  | Implies (cons, hd) as impl ->
-      let vars = collect_vars impl in
-      let vars_str =
-        fold (fun var s -> F.asprintf "%s %a" s pp_chc var) vars ""
-      in
-      List.map ~f:(fun c -> F.asprintf "%a" pp_chc c) cons
-      |> String.concat ~sep:",\n    "
-      |> F.fprintf fmt "(\\forall %s.\n  %a <-\n    %s)" vars_str pp_chc hd
-
 let node = "node"
 let ast_node = "ast_node"
 let lval = "lval"
@@ -557,7 +556,7 @@ let pp_datalog fmt pattern =
       | _ -> L.error "Chc.pp: invalid rule format")
     pattern
 
-let pp fmt = iter (fun chc -> F.fprintf fmt "%a\n" pp_chc chc)
+let pp fmt = iter (fun chc -> F.fprintf fmt "%a\n" Elt.pp chc)
 
 let pp_smt fmt =
   iter (fun chc ->
@@ -609,8 +608,8 @@ let prop_deps ?(ignore_duedge = false) terms = function
   | Elt.FuncApply ("DUEdge", [ src; dst ]) ->
       if (not ignore_duedge) && mem dst terms then (true, add src terms)
       else (false, terms)
-  | Elt.FuncApply ("CFPath", args) | FuncApply ("DUPath", args) ->
-      if all_args_has_dep terms args then (true, terms) else (false, terms)
+  (* | Elt.FuncApply ("CFPath", args) | FuncApply ("DUPath", args) ->
+      if all_args_has_dep terms args then (true, terms) else (false, terms) *)
   | FuncApply ("EvalLv", [ n; lv; loc ]) ->
       if mem n terms && mem lv terms then (true, add loc terms)
       else (false, terms)
@@ -639,6 +638,32 @@ let prop_deps ?(ignore_duedge = false) terms = function
   | FuncApply ("SAllocExp", [ e; _ ]) ->
       if mem e terms then (true, terms) else (false, terms)
   | _ -> (false, terms)
+
+let find_defs rels =
+  let fd = function
+    | Elt.FuncApply ("Set", [ _; lv; _ ]) -> singleton lv
+    | _ -> empty
+  in
+  fold (fun r s -> fd r |> union s) rels empty
+
+let find_uses rels =
+  let fu = function
+    | Elt.FuncApply ("LvalExp", [ _; lv ]) -> singleton lv
+    | FuncApply ("Index", [ _; lv; _ ]) -> singleton lv
+    | _ -> empty
+  in
+  fold (fun r s -> fu r |> union s) rels empty
+
+let rec fixedpoint f rels terms deps =
+  let deps', terms' =
+    fold
+      (fun c (deps, terms) ->
+        let is_nec, terms' = f terms c in
+        ((if is_nec then add c deps else deps), terms'))
+      rels (deps, terms)
+  in
+  if subset deps' deps && subset terms' terms then (deps', terms')
+  else fixedpoint f rels terms' deps'
 
 let is_child var = function
   | Elt.FuncApply ("Set", hd :: _)
@@ -732,7 +757,8 @@ let add_fact z3env maps solver f =
 let add_rule z3env maps solver r =
   if Elt.is_duedge r |> not then
     let vars =
-      collect_vars r |> to_list |> List.map ~f:(Elt.to_z3 z3env maps)
+      Elt.collect_vars r
+      |> List.map ~f:(fun v -> Elt.to_z3 z3env maps (Elt.Var v))
     in
     let impl = Elt.to_z3 z3env maps r in
     if List.is_empty vars then add_fact z3env maps solver r

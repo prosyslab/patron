@@ -19,9 +19,11 @@ end
 module Dijkstra = Graph.Path.Dijkstra (I) (W)
 module Check = Graph.Path.Check (I)
 
+type node_info = { rels : Chc.t; defs : Chc.t; uses : Chc.t }
+
 type t = {
   graph : I.t;
-  rels_of_node : (string, Chc.t) Hashtbl.t; (* Node -> Rels *)
+  node_info : (string, node_info) Hashtbl.t; (* Node -> (Rels, Defs, Uses) *)
   label : (string * string, Chc.t) Hashtbl.t; (* Edge -> (FDNumeral Lval) Set *)
 }
 
@@ -30,24 +32,30 @@ type path_checker = Check.path_checker
 let create ~size () =
   {
     graph = I.create ~size ();
-    rels_of_node = Hashtbl.create size;
+    node_info = Hashtbl.create size;
     label = Hashtbl.create (size * size);
   }
 
 let copy g =
   {
     graph = I.copy g.graph;
-    rels_of_node = Hashtbl.copy g.rels_of_node;
+    node_info = Hashtbl.copy g.node_info;
     label = Hashtbl.copy g.label;
   }
 
 let clear g =
   I.clear g.graph;
-  Hashtbl.clear g.rels_of_node;
+  Hashtbl.clear g.node_info;
   Hashtbl.clear g.label
 
 let mem_vertex g n = I.mem_vertex g.graph n
 let fold_vertex f g a = I.fold_vertex f g.graph a
+let info_of_v g v = Hashtbl.find g.node_info v
+
+let add_vertex (v, rels, defs, uses) g =
+  Hashtbl.replace g.node_info v { rels; defs; uses };
+  I.add_vertex g.graph v;
+  g
 
 let add_edge_e (s, lval_set, d) g =
   Hashtbl.replace g.label (s, d) lval_set;
@@ -83,22 +91,31 @@ let edges2lst edge_lst =
 let create_path_checker = Check.create
 let check_path pc src dst = Check.check_path pc src dst
 
-let mk_duedge edge =
-  Chc.Elt.FuncApply
-    ( "DUEdge",
-      [ Chc.Elt.FDNumeral (I.E.src edge); Chc.Elt.FDNumeral (I.E.dst edge) ] )
-
 let paths2rels =
   List.fold_left
     ~f:(fun rels path ->
       List.fold_left
-        ~f:(fun rels edge -> Chc.add (mk_duedge edge) rels)
+        ~f:(fun rels edge ->
+          Chc.add (Chc.Elt.duedge (I.E.src edge) (I.E.dst edge)) rels)
         ~init:rels path)
     ~init:Chc.empty
 
-let of_fact rels =
+let process_vertex g v r =
+  if mem_vertex g v then (info_of_v g v, g)
+  else
+    let terms = Chc.Elt.numer v |> Chc.singleton in
+    let reach =
+      Chc.fixedpoint (Chc.prop_deps ~ignore_duedge:true) r terms Chc.empty
+      |> fst
+    in
+    let defs = Chc.find_defs reach in
+    let uses = Chc.find_uses reach in
+    let g' = add_vertex (v, reach, defs, uses) g in
+    (info_of_v g' v, g')
+
+let of_facts rels =
   let module NodeSet = Set.Make (String) in
-  let du_rels = Chc.filter Chc.Elt.is_duedge rels in
+  let du_rels, ast_rels = Chc.partition Chc.Elt.is_duedge rels in
   let nodes =
     Chc.fold
       (fun rel ns ->
@@ -110,5 +127,8 @@ let of_fact rels =
   Chc.fold
     (fun rel g ->
       let src, dst = Chc.Elt.extract_src_dst rel in
-      add_edge src dst g)
+      let src_info, g' = process_vertex g src ast_rels in
+      let dst_info, g'' = process_vertex g' dst ast_rels in
+      let lvs = Chc.inter src_info.defs dst_info.uses in
+      add_edge_e (src, lvs, dst) g'')
     du_rels dug
