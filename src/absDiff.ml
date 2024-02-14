@@ -275,7 +275,6 @@ type abs_context = {
   root_path : abs_node list;
   parent_of_patch : abs_node;
   patch_bound : string list * string list;
-  (* patch_between : string list * string list; *)
   func_name : string;
   sibling_idx : int;
 }
@@ -315,22 +314,14 @@ let extract_context sdiff =
   | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) -> ctx
   | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) -> ctx
 
-let extract_exps_from_cfg node_id cfg_rev =
-  let cfg_node_opt = Stdlib.Hashtbl.find_opt cfg_rev node_id in
-  if Option.is_none cfg_node_opt then []
-  else
-    match Option.value_exn cfg_node_opt with
-    | Maps.CfgNode.CSet (_, _, _, _, exps, _) -> exps
-    | Maps.CfgNode.CCall (_, _, _, _, _, exps, _) -> exps
-    (* TODO: add more cases *)
-    | _ -> []
-
 let match_exp2du (cfg_rev : (string, Maps.CfgNode.t) Stdlib.Hashtbl.t) exp_map
     du_node exp_str =
   let cfg_node = Stdlib.Hashtbl.find_opt cfg_rev du_node in
   if Option.is_none cfg_node then "None"
   else
-    let exps = extract_exps_from_cfg du_node cfg_rev in
+    (* TODO: change it to lval *)
+    let exps = [] in
+    (* extract_exps_from_cfg du_node cfg_rev in *)
     let candidate =
       Stdlib.Hashtbl.fold
         (fun k v acc -> if String.equal exp_str k then v :: acc else acc)
@@ -359,15 +350,26 @@ let find_closest_exp (before, after)
   aux before after []
 
 let find_exp_id func cfg_rev lval_map exp =
+  let lval_syms =
+    Stdlib.Hashtbl.fold
+      (fun k v acc -> if String.equal k exp then v :: acc else acc)
+      lval_map []
+  in
   Stdlib.Hashtbl.fold
     (fun key data acc ->
       if String.is_prefix ~prefix:func key then
         match data with
-        | Maps.CfgNode.CSet (_, _, _, _, _, lvs)
-        | Maps.CfgNode.CCall (_, _, _, _, _, _, lvs)
-        | Maps.CfgNode.CAssume (_, _, _, _, _, lvs) -> (
-            (try Hashtbl.find lval_map exp with _ -> "None") |> fun x ->
-            try List.find_exn ~f:(fun y -> String.equal x y) lvs :: acc
+        | Maps.CfgNode.CSet (_, _, _, lvs)
+        | Maps.CfgNode.CCall (_, _, _, _, lvs)
+        | Maps.CfgNode.CAssume (_, _, _, lvs)
+        | Maps.CfgNode.CReturn1 (_, _, lvs)
+        | Maps.CfgNode.CAlloc (_, _, _, lvs) -> (
+            try
+              List.find_exn
+                ~f:(fun y ->
+                  List.exists ~f:(fun sym -> String.equal sym y) lval_syms)
+                lvs
+              :: acc
             with _ -> acc)
         | _ -> acc
       else acc)
@@ -611,15 +613,26 @@ and match_stmt_path cfg lst =
       | _ -> failwith "match_stmt_path: context failed to be read")
 
 and find_lval_id func cfg_rev lval_map (l_str : string) =
+  let lval_syms =
+    Stdlib.Hashtbl.fold
+      (fun k v acc -> if String.equal k l_str then v :: acc else acc)
+      lval_map []
+  in
   Stdlib.Hashtbl.fold
     (fun key data acc ->
       if String.is_prefix ~prefix:func key then
         match data with
-        | Maps.CfgNode.CSet (_, _, _, _, _, lvs)
-        | Maps.CfgNode.CCall (_, _, _, _, _, _, lvs)
-        | Maps.CfgNode.CAssume (_, _, _, _, _, lvs) -> (
-            (try Hashtbl.find lval_map l_str with _ -> "None") |> fun x ->
-            try List.find_exn ~f:(fun y -> String.equal x y) lvs :: acc
+        | Maps.CfgNode.CSet (_, _, _, lvs)
+        | Maps.CfgNode.CCall (_, _, _, _, lvs)
+        | Maps.CfgNode.CAssume (_, _, _, lvs)
+        | Maps.CfgNode.CReturn1 (_, _, lvs)
+        | Maps.CfgNode.CAlloc (_, _, _, lvs) -> (
+            try
+              List.find_exn
+                ~f:(fun y ->
+                  List.exists ~f:(fun sym -> String.equal sym y) lval_syms)
+                lvs
+              :: acc
             with _ -> acc)
         | _ -> acc
       else acc)
@@ -656,13 +669,11 @@ and match_set_id lv cfg loc =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CSet (_, _, cloc, cmd, _, _)
-      | Maps.CfgNode.CAlloc (_, _, cloc, cmd)
-      | Maps.CfgNode.CFalloc (_, _, cloc, cmd)
-      | Maps.CfgNode.CSalloc (_, _, cloc, cmd) ->
-          if eq_line loc cloc && String.equal (Ast.s_lv lv) (List.nth_exn cmd 1)
-          then v :: acc
-          else acc
+      | Maps.CfgNode.CSet (_, _, cloc, _)
+      | Maps.CfgNode.CAlloc (_, _, cloc, _)
+      | Maps.CfgNode.CFalloc (_, _, cloc, _)
+      | Maps.CfgNode.CSalloc (_, _, cloc, _) ->
+          if eq_line loc cloc then v :: acc else acc
       | _ -> acc)
     cfg []
 
@@ -671,7 +682,7 @@ and match_call_id cfg loc =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CCall (_, _, _, cloc, _, _, _) ->
+      | Maps.CfgNode.CCall (_, _, _, cloc, _) ->
           if eq_line loc cloc then v :: acc else acc
       | _ -> acc)
     cfg []
@@ -680,7 +691,7 @@ and match_return_id cfg loc =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CReturn1 (_, cloc, _, _) ->
+      | Maps.CfgNode.CReturn1 (_, cloc, _) ->
           if eq_line loc cloc then v :: acc else acc
       | Maps.CfgNode.CReturn2 cloc -> if eq_line loc cloc then v :: acc else acc
       | _ -> acc)
@@ -690,7 +701,7 @@ and match_assume_id cfg loc cond =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CAssume (_, ccond, cloc, _, _, _) ->
+      | Maps.CfgNode.CAssume (_, ccond, cloc, _) ->
           if eq_line loc cloc && Ast.s_exp cond |> String.equal ccond then
             v :: acc
           else acc
@@ -1063,30 +1074,6 @@ let mk_abs_ctx ctx maps du_facts =
             ~init:[])
        @ acc)
      ~init:[] sdiff *)
-
-let filter_exps_by_func cfg ids func =
-  let cfg_keys = Stdlib.Hashtbl.to_seq_keys cfg in
-  List.fold_left
-    ~f:(fun acc id ->
-      let node_opt =
-        Stdlib.Seq.fold_left
-          (fun acc' k ->
-            if Option.is_some acc' then acc'
-            else if
-              match k with
-              | Maps.CfgNode.CSet (_, _, _, _, exps, _)
-              | Maps.CfgNode.CCall (_, _, _, _, _, exps, _) ->
-                  Stdlib.List.mem id exps
-              | _ -> false
-            then Some k
-            else acc')
-          None cfg_keys
-      in
-      if Option.is_none node_opt then acc
-      else
-        Option.value_exn node_opt |> Stdlib.Hashtbl.find cfg |> fun node_s ->
-        if String.is_prefix ~prefix:func node_s then id :: acc else acc)
-    ~init:[] ids
 
 let extract_patch_related_lvals sdiff =
   List.fold_left ~f:(fun acc d -> extract_diff_ids d @ acc) ~init:[] sdiff
