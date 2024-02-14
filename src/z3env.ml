@@ -3,6 +3,8 @@ module Hashtbl = Stdlib.Hashtbl
 module Set = Stdlib.Set
 module F = Format
 
+let _ = Z3.set_global_param "memory_high_watermark" "4294967295"
+
 type t = {
   z3ctx : Z3.context;
   boolean_sort : Z3.Sort.sort;
