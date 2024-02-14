@@ -323,7 +323,6 @@ let extract_exps_from_cfg node_id cfg_rev =
     | Maps.CfgNode.CSet (_, _, _, _, exps) -> exps
     | Maps.CfgNode.CCall (_, _, _, _, _, exps) -> exps
     (* TODO: add more cases *)
-    (* | Maps.CfgNode.CReturn1 (_, _, exp) ->  *)
     | _ -> []
 
 let match_exp2du (cfg_rev : (string, Maps.CfgNode.t) Stdlib.Hashtbl.t) exp_map

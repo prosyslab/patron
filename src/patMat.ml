@@ -83,19 +83,6 @@ let remove_before_src_after_snk src snk rels =
   in
   rels |> (Fun.flip Chc.diff) before_deps |> (Fun.flip Chc.diff) after_deps
 
-let reduce_facts maps ast src snk alarm_comps du_chc parent_chc =
-  let func_apps =
-    Chc.extract_func_apps du_chc |> remove_before_src_after_snk src snk
-  in
-  let snk_term = Chc.Elt.FDNumeral snk in
-  let terms = Chc.add snk_term alarm_comps in
-  let reduced_du_facts =
-    Chc.fixedpoint Chc.prop_deps func_apps terms Chc.empty |> fst
-  in
-  let reduced_parent_facts = reduce_parent_facts maps ast parent_chc in
-  (* (reduced_du_facts, reduced_parent_facts) *)
-  (du_chc, reduced_parent_facts)
-
 let sort_rule_optimize ref deps =
   let get_args = function
     | Chc.Elt.FuncApply (s, args) -> (s, args)
@@ -182,13 +169,11 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
-    let du_facts, parent_facts, (src, snk, alarm_comps) =
+    let du_facts, parent_facts, (src, snk, _) =
       Parser.make_facts donee_dir target_alarm ast cfg out_dir target_maps
     in
-    let du_facts', parent_facts' =
-      reduce_facts target_maps ast src snk alarm_comps du_facts parent_facts
-    in
-    let combined_facts = Chc.union du_facts' parent_facts' in
+    let parent_facts' = reduce_parent_facts target_maps ast parent_facts in
+    let combined_facts = Chc.union du_facts parent_facts' in
     let z3env = Z3env.get_env () in
     L.info "Try matching with %s..." target_alarm;
     let status =
@@ -257,14 +242,12 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
       buggy_maps
   in
   L.info "Make Facts in buggy done";
-  let du_facts', parent_facts' =
-    reduce_facts buggy_maps buggy_ast src snk alarm_comps du_facts parent_facts
-  in
-  let combined_facts = Chc.union du_facts' parent_facts' in
+  let parent_facts' = reduce_parent_facts buggy_maps buggy_ast parent_facts in
+  let combined_facts = Chc.union du_facts parent_facts' in
   L.info "Mapping CFG Elements to AST nodes...";
-  let dug = Dug.of_facts du_facts' in
+  let dug = Dug.of_facts du_facts in
   let abs_diff =
-    AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff du_facts'
+    AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff du_facts
       (Dug.copy dug) (src, snk)
   in
   let patch_comps = AbsDiff.mk_patch_comp buggy_maps.cfg_map abs_diff in
@@ -273,7 +256,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     AbsDiff.to_json abs_diff out_dir);
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern_in_numeral, pattern =
-    AbsPat.run du_facts' parent_facts' dug patch_comps src snk alarm_comps
+    AbsPat.run du_facts parent_facts' dug patch_comps src snk alarm_comps
       buggy_maps abs_diff buggy_ast
   in
   L.info "Make Bug Pattern done";

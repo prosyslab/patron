@@ -139,14 +139,10 @@ let fact_files =
     "Arg.facts";
     "BinOpExp.facts";
     "CallExp.facts";
-    (* "CFPath.facts"; *)
-    (* "DetailedDUEdge.facts"; *)
     "DUEdge.facts";
     "DUPath.facts";
     "LibCallExp.facts";
     "LvalExp.facts";
-    (* "LocalVar.facts";
-       "GlobalVar.facts"; *)
     "Index.facts";
     "Mem.facts";
     "AddrOf.facts";

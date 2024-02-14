@@ -515,7 +515,7 @@ let get_alarm work_dir =
         match Filename.concat work_dir file |> read_and_split with
         | hd :: [] -> get_alarm_comps alarm hd file
         | [] -> alarm_comps
-        | _ -> alarm_comps (* TEMP *))
+        | _ -> alarm_comps)
       ~init:Chc.empty alarm_exp_files
   in
   (src, snk, alarm_compss)

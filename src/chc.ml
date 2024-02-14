@@ -474,9 +474,7 @@ let rels =
     ("BinOpExp", [ expr; binop; expr; expr ]);
     ("UnOpExp", [ expr; unop; expr ]);
     ("CallExp", [ expr; expr; arg_list ]);
-    (* ("DetailedDUEdge", [ node; node; loc ]); *)
     ("DUEdge", [ node; node ]);
-    (* ("DUPath", [ node; node ]); *)
     ("Index", [ lval; lval; expr ]);
     ("Mem", [ lval; expr ]);
     ("AddrOf", [ expr; lval ]);
@@ -632,7 +630,6 @@ let prop_deps ?(ignore_duedge = false) terms = function
       if mem lv terms then (true, add e terms) else (false, terms)
   | FuncApply ("CallExp", [ e; _; arg_list ])
   | FuncApply ("LibCallExp", [ e; _; arg_list ]) ->
-      (* Maybe not used *)
       if mem e terms then (true, add arg_list terms) else (false, terms)
   | FuncApply ("AllocExp", [ e; size_e ]) ->
       if mem e terms then (true, add size_e terms) else (false, terms)
@@ -708,8 +705,6 @@ let extract_nodes_in_facts deps node_map =
       match dep with
       (* TODO: case where nodes are used but not by Set *)
       | Elt.FuncApply ("Set", args) -> List.hd_exn args :: acc
-      (* | Elt.FuncApply ("DetailedDUEdge", args) ->
-          (List.rev args |> List.tl_exn) @ acc *)
       | Elt.FuncApply ("DUEdge", args) -> args @ acc
       | Elt.FuncApply ("EvalLv", args) -> List.hd_exn args :: acc
       | _ -> acc)

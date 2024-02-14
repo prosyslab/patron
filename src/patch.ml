@@ -92,9 +92,7 @@ let iter_body func stmts parent patch_bw patch =
           (* TODO: bring branch info *)
           if loc.Cil.line = loc'.Cil.line || Ast.isom_stmt x parent then
             let new_b1 = insert_patch func patch b1.bstmts before after in
-            (* let new_b2 = insert_patch patch b2.bstmts before after in *)
             let new_block1 = { b1 with bstmts = new_b1 } in
-            (* let new_block2 = { b2 with bstmts = new_b2 } in *)
             let new_stmt = { x with skind = Cil.If (e, new_block1, b2, loc) } in
             new_stmt :: acc
           else x :: acc

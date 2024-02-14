@@ -1,7 +1,6 @@
 open Core
 module Hashtbl = Stdlib.Hashtbl
 module Set = Stdlib.Set
-module L = Logger
 module F = Format
 module V = String
 module I = Graph.Imperative.Digraph.ConcreteBidirectional (String)
@@ -64,14 +63,14 @@ let add_edge_e (s, lval_set, d) g =
 
 let add_edge s d = add_edge_e (s, Chc.empty, d)
 
-let rec delete_last_edge dst edges =
+let delete_last_edge dst edges =
   match List.rev edges with
   | [] -> []
   | h :: t ->
       let dst' = I.E.dst h in
       if String.equal dst dst' then List.rev t else failwith "delete_last_edge"
 
-let rec delete_first_edge src edges =
+let delete_first_edge src edges =
   match edges with
   | [] -> []
   | h :: t ->

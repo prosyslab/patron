@@ -270,7 +270,6 @@ let compute_right_siblings_exp diffs rest =
 
 let get_followup_diff_exp code parent depth exp1 exp2 expl1 expl2 left_sibs =
   let prev_node = List.hd left_sibs |> Ast.exp2ast in
-  (* let right_sibs = compute_right_siblings_exp expl1 expl2 in *)
   match code with
   | Update ->
       let func = extract_func_name parent in
@@ -474,7 +473,6 @@ and get_followup_diff_stmt parent prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs =
         right_siblings
   else
     let inserted_stmts = hd2 :: List.rev (List.tl_exn inserted_stmts) in
-    (* let right_siblings = compute_right_siblings_stmt inserted_stmts tl1 in *)
     (* prolly have to count the #of delete stmt for right sib *)
     mk_diff_stmt Insertion parent prnt_brnch depth inserted_stmts left_sibs
       (hd1 :: tl1)

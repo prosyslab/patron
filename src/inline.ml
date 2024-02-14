@@ -1690,7 +1690,6 @@ class copyBodyVisitor (host : fundec)
           try IH.find stmtmap i
           with Not_found -> E.s (bug "Cannot find the copy of stmt#%d" i)
         in
-        (* E.log "Patching gotos\n"; *)
         let patchstmt (s : stmt) =
           match s.skind with
           | Goto (sr, l) ->
@@ -1740,9 +1739,7 @@ class copyBodyVisitor (host : fundec)
       (* Remember where we copied this statement *)
       (* if we have a Goto or a Switch remember them to fixup at end *)
       (match s'.skind with
-      | Goto _ | Switch _ ->
-          (* E.log "Found goto\n"; *)
-          patches := s' :: !patches
+      | Goto _ | Switch _ -> patches := s' :: !patches
       | _ -> ());
 
       (* Change the returns *)
@@ -2105,18 +2102,10 @@ let inline opt (global : Global.t) =
   in
   let varargs_procs = List.filter (fun fid -> is_varargs fid f) to_inline in
   let recursive_procs =
-    List.filter
-      (fun fid ->
-        (* print_endline fid; *)
-        Global.is_rec fid global)
-      to_inline
+    List.filter (fun fid -> Global.is_rec fid global) to_inline
   in
   let to_exclude = varargs_procs @ recursive_procs in
-  (* L.info "To inline : %s\n" (Utils.string_of_list id to_inline);
-     L.info "Excluded variable-arguments functions : %s\n"
-       (Utils.string_of_list id varargs_procs); *)
   toinline := List.filter (fun fid -> not (List.mem fid to_exclude)) to_inline;
-  (* List.iter (fun fid -> print_endline fid) !toinline; *)
   doit f;
   global
 
