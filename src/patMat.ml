@@ -354,7 +354,7 @@ let is_patch_under_func parent ast_map =
 let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
     maps diff ast =
   let fst_abs_facts =
-    Chc.abstract_by_comps du_facts dug patch_comps snk alarm_comps
+    AbsPat.abstract_by_comps du_facts dug patch_comps snk alarm_comps
   in
   let fact_lst = Chc.to_list fst_abs_facts in
   let ast_node_lst = Chc.extract_nodes_in_facts fact_lst maps.Maps.node_map in
@@ -478,8 +478,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   let combined_facts = Chc.union du_facts' parent_facts' in
   L.info "Mapping CFG Elements to AST nodes...";
-  let du_rels = Chc.filter Chc.Elt.is_duedge du_facts' in
-  let dug = Chc.to_dug du_rels in
+  let dug = Dug.of_fact du_facts' in
   let abs_diff, patch_comps =
     AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff du_facts'
       (Dug.copy dug) (src, snk)
