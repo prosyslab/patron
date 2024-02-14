@@ -1,4 +1,5 @@
 open Core
+module Hashtbl = Stdlib.Hashtbl
 module J = Yojson.Basic.Util
 module H = Utils
 module D = Diff
@@ -1541,6 +1542,28 @@ module DiffJson = struct
         let literal_json = ("literal", `String (String.make 1 c)) in
         `Assoc [ type_json; literal_json ]
 end
+
+let extract_parent abs_diff (ast_map : (Ast.t, int) Hashtbl.t) =
+  let parent_of_patch =
+    List.fold_left ~init:[]
+      ~f:(fun acc diff -> extract_context diff :: acc)
+      abs_diff
+    (* Consider that patch occured in a single location for now *)
+    |> List.fold_left ~init:[] ~f:(fun acc c ->
+           (c.parent_of_patch.node, c.func_name) :: acc)
+  in
+  List.fold_left ~init:[]
+    ~f:(fun acc (p, f) ->
+      match p with
+      | AbsAst.AbsGlob (_, g) ->
+          (Ast.glob2ast (Some g) |> Hashtbl.find ast_map |> string_of_int, f)
+          :: acc
+      | AbsStmt (_, s) ->
+          (Ast.stmt2ast (Some s) |> Hashtbl.find ast_map |> string_of_int, f)
+          :: acc
+      | _ -> failwith "parent not found")
+    parent_of_patch
+  |> List.rev
 
 let to_json abs_list out_dir =
   let oc_diff_json = Stdlib.open_out (out_dir ^ "/diff.json") in

@@ -164,221 +164,12 @@ let sort_rule_optimize ref deps =
   in
   (lcs |> List.rev) @ (unsorted |> List.rev)
 
-let extract_parent abs_diff (ast_map : (Ast.t, int) Hashtbl.t) =
-  let parent_of_patch =
-    List.fold_left ~init:[]
-      ~f:(fun acc diff -> AbsDiff.extract_context diff :: acc)
-      abs_diff
-    (* Consider that patch occured in a single location for now *)
-    |> List.fold_left ~init:[] ~f:(fun acc c ->
-           (c.AbsDiff.parent_of_patch.node, c.AbsDiff.func_name) :: acc)
-  in
-  List.fold_left ~init:[]
-    ~f:(fun acc (p, f) ->
-      match p with
-      | AbsDiff.AbsAst.AbsGlob (_, g) ->
-          (Ast.glob2ast (Some g) |> Hashtbl.find ast_map |> string_of_int, f)
-          :: acc
-      | AbsStmt (_, s) ->
-          (Ast.stmt2ast (Some s) |> Hashtbl.find ast_map |> string_of_int, f)
-          :: acc
-      | _ -> failwith "parent not found")
-    parent_of_patch
-  |> List.rev
-
-let rec go_up parent_tups ast_node_lst (parent, child) acc =
-  let candidates =
-    List.fold_left ~init:[]
-      ~f:(fun cand (parent', child') ->
-        if String.equal parent parent' && not (String.equal child child') then
-          (parent', child') :: cand
-        else cand)
-      parent_tups
-  in
-  if List.length candidates = 0 then
-    let upper_tups_opt =
-      List.find ~f:(fun (_, c') -> String.equal parent c') parent_tups
-    in
-    let upper_tups =
-      if Option.is_none upper_tups_opt then
-        failwith "compute_ast_pattern: common ancestor not found"
-      else Option.value_exn upper_tups_opt
-    in
-    go_up parent_tups ast_node_lst upper_tups (upper_tups :: acc)
-  else if
-    List.exists
-      ~f:(fun (_, c') ->
-        List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
-      candidates
-  then
-    List.find_exn
-      ~f:(fun (_, c') ->
-        List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
-      candidates
-    :: acc
-  else
-    let down = fold_down parent_tups ast_node_lst candidates [] in
-    if List.length down = 0 then
-      let upper_tups_opt =
-        List.find ~f:(fun (_, c') -> String.equal parent c') acc
-      in
-      let upper_tups =
-        if Option.is_none upper_tups_opt then
-          failwith "common ancestor not found!"
-        else Option.value_exn upper_tups_opt
-      in
-      go_up parent_tups ast_node_lst upper_tups (upper_tups :: acc)
-    else acc @ down
-
-and go_down parent_tups ast_node_lst (p, c) acc =
-  let candidates =
-    List.fold_left ~init:[]
-      ~f:(fun acc' (p', c') ->
-        if String.equal c p' then (p', c') :: acc' else acc')
-      parent_tups
-  in
-  if List.length candidates = 0 then []
-  else
-    let is_found =
-      List.exists
-        ~f:(fun (_, c') ->
-          List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
-        candidates
-    in
-    if is_found then
-      List.find_exn
-        ~f:(fun (_, c') ->
-          List.exists ~f:(fun n -> String.equal n c') ast_node_lst)
-        candidates
-      :: acc
-    else fold_down parent_tups ast_node_lst candidates ((p, c) :: acc)
-
-and fold_down parent_tups ast_node_lst candidates acc =
-  List.fold_left ~init:[]
-    ~f:(fun acc' edge ->
-      go_down parent_tups ast_node_lst edge (edge :: acc) @ acc')
-    candidates
-
-let search_eq_ast_rel ast_facts fa = Chc.find fa ast_facts
-
-let mk_ast_bug_pattern ast_facts node_map solution =
-  List.fold_left ~init:[]
-    ~f:(fun acc (p, c) ->
-      let p = Chc.Elt.FDNumeral ("AstNode-" ^ p) in
-      let c = Chc.Elt.FDNumeral ("AstNode-" ^ c) in
-      (Chc.Elt.FuncApply ("AstParent", [ p; c ]) |> search_eq_ast_rel ast_facts)
-      :: acc)
-    solution
-  |> fun x ->
-  List.fold_left ~init:x
-    ~f:(fun acc (p, c) ->
-      let p_cfg = Hashtbl.find_opt node_map p in
-      let c_cfg = Hashtbl.find_opt node_map c in
-      let p_ast = Chc.Elt.FDNumeral ("AstNode-" ^ p) in
-      let c_ast = Chc.Elt.FDNumeral ("AstNode-" ^ c) in
-      if Option.is_some p_cfg && Option.is_some c_cfg then
-        (Chc.Elt.FuncApply
-           ("EqNode", [ FDNumeral (Option.value_exn p_cfg); p_ast ])
-        |> search_eq_ast_rel ast_facts)
-        :: (Chc.Elt.FuncApply
-              ("EqNode", [ FDNumeral (Option.value_exn c_cfg); c_ast ])
-           |> search_eq_ast_rel ast_facts)
-        :: acc
-      else if Option.is_some p_cfg then
-        (Chc.Elt.FuncApply
-           ("EqNode", [ FDNumeral (Option.value_exn p_cfg); p_ast ])
-        |> search_eq_ast_rel ast_facts)
-        :: acc
-      else if Option.is_some c_cfg then
-        (Chc.Elt.FuncApply
-           ("EqNode", [ FDNumeral (Option.value_exn c_cfg); c_ast ])
-        |> search_eq_ast_rel ast_facts)
-        :: acc
-      else acc)
-    solution
-
-let mk_parent_tups_str func stmts ast_map =
-  Parser.mk_parent_tuples func stmts
-  |> List.fold_left ~init:[] ~f:(fun acc (p, c) ->
-         if Hashtbl.mem ast_map p && Hashtbl.mem ast_map c then
-           ( Hashtbl.find ast_map p |> string_of_int,
-             Hashtbl.find ast_map c |> string_of_int )
-           :: acc
-         else acc)
-
-let greedy_search_common_ancestor func stmts ast_map ast_node_lst
-    parent_of_patch =
-  let parent_tups = mk_parent_tups_str [ func ] stmts ast_map in
-  let init =
-    List.find_exn ~f:(fun (p, _) -> String.equal p parent_of_patch) parent_tups
-  in
-  go_up parent_tups ast_node_lst init []
-
-let find_eq_rel ast_facts patch_node =
-  let patch_node = Chc.Elt.FDNumeral ("AstNode-" ^ patch_node) in
-  let ast_fact_lst = Chc.to_list ast_facts in
-  List.find
-    ~f:(fun fact ->
-      match fact with
-      | Chc.Elt.FuncApply ("EqNode", [ _; p ]) ->
-          if Chc.Elt.equal patch_node p then true else false
-      | _ -> false)
-    ast_fact_lst
-
-let compute_ast_pattern ast_facts ast_node_lst parent_of_patch patch_func maps
-    ast =
-  let parent_in_pattern = find_eq_rel ast_facts parent_of_patch in
-  if Option.is_some parent_in_pattern then
-    [ Option.value_exn parent_in_pattern ]
-  else (
-    if String.equal patch_func "None" then
-      failwith "compute_ast_pattern: no func";
-    let ast_map = maps.Maps.ast_map in
-    let node_map = maps.Maps.node_map |> Utils.reverse_hashtbl in
-    L.info "Compute AST pattern...";
-    let stmts = Utils.extract_target_func_stmt_lst ast patch_func in
-    let func = Utils.extract_target_func ast patch_func in
-    let solution =
-      greedy_search_common_ancestor func stmts ast_map ast_node_lst
-        parent_of_patch
-    in
-    mk_ast_bug_pattern ast_facts node_map solution)
-
 let is_patch_under_func parent ast_map =
   Stdlib.Hashtbl.fold
     (fun k v acc -> if int_of_string parent = v then k :: acc else acc)
     ast_map []
   |> List.hd_exn
   |> fun node -> Ast.is_glob node || Ast.is_fun node
-
-let abstract_bug_pattern du_facts ast_facts dug patch_comps src snk alarm_comps
-    maps diff ast =
-  let fst_abs_facts =
-    AbsPat.abstract_by_comps du_facts dug patch_comps snk alarm_comps
-  in
-  let fact_lst = Chc.to_list fst_abs_facts in
-  let ast_node_lst = Chc.extract_nodes_in_facts fact_lst maps.Maps.node_map in
-  if List.length ast_node_lst = 0 then
-    failwith "abstract_bug_pattern: no AST nodes corresponding CFG nodes found";
-  let parents = extract_parent diff maps.Maps.ast_map in
-  let smallest_ast_patterns =
-    List.fold ~init:[]
-      ~f:(fun acc (parent, func) ->
-        compute_ast_pattern ast_facts ast_node_lst parent func maps ast @ acc)
-      parents
-    |> Stdlib.List.sort_uniq Chc.Elt.compare
-  in
-  let errtrace =
-    Chc.Elt.FuncApply
-      ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
-  in
-  Z3env.buggy_src := src;
-  Z3env.buggy_snk := snk;
-  let pattern_in_numeral =
-    Chc.Elt.Implies (fact_lst @ smallest_ast_patterns, errtrace)
-  in
-  ( pattern_in_numeral |> Chc.singleton,
-    pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton )
 
 let mk_file_diff orig_path patch_path target_alarm out_dir =
   Sys.command
@@ -416,7 +207,7 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
       Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
     L.info "Matching with %s is done" target_alarm;
     let patch_parent_lst =
-      extract_parent diff buggy_maps.Maps.ast_map |> List.map ~f:fst
+      AbsDiff.extract_parent diff buggy_maps.Maps.ast_map |> List.map ~f:fst
     in
     let ef =
       EditFunction.translate ast diff
@@ -488,8 +279,8 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     AbsDiff.to_json abs_diff out_dir);
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern_in_numeral, pattern =
-    abstract_bug_pattern du_facts' parent_facts' dug patch_comps src snk
-      alarm_comps buggy_maps abs_diff buggy_ast
+    AbsPat.run du_facts' parent_facts' dug patch_comps src snk alarm_comps
+      buggy_maps abs_diff buggy_ast
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
