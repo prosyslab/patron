@@ -17,6 +17,7 @@ let match_func z3env f =
   | "Var" -> z3env.var
   | "Index" -> z3env.index
   | "Mem" -> z3env.deref
+  | "AddrOf" -> z3env.addrof
   | "CallExp" -> z3env.call
   | "LibCallExp" -> z3env.libcall
   | "Arg" -> z3env.arg

@@ -479,6 +479,7 @@ let rels =
     (* ("DUPath", [ node; node ]); *)
     ("Index", [ lval; lval; expr ]);
     ("Mem", [ lval; expr ]);
+    ("AddrOf", [ expr; lval ]);
     ("LibCallExp", [ expr; expr; arg_list ]);
     ("LvalExp", [ expr; lval ]);
     ("Return", [ node; expr ]);
@@ -623,7 +624,7 @@ let prop_deps ?(ignore_duedge = false) terms = function
       if mem e terms then (true, terms |> add e1 |> add e2) else (false, terms)
   | FuncApply ("UnOpExp", [ e; _; e1 ]) ->
       if mem e terms then (true, add e1 terms) else (false, terms)
-  | FuncApply ("LvalExp", [ e; lv ]) ->
+  | FuncApply ("AddrOf", [ e; lv ]) | FuncApply ("LvalExp", [ e; lv ]) ->
       if mem e terms then (true, add lv terms) else (false, terms)
   | FuncApply ("Index", [ lv; lv'; e ]) ->
       if mem lv terms then (true, terms |> add lv' |> add e) else (false, terms)
@@ -786,7 +787,7 @@ let road_to_node terms = function
       else (false, terms)
   | FuncApply ("UnOpExp", [ e; _; e1 ]) ->
       if mem e1 terms then (true, add e terms) else (false, terms)
-  | FuncApply ("LvalExp", [ e; lv ]) ->
+  | FuncApply ("AddrOf", [ e; lv ]) | FuncApply ("LvalExp", [ e; lv ]) ->
       if mem lv terms then (true, add e terms) else (false, terms)
   | FuncApply ("Index", [ lv; lv'; e ]) ->
       if mem lv' terms || mem e terms then (true, add lv terms)

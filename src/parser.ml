@@ -105,6 +105,7 @@ let file2func = function
   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
   | "Index.facts" -> "Index"
   | "Mem.facts" -> "Mem"
+  | "AddrOf.facts" -> "AddrOf"
   | "LibCallExp.facts" -> "LibCallExp"
   | "LvalExp.facts" -> "LvalExp"
   | "Return.facts" -> "Return"
