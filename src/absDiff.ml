@@ -275,7 +275,7 @@ type abs_context = {
   root_path : abs_node list;
   parent_of_patch : abs_node;
   patch_bound : string list * string list;
-  patch_between : string list * string list;
+  (* patch_between : string list * string list; *)
   func_name : string;
   sibling_idx : int;
 }
@@ -320,8 +320,8 @@ let extract_exps_from_cfg node_id cfg_rev =
   if Option.is_none cfg_node_opt then []
   else
     match Option.value_exn cfg_node_opt with
-    | Maps.CfgNode.CSet (_, _, _, _, exps) -> exps
-    | Maps.CfgNode.CCall (_, _, _, _, _, exps) -> exps
+    | Maps.CfgNode.CSet (_, _, _, _, exps, _) -> exps
+    | Maps.CfgNode.CCall (_, _, _, _, _, exps, _) -> exps
     (* TODO: add more cases *)
     | _ -> []
 
@@ -358,103 +358,100 @@ let find_closest_exp (before, after)
   in
   aux before after []
 
-let find_exp_id parent_stmt
-    (cfg_rev : (string, Maps.CfgNode.t) Stdlib.Hashtbl.t) exp_map patch_between
-    exp =
-  if String.equal parent_stmt "None" then
-    let out = match_exp2du cfg_rev exp_map parent_stmt exp in
-    if String.equal out "None" |> not then out
-    else
-      let out = find_closest_exp patch_between cfg_rev exp_map exp in
-      if String.equal out "None" |> not then out else "None"
-  else "None"
+let find_exp_id func cfg_rev lval_map exp =
+  Stdlib.Hashtbl.fold
+    (fun key data acc ->
+      if String.is_prefix ~prefix:func key then
+        match data with
+        | Maps.CfgNode.CSet (_, _, _, _, _, lvs)
+        | Maps.CfgNode.CCall (_, _, _, _, _, _, lvs)
+        | Maps.CfgNode.CAssume (_, _, _, _, _, lvs) -> (
+            (try Hashtbl.find lval_map exp with _ -> "None") |> fun x ->
+            try List.find_exn ~f:(fun y -> String.equal x y) lvs :: acc
+            with _ -> acc)
+        | _ -> acc
+      else acc)
+    cfg_rev []
+  |> fun out -> try List.hd_exn out with _ -> "None"
 
-let rec mk_sdiff (patch_bw : string list * string list) ctx maps diff =
-  let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
+let rec mk_sdiff func ctx maps diff =
+  let lval_map = maps.Maps.lval_map |> Utils.reverse_hashtbl in
   let cfg = maps.cfg_map in
   let cfg_rev = maps.cfg_map |> Utils.reverse_hashtbl in
   match diff with
-  | D.InsertStmt (_, s) ->
-      SInsertStmt (ctx, mk_stmt patch_bw cfg cfg_rev exp_map s)
-  | D.DeleteStmt (_, s) ->
-      SDeleteStmt (ctx, mk_stmt patch_bw cfg cfg_rev exp_map s)
+  | D.InsertStmt (_, s) -> SInsertStmt (ctx, mk_stmt func cfg cfg_rev lval_map s)
+  | D.DeleteStmt (_, s) -> SDeleteStmt (ctx, mk_stmt func cfg cfg_rev lval_map s)
   | D.UpdateExp (_, e1, e2) ->
-      let parent_id = ctx.parent_of_patch.id in
       SUpdateExp
-        ( ctx,
-          mk_exp patch_bw parent_id cfg_rev exp_map e1,
-          mk_exp patch_bw parent_id cfg_rev exp_map e2 )
+        (ctx, mk_exp func cfg_rev lval_map e1, mk_exp func cfg_rev lval_map e2)
   | _ -> failwith "mk_sdiff: not implemented"
 
-and mk_exp patch_bw parent_stmt cfg exp_map e =
+and mk_exp func cfg lval_map e =
   {
-    node = AbsExp (match_exp patch_bw parent_stmt cfg exp_map e, e);
-    id = match_exp_id patch_bw parent_stmt cfg exp_map e;
+    node = AbsExp (match_exp func cfg lval_map e, e);
+    id = match_exp_id func cfg lval_map e;
     literal = Ast.s_exp e;
   }
 
-and mk_lval patch_bw parent_stmt cfg_rev exp_map l =
+and mk_lval func cfg_rev lval_map l =
   {
-    node = AbsLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l);
-    id = match_lval_id patch_bw parent_stmt cfg_rev exp_map l;
+    node = AbsLval (match_lval func cfg_rev lval_map l, l);
+    id = match_lval_id func cfg_rev lval_map l;
     literal = Ast.s_lv l;
   }
 
-and mk_exps patch_bw parent_stmt cfg_rev exp_map exps =
-  List.map ~f:(fun e -> mk_exp patch_bw parent_stmt cfg_rev exp_map e) exps
+and mk_exps func cfg_rev lval_map exps =
+  List.map ~f:(fun e -> mk_exp func cfg_rev lval_map e) exps
 
-and mk_stmt patch_bw cfg cfg_rev exp_map s =
+and mk_stmt func cfg cfg_rev lval_map s =
   let id = match_stmt_id cfg s.Cil.skind in
   {
-    node = AbsStmt (match_stmt patch_bw id cfg cfg_rev exp_map s, s);
+    node = AbsStmt (match_stmt func cfg cfg_rev lval_map s, s);
     id;
     literal = Ast.s_stmt s;
   }
 
-and mk_stmts patch_bw cfg cfg_rev exp_map stmts =
-  List.map ~f:(fun s -> mk_stmt patch_bw cfg cfg_rev exp_map s) stmts
+and mk_stmts func cfg cfg_rev lval_map stmts =
+  List.map ~f:(fun s -> mk_stmt func cfg cfg_rev lval_map s) stmts
 
-and match_instr patch_bw sid cfg exp_map i =
+and match_instr func cfg lval_map i =
   let i = List.hd_exn i in
   match i with
   | Cil.Set (l, e, _) ->
-      AbsAst.SSet
-        (mk_lval patch_bw sid cfg exp_map l, mk_exp patch_bw sid cfg exp_map e)
+      AbsAst.SSet (mk_lval func cfg lval_map l, mk_exp func cfg lval_map e)
   | Cil.Call (Some l, e, es, _) ->
       AbsAst.SCall
-        ( Some (mk_lval patch_bw sid cfg exp_map l),
-          mk_exp patch_bw sid cfg exp_map e,
-          mk_exps patch_bw sid cfg exp_map es )
+        ( Some (mk_lval func cfg lval_map l),
+          mk_exp func cfg lval_map e,
+          mk_exps func cfg lval_map es )
   | Cil.Call (None, e, es, _) ->
       AbsAst.SCall
-        ( None,
-          mk_exp patch_bw sid cfg exp_map e,
-          mk_exps patch_bw sid cfg exp_map es )
+        (None, mk_exp func cfg lval_map e, mk_exps func cfg lval_map es)
   | _ -> failwith "match_stmt: not supported"
 
-and match_stmt patch_bw sid cfg cfg_rev exp_map s =
+and match_stmt func cfg cfg_rev lval_map s =
   match s.Cil.skind with
   | Cil.If (e, s1, s2, _) ->
-      let node = AbsExp (match_exp patch_bw sid cfg_rev exp_map e, e) in
-      let id = match_exp_id patch_bw sid cfg_rev exp_map e in
+      let node = AbsExp (match_exp func cfg_rev lval_map e, e) in
+      let id = match_exp_id func cfg_rev lval_map e in
       let literal = Ast.s_exp e in
       AbsAst.SIf
         ( { node; id; literal },
-          mk_stmts patch_bw cfg cfg_rev exp_map s1.Cil.bstmts,
-          mk_stmts patch_bw cfg cfg_rev exp_map s2.Cil.bstmts )
-  | Cil.Instr i -> match_instr patch_bw sid cfg_rev exp_map i
+          mk_stmts func cfg cfg_rev lval_map s1.Cil.bstmts,
+          mk_stmts func cfg cfg_rev lval_map s2.Cil.bstmts )
+  | Cil.Instr i -> match_instr func cfg_rev lval_map i
   | Cil.Block b ->
       let bl =
         List.fold_left
           ~f:(fun (acc : AbsAst.abs_node list) s ->
-            mk_stmt patch_bw cfg cfg_rev exp_map s :: acc)
+            mk_stmt func cfg cfg_rev lval_map s :: acc)
           ~init:[] b.bstmts
         |> List.rev
       in
       AbsAst.SBlock bl
   | Cil.Return (Some e, _) ->
-      let node = AbsExp (match_exp patch_bw sid cfg_rev exp_map e, e) in
-      let id = match_exp_id patch_bw sid cfg_rev exp_map e in
+      let node = AbsExp (match_exp func cfg_rev lval_map e, e) in
+      let id = match_exp_id func cfg_rev lval_map e in
       let literal = Ast.s_exp e in
       AbsAst.SReturn (Some { node; id; literal })
   | Cil.Return (None, _) -> AbsAst.SReturn None
@@ -467,65 +464,57 @@ and match_stmt patch_bw sid cfg cfg_rev exp_map s =
   | Cil.Continue _ -> AbsAst.SContinue
   | _ -> failwith "match_stmt: not implemented"
 
-and mk_absexp patch_bw parent_stmt cfg_rev exp_map e =
-  let node = AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
-  let id = match_exp_id patch_bw parent_stmt cfg_rev exp_map e in
+and mk_absexp func cfg_rev lval_map e =
+  let node = AbsExp (match_exp func cfg_rev lval_map e, e) in
+  let id = match_exp_id func cfg_rev lval_map e in
   let literal = Ast.s_exp e in
   { node; id; literal }
 
-and match_exp patch_bw parent_stmt cfg_rev exp_map e =
+and match_exp func cfg_rev lval_map (e : Cil.exp) =
   match e with
   | Cil.Const c -> AbsAst.SConst (to_sconst c)
   | Cil.Lval l ->
-      let node =
-        AbsLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l)
-      in
-      let id = match_lval_id patch_bw parent_stmt cfg_rev exp_map l in
+      let node = AbsLval (match_lval func cfg_rev lval_map l, l) in
+      let id = match_lval_id func cfg_rev lval_map l in
       let literal = Ast.s_lv l in
       SELval { node; id; literal }
   | Cil.SizeOf t -> SSizeOf (to_styp t)
   | Cil.SizeOfE e' ->
-      let node =
-        AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e', e')
-      in
-      let id = match_exp_id patch_bw parent_stmt cfg_rev exp_map e' in
+      let node = AbsExp (match_exp func cfg_rev lval_map e', e') in
+      let id = match_exp_id func cfg_rev lval_map e' in
       let literal = Ast.s_exp e' in
       SSizeOfE { node; id; literal }
   | Cil.SizeOfStr s -> SSizeOfStr s
   | Cil.BinOp (op, e1, e2, t) ->
       SBinOp
         ( to_sbinop op,
-          mk_absexp patch_bw parent_stmt cfg_rev exp_map e1,
-          mk_absexp patch_bw parent_stmt cfg_rev exp_map e2,
+          mk_absexp func cfg_rev lval_map e1,
+          mk_absexp func cfg_rev lval_map e2,
           to_styp t )
   | Cil.UnOp (op, e, t) ->
-      let node = AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
-      let id = match_exp_id patch_bw parent_stmt cfg_rev exp_map e in
+      let node = AbsExp (match_exp func cfg_rev lval_map e, e) in
+      let id = match_exp_id func cfg_rev lval_map e in
       let literal = Ast.s_exp e in
       SUnOp (to_sunop op, { node; id; literal }, to_styp t)
   | Cil.CastE (t, e) ->
-      let node = AbsExp (match_exp patch_bw parent_stmt cfg_rev exp_map e, e) in
-      let id = match_exp_id patch_bw parent_stmt cfg_rev exp_map e in
+      let node = AbsExp (match_exp func cfg_rev lval_map e, e) in
+      let id = match_exp_id func cfg_rev lval_map e in
       let literal = Ast.s_exp e in
       SCastE (to_styp t, { node; id; literal })
   | Cil.Question (e1, e2, e3, t) ->
       SQuestion
-        ( mk_absexp patch_bw parent_stmt cfg_rev exp_map e1,
-          mk_absexp patch_bw parent_stmt cfg_rev exp_map e2,
-          mk_absexp patch_bw parent_stmt cfg_rev exp_map e3,
+        ( mk_absexp func cfg_rev lval_map e1,
+          mk_absexp func cfg_rev lval_map e2,
+          mk_absexp func cfg_rev lval_map e3,
           to_styp t )
   | Cil.AddrOf l ->
-      let node =
-        AbsLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l)
-      in
-      let id = match_lval_id patch_bw parent_stmt cfg_rev exp_map l in
+      let node = AbsLval (match_lval func cfg_rev lval_map l, l) in
+      let id = match_lval_id func cfg_rev lval_map l in
       let literal = Ast.s_lv l in
       SAddrOf { node; id; literal }
   | Cil.StartOf l ->
-      let node =
-        AbsLval (match_lval patch_bw parent_stmt cfg_rev exp_map l, l)
-      in
-      let id = match_lval_id patch_bw parent_stmt cfg_rev exp_map l in
+      let node = AbsLval (match_lval func cfg_rev lval_map l, l) in
+      let id = match_lval_id func cfg_rev lval_map l in
       let literal = Ast.s_lv l in
       SStartOf { node; id; literal }
   (* | Cil.AddrOfLabel stmt ->
@@ -535,36 +524,33 @@ and match_exp patch_bw parent_stmt cfg_rev exp_map e =
       SAddrOfLabel { node; id; literal } *)
   | _ -> failwith "match_exp: not implemented"
 
-and match_lval patch_bw parent_stmt cfg exp_map l =
+and match_lval func cfg lval_map l =
   let lhost, offset = l in
   let slhost =
     match lhost with
     | Cil.Var v -> AbsAst.SVar { vname = v.vname; vtype = to_styp v.vtype }
     | Cil.Mem e ->
-        let node = AbsExp (match_exp patch_bw parent_stmt cfg exp_map e, e) in
-        let id = match_exp_id patch_bw parent_stmt cfg exp_map e in
+        let node = AbsExp (match_exp func cfg lval_map e, e) in
+        let id = match_exp_id func cfg lval_map e in
         let literal = Ast.s_exp e in
         AbsAst.SMem { node; id; literal }
   in
-  let soffset = match_offset patch_bw parent_stmt cfg exp_map offset in
+  let soffset = match_offset func cfg lval_map offset in
   Lval (slhost, soffset)
 
-and match_offset patch_bw parent_stmt cfg exp_map o =
+and match_offset func cfg lval_map o =
   match o with
   | Cil.NoOffset -> AbsAst.SNoOffset
   | Cil.Field (f, o) ->
       let fcomp = { cname = f.fcomp.cname; cstruct = true } in
       let fname = f.fname in
       let ftype = to_styp f.ftype in
-      AbsAst.SField
-        ( { fcomp; fname; ftype },
-          match_offset patch_bw parent_stmt cfg exp_map o )
+      AbsAst.SField ({ fcomp; fname; ftype }, match_offset func cfg lval_map o)
   | Cil.Index (e, o) ->
-      let node = AbsExp (match_exp patch_bw parent_stmt cfg exp_map e, e) in
-      let id = match_exp_id patch_bw parent_stmt cfg exp_map e in
+      let node = AbsExp (match_exp func cfg lval_map e, e) in
+      let id = match_exp_id func cfg lval_map e in
       let literal = Ast.s_exp e in
-      AbsAst.SIndex
-        ({ node; id; literal }, match_offset patch_bw parent_stmt cfg exp_map o)
+      AbsAst.SIndex ({ node; id; literal }, match_offset func cfg lval_map o)
 
 and match_fieldinfo f =
   {
@@ -581,7 +567,7 @@ and extract_fun_name g =
   | Cil.GFun (f, _) -> f.Cil.svar.Cil.vname
   | _ -> failwith "extract_fun_name: not a function"
 
-and match_ast_path patch_bw cfg cfg_rev exp_map lst acc =
+and match_ast_path func cfg cfg_rev lval_map lst acc =
   match lst with
   | [] -> []
   | hd :: tl -> (
@@ -591,25 +577,25 @@ and match_ast_path patch_bw cfg cfg_rev exp_map lst acc =
           let node = AbsStmt (SSNull, s) in
           let literal = Ast.s_stmt s in
           { id; node; literal }
-          :: match_ast_path patch_bw cfg cfg_rev exp_map tl (id :: acc)
+          :: match_ast_path func cfg cfg_rev lval_map tl (id :: acc)
       | Ast.Exp e ->
-          let id = match_exp_id patch_bw (List.hd_exn acc) cfg_rev exp_map e in
+          let id = match_exp_id func cfg_rev lval_map e in
           let node = AbsExp (SENULL, e) in
           let literal = Ast.s_exp e in
           { id; node; literal }
-          :: match_ast_path patch_bw cfg cfg_rev exp_map tl acc
+          :: match_ast_path func cfg cfg_rev lval_map tl acc
       | Ast.Lval l ->
-          let id = match_lval_id patch_bw (List.hd_exn acc) cfg_rev exp_map l in
+          let id = match_lval_id func cfg_rev lval_map l in
           let node = AbsLval (SLNull, l) in
           let literal = Ast.s_lv l in
           { id; node; literal }
-          :: match_ast_path patch_bw cfg cfg_rev exp_map tl acc
+          :: match_ast_path func cfg cfg_rev lval_map tl acc
       | Ast.Global g ->
           let id = extract_fun_name g in
           let node = AbsGlob (SGNull, g) in
           let literal = Ast.s_glob g in
           { id; node; literal }
-          :: match_ast_path patch_bw cfg cfg_rev exp_map tl acc
+          :: match_ast_path func cfg cfg_rev lval_map tl acc
       | _ -> failwith "match_ast_path: context failed to be read")
 
 and match_stmt_path cfg lst =
@@ -624,14 +610,30 @@ and match_stmt_path cfg lst =
           { id; node; literal } :: match_stmt_path cfg tl
       | _ -> failwith "match_stmt_path: context failed to be read")
 
-and match_exp_id patch_bw parent_stmt cfg_rev exp_map e =
+and find_lval_id func cfg_rev lval_map (l_str : string) =
+  Stdlib.Hashtbl.fold
+    (fun key data acc ->
+      if String.is_prefix ~prefix:func key then
+        match data with
+        | Maps.CfgNode.CSet (_, _, _, _, _, lvs)
+        | Maps.CfgNode.CCall (_, _, _, _, _, _, lvs)
+        | Maps.CfgNode.CAssume (_, _, _, _, _, lvs) -> (
+            (try Hashtbl.find lval_map l_str with _ -> "None") |> fun x ->
+            try List.find_exn ~f:(fun y -> String.equal x y) lvs :: acc
+            with _ -> acc)
+        | _ -> acc
+      else acc)
+    cfg_rev []
+  |> fun out -> try List.hd_exn out with _ -> "None"
+
+and match_exp_id func cfg_rev lval_map e =
   let exp_str = Ast.s_exp e in
-  let exp_id = find_exp_id parent_stmt cfg_rev exp_map patch_bw exp_str in
+  let exp_id = find_exp_id func cfg_rev lval_map exp_str in
   if String.equal exp_id "None" then
     match e with
-    | Cil.Const c -> match_const patch_bw parent_stmt cfg_rev exp_map c
-    | Cil.Lval l ->
-        find_exp_id parent_stmt cfg_rev exp_map patch_bw (Ast.s_lv l)
+    | Cil.Const c -> match_const func cfg_rev lval_map c
+    | Cil.Lval l | Cil.StartOf l | Cil.AddrOf l ->
+        find_lval_id func cfg_rev lval_map (Ast.s_lv l)
     | Cil.SizeOf _ | Cil.SizeOfE _ | Cil.BinOp _ | Cil.UnOp _ | Cil.CastE _
     | Cil.Question _ ->
         "None"
@@ -640,9 +642,9 @@ and match_exp_id patch_bw parent_stmt cfg_rev exp_map e =
 
 and match_sizeof t exp_map = Ast.s_type t |> Stdlib.Hashtbl.find exp_map
 
-and match_lval_id patch_bw parent_stmt cfg_rev exp_map l =
+and match_lval_id func cfg_rev lval_map (l : Cil.lval) =
   let l_str = Ast.s_lv l in
-  find_exp_id parent_stmt cfg_rev exp_map patch_bw l_str
+  find_lval_id func cfg_rev lval_map l_str
 
 and eq_line loc cloc =
   let file_name = loc.Cil.file |> Filename.basename in
@@ -654,7 +656,7 @@ and match_set_id lv cfg loc =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CSet (_, _, cloc, cmd, _)
+      | Maps.CfgNode.CSet (_, _, cloc, cmd, _, _)
       | Maps.CfgNode.CAlloc (_, _, cloc, cmd)
       | Maps.CfgNode.CFalloc (_, _, cloc, cmd)
       | Maps.CfgNode.CSalloc (_, _, cloc, cmd) ->
@@ -669,7 +671,7 @@ and match_call_id cfg loc =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CCall (_, _, _, cloc, _, _) ->
+      | Maps.CfgNode.CCall (_, _, _, cloc, _, _, _) ->
           if eq_line loc cloc then v :: acc else acc
       | _ -> acc)
     cfg []
@@ -688,7 +690,7 @@ and match_assume_id cfg loc cond =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
-      | Maps.CfgNode.CAssume (_, ccond, cloc, _, _) ->
+      | Maps.CfgNode.CAssume (_, ccond, cloc, _, _, _) ->
           if eq_line loc cloc && Ast.s_exp cond |> String.equal ccond then
             v :: acc
           else acc
@@ -727,9 +729,9 @@ and match_stmt_id cfg s =
       if List.length matched >= 1 then List.hd_exn matched else "None"
   | _ -> "None"
 
-and match_const patch_bw parent_stmt cfg_rev exp_map c =
+and match_const func cfg_rev lval_map c =
   let const_str = Ast.s_const c in
-  find_exp_id parent_stmt cfg_rev exp_map patch_bw const_str
+  find_exp_id func cfg_rev lval_map const_str
 
 and to_styp t =
   match t with
@@ -1011,13 +1013,14 @@ let get_parent_of_exp_sibs (left_sibs, right_sibs) patch_node =
   then if String.equal patch_node.id "None" then [] else [ patch_node.id ]
   else []
 
-let mk_abs_ctx ctx maps du_facts patch_bw =
+let mk_abs_ctx ctx maps du_facts =
   let exp_map = maps.Maps.exp_map |> Utils.reverse_hashtbl in
   let cfg_map = maps.cfg_map in
   let cfg_map_rev = maps.cfg_map |> Utils.reverse_hashtbl in
   let root_path = List.rev ctx.D.root_path in
+  let parent_func = ctx.top_func_name in
   let s_root_path =
-    match_ast_path patch_bw cfg_map cfg_map_rev exp_map root_path []
+    match_ast_path parent_func cfg_map cfg_map_rev exp_map root_path []
   in
   let left_sibs, right_sibs = ctx.patch_bound in
   let prnt_fun = get_parent_fun root_path in
@@ -1028,38 +1031,38 @@ let mk_abs_ctx ctx maps du_facts patch_bw =
   in
   let parent_of_exp_sibs = get_parent_of_exp_sibs ctx.patch_bound patch_node in
   let s_left_sibs =
-    mk_s_sibs patch_bw cfg_map_rev maps exp_map left_sibs du_facts
+    mk_s_sibs parent_func cfg_map_rev maps exp_map left_sibs du_facts
       parent_of_exp_sibs
   in
   let s_right_sibs =
-    mk_s_sibs patch_bw cfg_map_rev maps exp_map right_sibs du_facts
+    mk_s_sibs parent_func cfg_map_rev maps exp_map right_sibs du_facts
       parent_of_exp_sibs
   in
   {
     root_path = s_root_path;
     parent_of_patch = patch_node;
     patch_bound = (s_left_sibs, s_right_sibs);
-    patch_between = patch_bw;
+    (* patch_between = patch_bw; *)
     func_name = ctx.D.top_func_name;
     sibling_idx = ctx.D.sibling_idx;
   }
 
-let extract_ctx_nodes sdiff =
-  List.fold_left
-    ~f:(fun acc sd ->
-      let ctx = get_ctx sd in
-      let b, a = ctx.patch_between in
-      let right_before =
-        try Some (List.rev b |> List.hd_exn) with _ -> None
-      in
-      let right_after = try Some (List.hd_exn a) with _ -> None in
-      ([ right_before; right_after ]
-      |> List.fold_left
-           ~f:(fun acc x ->
-             if Option.is_none x then acc else Option.value_exn x :: acc)
-           ~init:[])
-      @ acc)
-    ~init:[] sdiff
+(* let extract_ctx_nodes sdiff =
+   List.fold_left
+     ~f:(fun acc sd ->
+       let ctx = get_ctx sd in
+       let b, a = ctx.patch_between in
+       let right_before =
+         try Some (List.rev b |> List.hd_exn) with _ -> None
+       in
+       let right_after = try Some (List.hd_exn a) with _ -> None in
+       ([ right_before; right_after ]
+       |> List.fold_left
+            ~f:(fun acc x ->
+              if Option.is_none x then acc else Option.value_exn x :: acc)
+            ~init:[])
+       @ acc)
+     ~init:[] sdiff *)
 
 let filter_exps_by_func cfg ids func =
   let cfg_keys = Stdlib.Hashtbl.to_seq_keys cfg in
@@ -1071,8 +1074,8 @@ let filter_exps_by_func cfg ids func =
             if Option.is_some acc' then acc'
             else if
               match k with
-              | Maps.CfgNode.CSet (_, _, _, _, exps)
-              | Maps.CfgNode.CCall (_, _, _, _, _, exps) ->
+              | Maps.CfgNode.CSet (_, _, _, _, exps, _)
+              | Maps.CfgNode.CCall (_, _, _, _, _, exps, _) ->
                   Stdlib.List.mem id exps
               | _ -> false
             then Some k
@@ -1085,14 +1088,8 @@ let filter_exps_by_func cfg ids func =
         if String.is_prefix ~prefix:func node_s then id :: acc else acc)
     ~init:[] ids
 
-let extract_patch_related_exps sdiff cfg =
-  List.fold_left
-    ~f:(fun acc d ->
-      let ctx = get_ctx d in
-      let func = ctx.func_name in
-      let ids = extract_diff_ids d in
-      filter_exps_by_func cfg ids func @ acc)
-    ~init:[] sdiff
+let extract_patch_related_lvals sdiff =
+  List.fold_left ~f:(fun acc d -> extract_diff_ids d @ acc) ~init:[] sdiff
 
 let map_ast2cf_nodes ast_lst maps =
   match_stmt_path maps.Maps.cfg_map ast_lst |> symbolize_sibs
@@ -1144,10 +1141,11 @@ let mk_du_patch_bw dug (src, snk) (ast_before, ast_after) maps =
   in
   (Dug.edges2lst before, Dug.edges2lst after)
 
-let mk_patch_comp cfg sdiff =
-  let du_nodes = extract_ctx_nodes sdiff in
-  let exps = extract_patch_related_exps sdiff cfg in
-  Stdlib.List.append du_nodes exps
+let mk_patch_comp sdiff =
+  (* let du_nodes = extract_ctx_nodes sdiff in *)
+  let exps = extract_patch_related_lvals sdiff in
+  (* Stdlib.List.append du_nodes exps *)
+  exps
   |> Stdlib.List.sort_uniq Stdlib.compare
   |> List.filter ~f:(fun x -> String.equal x "None" |> not)
 
@@ -1214,12 +1212,12 @@ let define_abs_diff maps buggy diff du_facts dug src_snk =
   List.fold_left
     ~f:(fun acc (action, _) ->
       let ctx = D.get_ctx action in
-      let ast_patch_bw =
-        mk_ast_patch_bw ctx.Diff.top_func_name ctx.root_path ctx.patch_bound
-      in
-      let du_patch_bw = mk_du_patch_bw dug src_snk ast_patch_bw maps in
-      let s_context = mk_abs_ctx ctx maps du_facts du_patch_bw in
-      mk_sdiff du_patch_bw s_context maps action :: acc)
+      (* let ast_patch_bw =
+           mk_ast_patch_bw ctx.Diff.top_func_name ctx.root_path ctx.patch_bound
+         in *)
+      (* let du_patch_bw = mk_du_patch_bw dug src_snk ast_patch_bw maps in *)
+      let s_context = mk_abs_ctx ctx maps du_facts in
+      mk_sdiff ctx.top_func_name s_context maps action :: acc)
     ~init:[] diff
 
 module DiffJson = struct

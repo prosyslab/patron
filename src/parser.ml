@@ -148,11 +148,27 @@ let rec collect_exps keys facts acc =
         ~init:acc keys
       |> collect_exps keys tl
 
-let collect_set_exps key lv exp facts_lst =
+let rec collect_lvals keys facts acc =
+  match facts with
+  | [] -> acc
+  | hd :: tl ->
+      List.fold_left
+        ~f:(fun acc s ->
+          let found = collect_lv s hd in
+          if List.is_empty found then s :: acc
+          else s :: collect_lvals found facts acc)
+        ~init:acc keys
+      |> collect_lvals keys tl
+
+let collect_set_tokens key lv exp facts_lst =
   let e_facts, l_facts, elv_fact = facts_lst in
-  let lvs = collect_lv key elv_fact in
-  let exps = lv2exps_facts (lv :: lvs) l_facts [] in
-  collect_exps (exp :: exps) e_facts [] |> Stdlib.List.sort_uniq String.compare
+  let lvs = lv :: collect_lv key elv_fact in
+  let converted_exps = lv2exps_facts lvs l_facts [] in
+  let exps =
+    collect_exps (exp :: converted_exps) e_facts []
+    |> Stdlib.List.sort_uniq String.compare
+  in
+  (exps, lvs)
 
 let mk_cset key set_facts facts_bundle loc cmd =
   let arg = find_in_fact key set_facts in
@@ -160,25 +176,41 @@ let mk_cset key set_facts facts_bundle loc cmd =
   else
     let lv = List.hd_exn arg in
     let exp = List.nth_exn arg 1 in
-    let exps = collect_set_exps key lv exp facts_bundle in
-    CSet (lv, List.nth_exn arg 1, parse_loc loc, cmd, exps)
+    let exps, lvs = collect_set_tokens key lv exp facts_bundle in
+    CSet (lv, exp, parse_loc loc, cmd, exps, lvs)
 
-let collect_call_exps key lv exp args facts_lst =
+let collect_call_tokens key arg_lvs exp args facts_lst =
   let e_facts, l_facts, elv_fact = facts_lst in
-  let lvs = collect_lv key elv_fact in
-  let exps = lv2exps_facts (lv :: lvs) l_facts [] in
-  collect_exps (exp :: (args @ exps)) e_facts []
-  |> Stdlib.List.sort_uniq String.compare
+  let converted_lvs = collect_lv key elv_fact @ arg_lvs in
+  let converted_exps = lv2exps_facts converted_lvs l_facts [] in
+  let exps =
+    collect_exps (exp :: (args @ converted_exps)) e_facts []
+    |> Stdlib.List.sort_uniq String.compare
+  in
+  let lvs =
+    List.fold_left ~f:(fun acc s -> collect_lv s elv_fact @ acc) ~init:[] exps
+    @ converted_lvs
+    |> Stdlib.List.sort_uniq String.compare
+  in
+  (exps, lvs)
 
-let collect_assume_exps cond_exp facts_bundle =
-  let e_facts, l_facts, _ = facts_bundle in
+let collect_assume_tokens cond_exp facts_bundle =
+  let e_facts, l_facts, elv_fact = facts_bundle in
   let init_facts = collect_exps [ cond_exp ] e_facts [] in
-  let lvs = filter_lv init_facts in
-  collect_exps (filter_exp init_facts @ lv2exps_facts lvs l_facts []) e_facts []
-  |> Stdlib.List.sort_uniq String.compare
+  let converted_lvs = lv2exps_facts (filter_lv init_facts) l_facts [] in
+  let exps =
+    collect_exps (filter_exp init_facts @ converted_lvs) e_facts []
+    |> Stdlib.List.sort_uniq String.compare
+  in
+  let lvs =
+    List.fold_left
+      ~f:(fun acc s -> collect_lv s elv_fact @ acc)
+      ~init:converted_lvs exps
+  in
+  (exps, lvs)
 
-let mk_ccall key set_facts arg_facts callexp_facts libcal_facts facts_bundle loc
-    cmd =
+let mk_ccall key set_facts arg_facts callexp_facts libcall_facts facts_bundle
+    loc cmd =
   let arg = find_in_fact key set_facts in
   if List.is_empty arg then Maps.CfgNode.CNone
   else
@@ -186,13 +218,17 @@ let mk_ccall key set_facts arg_facts callexp_facts libcal_facts facts_bundle loc
     let call_exp = List.nth_exn arg 1 in
     let call_comps =
       find_in_fact call_exp callexp_facts |> fun lst ->
-      if List.is_empty lst then find_in_fact call_exp libcal_facts else lst
+      if List.is_empty lst then find_in_fact call_exp libcall_facts else lst
     in
     let func_exp = List.hd_exn call_comps in
     let arg_exp = List.rev call_comps |> List.hd_exn in
-    let arg_exps = find_in_fact arg_exp arg_facts |> filter_exp in
-    let exps = collect_call_exps key lval func_exp arg_exps facts_bundle in
-    CCall (lval, func_exp, arg_exps, parse_loc loc, cmd, exps)
+    let arg_tokens = find_in_fact arg_exp arg_facts in
+    let arg_exps = filter_exp arg_tokens in
+    let arg_lvs = filter_lv arg_tokens in
+    let exps, lvs =
+      collect_call_tokens key (lval :: arg_lvs) func_exp arg_exps facts_bundle
+    in
+    CCall (lval, func_exp, arg_exps, parse_loc loc, cmd, exps, lvs)
 
 (*FIXME: use facts to collect accurate exps *)
 let mk_creturn key return_facts loc cmd =
@@ -207,10 +243,10 @@ let mk_cassume key assume_facts facts_bundle loc cmd =
   else
     let cond_exp = List.hd_exn arg in
     let cond_bool = String.is_prefix ~prefix:"!" cond_exp |> not in
-    let exps = collect_assume_exps cond_exp facts_bundle in
+    let exps, lvs = collect_assume_tokens cond_exp facts_bundle in
     if cond_bool then
-      Maps.CfgNode.CAssume (true, cond_exp, parse_loc loc, cmd, exps)
-    else Maps.CfgNode.CAssume (false, cond_exp, parse_loc loc, cmd, exps)
+      Maps.CfgNode.CAssume (true, cond_exp, parse_loc loc, cmd, exps, lvs)
+    else Maps.CfgNode.CAssume (false, cond_exp, parse_loc loc, cmd, exps, lvs)
 
 let mk_calloc key alloc_facts loc cmd =
   let arg = find_in_fact key alloc_facts in
@@ -269,16 +305,12 @@ let parse_du_facts datalog_dir fact_file =
   in
   List.rev elt_lst |> Chc.of_list
 
-let make_du_facts work_dir cfg cfg_map =
-  let du_facts =
-    List.fold_left ~init:Chc.empty
-      ~f:(fun facts file ->
-        let chc = parse_du_facts work_dir file in
-        Chc.union facts chc)
-      Z3env.fact_files
-  in
-  parse_sparrow cfg cfg_map du_facts;
-  du_facts
+let make_du_facts work_dir =
+  List.fold_left ~init:Chc.empty
+    ~f:(fun facts file ->
+      let chc = parse_du_facts work_dir file in
+      Chc.union facts chc)
+    Z3env.fact_files
 
 let rec sexp2chc = function
   | Sexp.List [ Sexp.Atom "Lt"; e1; e2 ] ->
@@ -362,9 +394,9 @@ let mk_parent_tuples globs stmts =
 
 let eq_instrs ast_instr cfg_instr =
   match (ast_instr, cfg_instr) with
-  | [ Cil.Call (_, _, _, loc) ], Maps.CfgNode.CCall (_, _, _, cloc, _, _) ->
+  | [ Cil.Call (_, _, _, loc) ], Maps.CfgNode.CCall (_, _, _, cloc, _, _, _) ->
       AbsDiff.eq_line loc cloc
-  | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CSet (_, _, cloc, cmd, _)
+  | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CSet (_, _, cloc, cmd, _, _)
   | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CAlloc (_, _, cloc, cmd)
   | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CSalloc (_, _, cloc, cmd)
   | [ Cil.Set (lv, _, loc) ], Maps.CfgNode.CFalloc (_, _, cloc, cmd) ->
@@ -379,7 +411,7 @@ let lookup_eq_nodes ast_node cfg =
       (match (stmt_node.Cil.skind, cnode) with
       | Cil.Instr i, cn -> eq_instrs i cn
       | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc
-      | Cil.If (_, _, _, loc), Maps.CfgNode.CAssume (_, _, cloc, _, _) ->
+      | Cil.If (_, _, _, loc), Maps.CfgNode.CAssume (_, _, cloc, _, _, _) ->
           AbsDiff.eq_line loc cloc
       | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc, _, _)
       | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
@@ -528,7 +560,8 @@ let make_facts target_dir target_alarm ast cfg out_dir maps =
   Utils.parse_map alarm_dir maps.Maps.exp_map "Exp.map";
   Utils.parse_map alarm_dir maps.Maps.lval_map "Lval.map";
   let ast_nodes = (Ast.extract_globs ast, Ast.extract_stmts ast) in
-  let du_facts = make_du_facts alarm_dir cfg maps.cfg_map in
+  let du_facts = make_du_facts alarm_dir in
+  parse_sparrow cfg maps.cfg_map du_facts;
   let parent_facts = make_parent_facts alarm_dir maps ast_nodes in
   let facts = Chc.union du_facts parent_facts in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;

@@ -250,7 +250,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff du_facts
       (Dug.copy dug) (src, snk)
   in
-  let patch_comps = AbsDiff.mk_patch_comp buggy_maps.cfg_map abs_diff in
+  let patch_comps = AbsDiff.mk_patch_comp abs_diff in
   if write_out then (
     L.info "Writing out the edit script...";
     AbsDiff.to_json abs_diff out_dir);
