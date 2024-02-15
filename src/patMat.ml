@@ -253,7 +253,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   let patch_comps = AbsDiff.mk_patch_comp abs_diff in
   if write_out then (
     L.info "Writing out the edit script...";
-    AbsDiff.to_json abs_diff out_dir);
+    DiffJson.dump abs_diff out_dir);
   Maps.dump_ast "buggy" buggy_maps out_dir;
   let pattern_in_numeral, pattern =
     AbsPat.run du_facts parent_facts' dug patch_comps src snk alarm_comps

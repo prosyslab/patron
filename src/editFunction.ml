@@ -164,7 +164,7 @@ class expTranslationVisitor target =
 
 let rec translate_exp ast model_map (lookup_maps : Maps.translation_lookup_maps)
     sexp =
-  let id = sexp.A.AbsAst.id in
+  let id = sexp.A.id in
   if List.exists (fun (k, _) -> String.equal id k) model_map then (
     let new_id = List.find (fun (k, _) -> String.equal id k) model_map |> snd in
     let new_exp_str = Hashtbl.find lookup_maps.Maps.lval_map new_id in
@@ -172,14 +172,14 @@ let rec translate_exp ast model_map (lookup_maps : Maps.translation_lookup_maps)
     let vis = new expTranslationVisitor new_exp_str in
     ignore (Cil.visitCilFile (vis :> Cil.cilVisitor) ast);
     List.hd !swap_exp)
-  else break_down_translate_exp ast model_map lookup_maps sexp.A.AbsAst.node
+  else break_down_translate_exp ast model_map lookup_maps sexp.A.node
 
 and translate_offset ast model_map lookup_maps abs_offset offset =
   match (abs_offset, offset) with
-  | A.AbsAst.SNoOffset, Cil.NoOffset -> offset
-  | A.AbsAst.SField (_, o), Cil.Field (f, o') ->
+  | A.SNoOffset, Cil.NoOffset -> offset
+  | A.SField (_, o), Cil.Field (f, o') ->
       Cil.Field (f, translate_offset ast model_map lookup_maps o o')
-  | A.AbsAst.SIndex (e, o), Cil.Index (_, o') ->
+  | A.SIndex (e, o), Cil.Index (_, o') ->
       let new_e = translate_exp ast model_map lookup_maps e in
       let new_o = translate_offset ast model_map lookup_maps o o' in
       Cil.Index (new_e, new_o)
@@ -187,24 +187,23 @@ and translate_offset ast model_map lookup_maps abs_offset offset =
 
 and translate_lhost ast model_map lookup_maps abs_lhost lhost =
   match (abs_lhost, lhost) with
-  | A.AbsAst.SMem e, Cil.Mem _ ->
-      Cil.Mem (translate_exp ast model_map lookup_maps e)
-  | A.AbsAst.SVar _, Cil.Var _ -> lhost
+  | A.SMem e, Cil.Mem _ -> Cil.Mem (translate_exp ast model_map lookup_maps e)
+  | A.SVar _, Cil.Var _ -> lhost
   | _ -> failwith "translate_lhost: concrete and abstract lhost not matched"
 
 and break_down_translate_lval ast model_map lookup_maps lval =
   match lval with
-  | A.AbsAst.AbsLval (sym, cil) -> (
+  | A.AbsLval (sym, cil) -> (
       match (sym, cil) with
-      | A.AbsAst.SLNull, _ -> failwith "translate_lval:Lval is null"
-      | A.AbsAst.Lval (abs_lhost, abs_offset), (lhost, offset) ->
+      | A.SLNull, _ -> failwith "translate_lval:Lval is null"
+      | A.Lval (abs_lhost, abs_offset), (lhost, offset) ->
           ( translate_lhost ast model_map lookup_maps abs_lhost lhost,
             translate_offset ast model_map lookup_maps abs_offset offset ))
   | _ -> failwith "translate_lval: translation target is not an lvalue"
 
 and translate_lval ast model_map (lookup_maps : Maps.translation_lookup_maps)
     slval =
-  let id = slval.A.AbsAst.id in
+  let id = slval.A.id in
   if List.exists (fun (k, _) -> String.equal id k) model_map then (
     let new_id = List.find (fun (k, _) -> String.equal id k) model_map |> snd in
     let new_lv_str = Hashtbl.find lookup_maps.lval_map new_id in
@@ -212,44 +211,42 @@ and translate_lval ast model_map (lookup_maps : Maps.translation_lookup_maps)
     let vis = new lvTranslationVisitor new_lv_str in
     ignore (Cil.visitCilFile (vis :> Cil.cilVisitor) ast);
     List.hd !swap_lval)
-  else break_down_translate_lval ast model_map lookup_maps slval.A.AbsAst.node
+  else break_down_translate_lval ast model_map lookup_maps slval.A.node
 
 and break_down_translate_exp ast model_map
     (lookup_maps : Maps.translation_lookup_maps) exp =
   match exp with
-  | A.AbsAst.AbsExp (sym, cil) -> (
+  | A.AbsExp (sym, cil) -> (
       match (sym, cil) with
-      | A.AbsAst.SConst _, Cil.Const _ -> cil
-      | A.AbsAst.SELval l, Cil.Lval _ ->
+      | A.SConst _, Cil.Const _ -> cil
+      | A.SELval l, Cil.Lval _ ->
           let lval = translate_lval ast model_map lookup_maps l in
           Cil.Lval lval
-      | A.AbsAst.SBinOp (_, l, r, _), Cil.BinOp (op', _, _, t') ->
+      | A.SBinOp (_, l, r, _), Cil.BinOp (op', _, _, t') ->
           let lval = translate_exp ast model_map lookup_maps l in
           let rval = translate_exp ast model_map lookup_maps r in
           Cil.BinOp (op', lval, rval, t')
-      | A.AbsAst.SCastE (_, e), Cil.CastE (t, _) ->
+      | A.SCastE (_, e), Cil.CastE (t, _) ->
           let exp = translate_exp ast model_map lookup_maps e in
           Cil.CastE (t, exp)
-      | A.AbsAst.SUnOp (_, t, _), Cil.UnOp (op', _, t') ->
+      | A.SUnOp (_, t, _), Cil.UnOp (op', _, t') ->
           let exp = translate_exp ast model_map lookup_maps t in
           Cil.UnOp (op', exp, t')
-      | A.AbsAst.SSizeOfE e, Cil.SizeOfE _ ->
+      | A.SSizeOfE e, Cil.SizeOfE _ ->
           let exp = translate_exp ast model_map lookup_maps e in
           Cil.SizeOfE exp
-      | A.AbsAst.SAddrOf l, Cil.AddrOf _ ->
+      | A.SAddrOf l, Cil.AddrOf _ ->
           let lval = translate_lval ast model_map lookup_maps l in
           Cil.AddrOf lval
-      | A.AbsAst.SStartOf l, Cil.StartOf _ ->
+      | A.SStartOf l, Cil.StartOf _ ->
           let lval = translate_lval ast model_map lookup_maps l in
           Cil.StartOf lval
-      | A.AbsAst.SQuestion (a, b, c, _), Cil.Question (_, _, _, t) ->
+      | A.SQuestion (a, b, c, _), Cil.Question (_, _, _, t) ->
           let cond = translate_exp ast model_map lookup_maps a in
           let b_exp = translate_exp ast model_map lookup_maps b in
           let c_exp = translate_exp ast model_map lookup_maps c in
           Cil.Question (cond, b_exp, c_exp, t)
-      | A.AbsAst.SSizeOf _, Cil.SizeOf _
-      | A.AbsAst.SSizeOfStr _, Cil.SizeOfStr _
-      | _ ->
+      | A.SSizeOf _, Cil.SizeOf _ | A.SSizeOfStr _, Cil.SizeOfStr _ | _ ->
           Utils.print_ekind cil;
           failwith "translate_exp: not implemented")
   | _ -> failwith "translate_exp: translation target is not an expression"
@@ -267,7 +264,7 @@ class stmtVisitor (target : Cil.stmt) =
   end
 
 let rec translate_stmt ast model_map node_map ast_map lookup_maps stmt =
-  let id = stmt.A.AbsAst.id in
+  let id = stmt.A.id in
   if List.exists (fun (k, _) -> String.equal id k) model_map then (
     let new_id = List.find (fun (k, _) -> String.equal id k) model_map |> snd in
     let new_ast_node =
@@ -279,22 +276,22 @@ let rec translate_stmt ast model_map node_map ast_map lookup_maps stmt =
     ignore (Cil.visitCilFile vis ast);
     List.hd !swap_stmt)
   else
-    break_down_translate_stmt stmt.A.AbsAst.node ast model_map node_map ast_map
+    break_down_translate_stmt stmt.A.node ast model_map node_map ast_map
       lookup_maps
 
 and break_down_translate_stmt node ast model_map node_map ast_map lookup_maps =
   match node with
-  | A.AbsAst.AbsStmt (sym, cil) -> (
+  | A.AbsStmt (sym, cil) -> (
       match (sym, cil.Cil.skind) with
-      | A.AbsAst.SIf (scond, sthen_block, selse_block), Cil.If _ ->
+      | A.SIf (scond, sthen_block, selse_block), Cil.If _ ->
           translate_if_stmt ast model_map node_map ast_map lookup_maps scond
             sthen_block selse_block
-      | A.AbsAst.SReturn (Some sym), Cil.Return _ ->
+      | A.SReturn (Some sym), Cil.Return _ ->
           let exp = translate_exp ast model_map lookup_maps sym in
           Cil.mkStmt (Cil.Return (Some exp, Cil.locUnknown))
-      | A.AbsAst.SReturn None, Cil.Return _ ->
+      | A.SReturn None, Cil.Return _ ->
           Cil.mkStmt (Cil.Return (None, Cil.locUnknown))
-      | A.AbsAst.SGoto _, Cil.Goto _ -> cil
+      | A.SGoto _, Cil.Goto _ -> cil
       | abs_instr, Cil.Instr i ->
           translate_instr ast model_map lookup_maps abs_instr i
       | _ -> failwith "translate_stmt: not implemented")
@@ -324,11 +321,11 @@ and translate_if_stmt ast model_map node_map ast_map lookup_maps scond
 and translate_instr ast model_map (lookup_maps : Maps.translation_lookup_maps)
     abs_instr i =
   match (abs_instr, List.hd i) with
-  | A.AbsAst.SSet (l, r), Cil.Set _ ->
+  | A.SSet (l, r), Cil.Set _ ->
       let lval = translate_lval ast model_map lookup_maps l in
       let rval = translate_exp ast model_map lookup_maps r in
       Cil.mkStmt (Cil.Instr [ Cil.Set (lval, rval, Cil.locUnknown) ])
-  | A.AbsAst.SCall (Some l, f, args), Cil.Call _ ->
+  | A.SCall (Some l, f, args), Cil.Call _ ->
       let lval = translate_lval ast model_map lookup_maps l in
       let fun_exp = translate_exp ast model_map lookup_maps f in
       let args =
@@ -339,7 +336,7 @@ and translate_instr ast model_map (lookup_maps : Maps.translation_lookup_maps)
       in
       Cil.mkStmt
         (Cil.Instr [ Cil.Call (Some lval, fun_exp, args, Cil.locUnknown) ])
-  | A.AbsAst.SCall (None, f, args), Cil.Call _ ->
+  | A.SCall (None, f, args), Cil.Call _ ->
       let fun_exp = AbsDiff.get_original_exp f in
       let args =
         List.fold_left
