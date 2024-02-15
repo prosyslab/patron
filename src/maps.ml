@@ -7,15 +7,13 @@ module CfgNode = struct
   type loc = { file : string; line : int }
 
   type t =
-    (* last two string lists are cmds and exps respectively *)
     | CNone
-    | CSet of string * string * loc * string list (* (lv, e, loc) *)
+    | CSet of string * string * loc * string list (* (lv, e, loc, rest lvals) *)
     | CExternal of string * loc * string list (*(lv, loc)*)
     | CAlloc of string * string * loc * string list (*(lv, Array e, _, loc) *)
     | CSalloc of string * string * loc * string list (*(lv, s, loc) *)
     | CFalloc of string * string * loc * string list (*(lv, f, loc) *)
     | CCall of string * string * string list * loc * string list
-    (*(lv, fexp, params, loc, cmds, exps, loc) *)
     (*(Some lv, fexp, params, loc))*)
     | CReturn1 of string * loc * string list (*(Some e, loc) *)
     | CReturn2 of loc (*(None, loc) *)

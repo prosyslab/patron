@@ -376,6 +376,78 @@ let find_exp_id func cfg_rev lval_map exp =
     cfg_rev []
   |> fun out -> try List.hd_exn out with _ -> "None"
 
+let eq_line loc cloc =
+  let file_name = loc.Cil.file |> Filename.basename in
+  if loc.Cil.line = cloc.Maps.CfgNode.line && String.equal file_name cloc.file
+  then true
+  else false
+
+let to_sbinop op =
+  match op with
+  | Cil.PlusA -> SPlusA
+  | Cil.PlusPI -> SPlusPI
+  | Cil.IndexPI -> SIndexPI
+  | Cil.MinusA -> SMinusA
+  | Cil.MinusPI -> SMinusPI
+  | Cil.MinusPP -> SMinusPP
+  | Cil.Mod -> SMod
+  | Cil.Shiftlt -> SShiftlt
+  | Cil.Shiftrt -> SShiftrt
+  | Cil.BAnd -> SAnd
+  | Cil.BXor -> SXor
+  | Cil.BOr -> SOr
+  | Cil.Mult -> SMult
+  | Cil.Div -> SDiv
+  | Cil.Eq -> SEq
+  | Cil.Ne -> SNe
+  | Cil.Lt -> SLt
+  | Cil.Le -> SLe
+  | Cil.Gt -> SGt
+  | Cil.Ge -> SGe
+  | Cil.LAnd -> SLAnd
+  | Cil.LOr -> SLOr
+
+let to_binop sop =
+  match sop with
+  | SPlusA -> Cil.PlusA
+  | SPlusPI -> Cil.PlusPI
+  | SIndexPI -> Cil.IndexPI
+  | SMinusA -> Cil.MinusA
+  | SMinusPI -> Cil.MinusPI
+  | SMinusPP -> Cil.MinusPP
+  | SMod -> Cil.Mod
+  | SShiftlt -> Cil.Shiftlt
+  | SShiftrt -> Cil.Shiftrt
+  | SAnd -> Cil.BAnd
+  | SXor -> Cil.BXor
+  | SOr -> Cil.BOr
+  | SMult -> Cil.Mult
+  | SDiv -> Cil.Div
+  | SEq -> Cil.Eq
+  | SNe -> Cil.Ne
+  | SLt -> Cil.Lt
+  | SLe -> Cil.Le
+  | SGt -> Cil.Gt
+  | SGe -> Cil.Ge
+  | SLAnd -> Cil.LAnd
+  | SLOr -> Cil.LOr
+
+let to_unop sop = match sop with SNot -> Cil.LNot | SNeg -> Cil.Neg
+
+let to_sunop op =
+  match op with
+  | Cil.LNot -> SNot
+  | Cil.Neg -> SNeg
+  | _ -> failwith "not supported"
+
+let to_sconst c =
+  match c with
+  | Cil.CInt64 (i, _, _) -> SIntConst (Int64.to_int_exn i)
+  | Cil.CReal (f, _, _) -> SFloatConst f
+  | Cil.CChr c -> SCharConst c
+  | Cil.CStr s -> SStringConst s
+  | _ -> failwith "not supported"
+
 let rec mk_sdiff func ctx maps diff =
   let lval_map = maps.Maps.lval_map |> Utils.reverse_hashtbl in
   let cfg = maps.cfg_map in
@@ -519,11 +591,6 @@ and match_exp func cfg_rev lval_map (e : Cil.exp) =
       let id = match_lval_id func cfg_rev lval_map l in
       let literal = Ast.s_lv l in
       SStartOf { node; id; literal }
-  (* | Cil.AddrOfLabel stmt ->
-      let id = match_stmt_id cfg !stmt.Cil.skind in
-      let node = AbsStmt (match_stmt id cfg exp_map !stmt, !stmt) in
-      let literal = Ast.s_stmt !stmt in
-      SAddrOfLabel { node; id; literal } *)
   | _ -> failwith "match_exp: not implemented"
 
 and match_lval func cfg lval_map l =
@@ -659,13 +726,7 @@ and match_lval_id func cfg_rev lval_map (l : Cil.lval) =
   let l_str = Ast.s_lv l in
   find_lval_id func cfg_rev lval_map l_str
 
-and eq_line loc cloc =
-  let file_name = loc.Cil.file |> Filename.basename in
-  if loc.Cil.line = cloc.Maps.CfgNode.line && String.equal file_name cloc.file
-  then true
-  else false
-
-and match_set_id lv cfg loc =
+and match_set_id _ cfg loc =
   Stdlib.Hashtbl.fold
     (fun k v acc ->
       match k with
@@ -769,72 +830,6 @@ and to_scompinfo c = { cname = c.Cil.cname; cstruct = c.cstruct }
 and to_sfieldinfo f =
   { fcomp = to_scompinfo f.Cil.fcomp; fname = f.fname; ftype = to_styp f.ftype }
 
-and to_sbinop op =
-  match op with
-  | Cil.PlusA -> SPlusA
-  | Cil.PlusPI -> SPlusPI
-  | Cil.IndexPI -> SIndexPI
-  | Cil.MinusA -> SMinusA
-  | Cil.MinusPI -> SMinusPI
-  | Cil.MinusPP -> SMinusPP
-  | Cil.Mod -> SMod
-  | Cil.Shiftlt -> SShiftlt
-  | Cil.Shiftrt -> SShiftrt
-  | Cil.BAnd -> SAnd
-  | Cil.BXor -> SXor
-  | Cil.BOr -> SOr
-  | Cil.Mult -> SMult
-  | Cil.Div -> SDiv
-  | Cil.Eq -> SEq
-  | Cil.Ne -> SNe
-  | Cil.Lt -> SLt
-  | Cil.Le -> SLe
-  | Cil.Gt -> SGt
-  | Cil.Ge -> SGe
-  | Cil.LAnd -> SLAnd
-  | Cil.LOr -> SLOr
-
-and to_binop sop =
-  match sop with
-  | SPlusA -> Cil.PlusA
-  | SPlusPI -> Cil.PlusPI
-  | SIndexPI -> Cil.IndexPI
-  | SMinusA -> Cil.MinusA
-  | SMinusPI -> Cil.MinusPI
-  | SMinusPP -> Cil.MinusPP
-  | SMod -> Cil.Mod
-  | SShiftlt -> Cil.Shiftlt
-  | SShiftrt -> Cil.Shiftrt
-  | SAnd -> Cil.BAnd
-  | SXor -> Cil.BXor
-  | SOr -> Cil.BOr
-  | SMult -> Cil.Mult
-  | SDiv -> Cil.Div
-  | SEq -> Cil.Eq
-  | SNe -> Cil.Ne
-  | SLt -> Cil.Lt
-  | SLe -> Cil.Le
-  | SGt -> Cil.Gt
-  | SGe -> Cil.Ge
-  | SLAnd -> Cil.LAnd
-  | SLOr -> Cil.LOr
-
-and to_unop sop = match sop with SNot -> Cil.LNot | SNeg -> Cil.Neg
-
-and to_sunop op =
-  match op with
-  | Cil.LNot -> SNot
-  | Cil.Neg -> SNeg
-  | _ -> failwith "not supported"
-
-and to_sconst c =
-  match c with
-  | Cil.CInt64 (i, _, _) -> SIntConst (Int64.to_int_exn i)
-  | Cil.CReal (f, _, _) -> SFloatConst f
-  | Cil.CChr c -> SCharConst c
-  | Cil.CStr s -> SStringConst s
-  | _ -> failwith "not supported"
-
 let get_parent_fun parent_lst =
   let check_fun g = match g with Cil.GFun _ -> true | _ -> false in
   let get_fun g =
@@ -871,44 +866,6 @@ class globVisitor =
 let get_gvars ast =
   let gv = new globVisitor in
   Cil.visitCilFile gv ast
-
-let get_patch_range siblings patch_loc node_map ast_map =
-  if patch_loc = -1 then ([], [])
-  else
-    let before, after =
-      List.fold_left
-        ~f:(fun ((bf, af), cnt) s ->
-          if cnt < patch_loc then ((s :: bf, af), cnt + 1)
-          else ((bf, s :: af), cnt + 1))
-        ~init:(([], []), 0)
-        siblings
-      |> fst
-    in
-    let left_lim =
-      if patch_loc = 0 then []
-      else
-        List.fold_left
-          ~f:(fun acc s ->
-            try (Stdlib.Hashtbl.find ast_map s |> string_of_int) :: acc
-            with _ -> acc)
-          ~init:[] before
-        |> List.fold_left
-             ~f:(fun acc s ->
-               try Stdlib.Hashtbl.find node_map s :: acc with _ -> acc)
-             ~init:[]
-    in
-    let right_lim =
-      List.fold_left
-        ~f:(fun acc s ->
-          try (Stdlib.Hashtbl.find ast_map s |> string_of_int) :: acc
-          with _ -> acc)
-        ~init:[] after
-      |> List.fold_left
-           ~f:(fun acc s ->
-             try Stdlib.Hashtbl.find node_map s :: acc with _ -> acc)
-           ~init:[]
-    in
-    (left_lim, right_lim)
 
 let get_sibling_lst patch_node parent_branch =
   match patch_node.node with
@@ -1194,7 +1151,7 @@ let mk_ast_patch_bw top_func_name root_path bw =
   let after = a3 @ a2 @ a1 |> Ast.stmts2path in
   (before, after)
 
-let define_abs_diff maps buggy diff du_facts dug src_snk =
+let define_abs_diff maps buggy diff du_facts _ _ =
   get_gvars buggy;
   List.fold_left
     ~f:(fun acc (action, _) ->
