@@ -5,15 +5,6 @@ module L = Logger
 module F = Format
 module Sys = Stdlib.Sys
 
-let parse_loc loc =
-  let parsed = Str.split (Str.regexp ":") loc in
-  if List.length parsed <> 2 then { Maps.CfgNode.file = ""; line = -1 }
-  else
-    {
-      file = List.nth_exn parsed 0;
-      line = int_of_string (List.nth_exn parsed 1);
-    }
-
 let parse_facts facts func_name =
   Chc.fold
     (fun c acc ->
@@ -131,157 +122,6 @@ type facts4sparrow = {
   addr_of_facts : Chc.elt list list;
   index_facts : Chc.elt list list;
 }
-
-let filter_exp lst =
-  List.filter ~f:(fun s -> String.is_prefix ~prefix:"Exp" s) lst
-
-let filter_lv lst =
-  List.filter ~f:(fun s -> String.is_prefix ~prefix:"Lval" s) lst
-
-let rec fold_lval facts lv acc =
-  let mem_exps = find_in_fact lv facts.mem_facts in
-  let index_tokens = find_in_fact lv facts.index_facts in
-  let index_exps = filter_exp index_tokens in
-  let index_lvs = filter_lv index_tokens in
-  let lvs =
-    if List.is_empty index_lvs then lv :: acc
-    else
-      List.fold_left
-        ~f:(fun acc s -> fold_lval facts s [] @ acc)
-        ~init:[ lv ] index_lvs
-  in
-  let lv_from_exps =
-    List.fold_left
-      ~f:(fun acc s -> fold_exp facts s [] @ acc)
-      ~init:[] (mem_exps @ index_exps)
-  in
-  lvs @ lv_from_exps |> Stdlib.List.sort_uniq String.compare
-
-and fold_exp facts exp acc =
-  let addrof_lv = find_in_fact exp facts.addr_of_facts in
-  let lvexp_lv = find_in_fact exp facts.lvexp_facts in
-  let binop_exps = find_in_fact exp facts.binopexp_facts |> filter_exp in
-  let unop_exps = find_in_fact exp facts.unopexp_facts |> filter_exp in
-  let collected_exps = binop_exps @ unop_exps in
-  let lv_from_exps =
-    if List.is_empty collected_exps then acc
-    else
-      List.fold_left
-        ~f:(fun acc s -> fold_exp facts s [] @ acc)
-        ~init:[ exp ] collected_exps
-  in
-  let lvs =
-    List.fold_left
-      ~f:(fun acc s -> fold_lval facts s [] @ acc)
-      ~init:[]
-      (addrof_lv @ lvexp_lv @ lv_from_exps)
-  in
-  lvs |> Stdlib.List.sort_uniq String.compare
-
-let mk_cset key facts loc =
-  let arg = find_in_fact key facts.set_facts in
-  if List.is_empty arg then Maps.CfgNode.CNone
-  else
-    let lv = List.hd_exn arg in
-    let exp = List.nth_exn arg 1 in
-    let lvs = fold_exp facts exp [] @ fold_lval facts lv [] in
-    CSet (lv, exp, parse_loc loc, lvs)
-
-let mk_ccall key facts loc =
-  let arg = find_in_fact key facts.set_facts in
-  if List.is_empty arg then Maps.CfgNode.CNone
-  else
-    let lval = List.hd_exn arg in
-    let call_exp = List.last_exn arg in
-    let call_comps =
-      find_in_fact call_exp facts.callexp_facts |> fun lst ->
-      if List.is_empty lst then find_in_fact call_exp facts.libcall_facts
-      else lst
-    in
-    let exp_call = List.hd_exn call_comps in
-    let arg_exp = List.last_exn call_comps in
-    let arg_tokens = find_in_fact arg_exp facts.args_facts in
-    let arg_exps = filter_exp arg_tokens in
-    let arg_lvs = filter_lv arg_tokens in
-    let lvs_from_exps =
-      exp_call :: arg_exps
-      |> List.fold_left ~init:[] ~f:(fun acc s -> fold_exp facts s [] @ acc)
-    in
-    let lvs =
-      lval :: arg_lvs
-      |> List.fold_left ~init:[] ~f:(fun acc s -> fold_lval facts s [] @ acc)
-    in
-    CCall (lval, exp_call, arg_exps, parse_loc loc, lvs @ lvs_from_exps)
-
-let mk_creturn key facts loc =
-  let arg = find_in_fact key facts.return_facts in
-  if List.is_empty arg then Maps.CfgNode.CNone
-  else
-    fold_exp facts (List.hd_exn arg) [] |> fun lvs ->
-    Maps.CfgNode.CReturn1 (List.hd_exn arg, parse_loc loc, lvs)
-
-let mk_cassume key facts loc =
-  let arg = find_in_fact key facts.assume_facts in
-  if List.is_empty arg then Maps.CfgNode.CNone
-  else
-    let cond_exp = List.hd_exn arg in
-    let cond_bool = String.is_prefix ~prefix:"!" cond_exp |> not in
-    let lvs = fold_exp facts cond_exp [] in
-    if cond_bool then Maps.CfgNode.CAssume (true, cond_exp, parse_loc loc, lvs)
-    else Maps.CfgNode.CAssume (false, cond_exp, parse_loc loc, lvs)
-
-let mk_calloc key facts loc =
-  let arg = find_in_fact key facts.set_facts in
-  if List.is_empty arg then mk_cset key facts loc
-  else
-    let lvs = fold_lval facts (List.hd_exn arg) [] in
-    let alloc_exp = List.last_exn arg in
-    let exp_alloc = find_in_fact alloc_exp facts.alloc_exp_facts in
-    let lvs_from_exp = fold_exp facts (List.hd_exn exp_alloc) [] in
-    if List.is_empty arg then Maps.CfgNode.CNone
-    else
-      CAlloc
-        ( List.hd_exn arg,
-          List.hd_exn exp_alloc,
-          parse_loc loc,
-          lvs @ lvs_from_exp )
-
-let classify_facts chc =
-  {
-    set_facts = parse_facts chc "Set";
-    callexp_facts = parse_facts chc "CallExp";
-    libcall_facts = parse_facts chc "LibCallExp";
-    args_facts = parse_facts chc "Arg";
-    alloc_exp_facts = parse_facts chc "AllocExp";
-    return_facts = parse_facts chc "Return";
-    assume_facts = parse_facts chc "Assume";
-    mem_facts = parse_facts chc "Mem";
-    lvexp_facts = parse_facts chc "LvalExp";
-    evallv_facts = parse_facts chc "EvalLv";
-    binopexp_facts = parse_facts chc "BinOpExp";
-    unopexp_facts = parse_facts chc "UnOpExp";
-    addr_of_facts = parse_facts chc "AddrOf";
-    index_facts = parse_facts chc "Index";
-  }
-
-let parse_sparrow nodes cfg_map chc =
-  let facts = classify_facts chc in
-  List.iter
-    ~f:(fun (key, cmd, loc) ->
-      let cmd =
-        match List.hd_exn cmd with
-        | "skip" -> Maps.CfgNode.CSkip (parse_loc loc)
-        | "return" -> mk_creturn key facts loc
-        | "call" -> mk_ccall key facts loc
-        | "assume" -> mk_cassume key facts loc
-        | "set" -> mk_cset key facts loc
-        | "alloc" -> mk_calloc key facts loc
-        | "falloc" -> CNone
-        | "salloc" -> CNone
-        | _ -> L.error "parse_sparrow: unknown command %s" (List.hd_exn cmd)
-      in
-      match cmd with CNone | CSkip _ -> () | _ -> Hashtbl.add cfg_map cmd key)
-    nodes
 
 let parse_du_facts datalog_dir fact_file =
   let func_name = file2func fact_file in
@@ -542,16 +382,15 @@ let get_alarm work_dir =
   in
   (src, snk, alarm_compss)
 
-let make_facts target_dir target_alarm ast cfg out_dir maps =
-  let alarm_dir =
-    Filename.concat target_dir ("sparrow-out/taint/datalog/" ^ target_alarm)
-  in
+let make_facts target_dir target_alarm ast out_dir maps =
+  let spo_dir = Filename.concat target_dir "sparrow-out" in
+  let alarm_dir = Filename.concat spo_dir ("taint/datalog/" ^ target_alarm) in
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
-  Utils.parse_map alarm_dir maps.Maps.exp_map "Exp.map";
-  Utils.parse_map alarm_dir maps.Maps.lval_map "Lval.map";
+  Utils.parse_map alarm_dir "Exp.map" maps.Maps.exp_map;
+  Utils.parse_map alarm_dir "Lval.map" maps.Maps.lval_map;
+  Utils.parse_node_json spo_dir maps.Maps.loc_map;
   let ast_nodes = (Ast.extract_globs ast, Ast.extract_stmts ast) in
   let du_facts = make_du_facts alarm_dir in
-  parse_sparrow cfg maps.cfg_map du_facts;
   let parent_facts = make_parent_facts alarm_dir maps ast_nodes in
   let facts = Chc.union du_facts parent_facts in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;

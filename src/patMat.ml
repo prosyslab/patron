@@ -164,13 +164,13 @@ let mk_file_diff orig_path patch_path target_alarm out_dir =
        ])
   |> ignore
 
-let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
-    out_dir diff =
+let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast out_dir
+    diff =
   let target_maps = Maps.create_maps () in
   Maps.reset_maps target_maps;
   try
     let du_facts, parent_facts, (src, snk, _) =
-      Parser.make_facts donee_dir target_alarm ast cfg out_dir target_maps
+      Parser.make_facts donee_dir target_alarm ast out_dir target_maps
     in
     let parent_facts' = reduce_parent_facts target_maps ast parent_facts in
     let combined_facts = Chc.union du_facts parent_facts' in
@@ -181,29 +181,29 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast cfg
         src snk pattern
     in
     Maps.dump target_alarm target_maps out_dir;
-    if Option.is_some status then
+    if Option.is_some status then (
       Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
-    L.info "Matching with %s is done" target_alarm;
-    let patch_parent_lst =
-      AbsDiff.extract_parent diff buggy_maps.Maps.ast_map |> List.map ~f:fst
-    in
-    let ef =
-      EditFunction.translate ast diff
-        (Filename.concat out_dir (target_alarm ^ "_sol.map"))
-        target_maps patch_parent_lst parent_facts
-    in
-    L.info "Applying patch on the target file ...";
-    let out_file_orig =
-      String.concat [ out_dir; "/orig_"; target_alarm; ".c" ]
-    in
-    Patch.write_out out_file_orig ast;
-    let patch_file = Patch.apply diff ast ef in
-    let out_file_patch =
-      String.concat [ out_dir; "/patch_"; target_alarm; ".c" ]
-    in
-    Patch.write_out out_file_patch patch_file;
-    L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
-    mk_file_diff out_file_orig out_file_patch target_alarm out_dir
+      L.info "Matching with %s is done" target_alarm;
+      let patch_parent_lst =
+        AbsDiff.extract_parent diff buggy_maps.Maps.ast_map |> List.map ~f:fst
+      in
+      let ef =
+        EditFunction.translate ast diff out_dir target_alarm target_maps
+          patch_parent_lst parent_facts
+      in
+      L.info "Applying patch on the target file ...";
+      let out_file_orig =
+        String.concat [ out_dir; "/orig_"; target_alarm; ".c" ]
+      in
+      Patch.write_out out_file_orig ast;
+      let patch_file = Patch.apply diff ast ef in
+      let out_file_patch =
+        String.concat [ out_dir; "/patch_"; target_alarm; ".c" ]
+      in
+      Patch.write_out out_file_patch patch_file;
+      L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
+      mk_file_diff out_file_orig out_file_patch target_alarm out_dir)
+    else L.info "%s is Not Matched" target_alarm
   with Parser.Not_impl_alarm_comps -> L.info "PASS"
 
 let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
@@ -213,12 +213,12 @@ let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
        (Filename.concat donee_dir ("sparrow-out/taint/datalog/" ^ target_alarm))
 
 let match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps buggy_ast
-    buggy_cfg pattern out_dir diff =
+    pattern out_dir diff =
   Sys.readdir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
          if is_new_alarm buggy_dir true_alarm donee_dir ta then
            match_bug_for_one_prj pattern buggy_maps donee_dir ta buggy_ast
-             buggy_cfg out_dir diff)
+             out_dir diff)
 
 let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     out_dir =
@@ -232,14 +232,8 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
-  L.info "Loading CFG Elements...";
-  let buggy_cfg =
-    Utils.parse_node_json (Filename.concat buggy_dir "sparrow-out")
-  in
-  L.info "CFG Elements Loading Done!";
   let du_facts, parent_facts, (src, snk, alarm_comps) =
-    Parser.make_facts buggy_dir true_alarm buggy_ast buggy_cfg out_dir
-      buggy_maps
+    Parser.make_facts buggy_dir true_alarm buggy_ast out_dir buggy_maps
   in
   L.info "Make Facts in buggy done";
   let parent_facts' = reduce_parent_facts buggy_maps buggy_ast parent_facts in
@@ -274,5 +268,5 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   |> fun status -> assert (Option.is_some status) );
   Maps.dump "buggy_numer" buggy_maps out_dir;
   match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps donee_ast
-    buggy_cfg pattern out_dir abs_diff;
+    pattern out_dir abs_diff;
   L.info "Done."

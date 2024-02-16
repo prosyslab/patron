@@ -1,3 +1,6 @@
+open Core
+module Hashtbl = Stdlib.Hashtbl
+module Sys = Stdlib.Sys
 module J = Yojson.Basic.Util
 module F = Format
 
@@ -18,39 +21,29 @@ let print_ekind exp =
   | Cil.AddrOfLabel _ -> print_endline "AddrOfLabel"
   | Cil.StartOf _ -> print_endline "StartOf"
 
-let print_bool b =
-  if b = true then print_endline "true" else print_endline "false"
-
 let eq_stmt_line sk1 sk2 =
   match (sk1, sk2) with
-  | Cil.Instr i1, Cil.Instr i2 -> (
-      if i1 = [] || i2 = [] then false
-      else
-        match (List.hd i1, List.hd i2) with
-        | Cil.Set (_, _, loc), Cil.Set (_, _, loc2) -> loc.line = loc2.line
-        | Cil.Call (_, _, _, loc), Cil.Call (_, _, _, loc2) ->
-            loc.line = loc2.line
-        | _ -> false)
-  | Cil.Return (_, loc), Cil.Return (_, loc') -> loc.line = loc'.line
-  | Cil.Goto (_, loc), Cil.Goto (_, loc') -> loc.line = loc'.line
-  | Cil.If (_, _, _, loc), Cil.If (_, _, _, loc') -> loc.line = loc'.line
-  | Cil.Loop (_, loc, _, _), Cil.Loop (_, loc', _, _) -> loc.line = loc'.line
-  | Cil.ComputedGoto (_, loc), Cil.ComputedGoto (_, loc') ->
-      loc.line = loc'.line
-  | Cil.Block _, Cil.Block _ -> false
-  | Cil.TryExcept (_, _, _, loc), Cil.TryExcept (_, _, _, loc') ->
-      loc.line = loc'.line
-  | Cil.TryFinally (_, _, loc), Cil.TryFinally (_, _, loc') ->
-      loc.line = loc'.line
-  | Cil.Break loc, Cil.Break loc' -> loc.line = loc'.line
-  | Cil.Continue loc, Cil.Continue loc' -> loc.line = loc'.line
+  | Cil.Instr (Cil.Set (_, _, loc1) :: _), Cil.Instr (Cil.Set (_, _, loc2) :: _)
+  | ( Cil.Instr (Cil.Call (_, _, _, loc1) :: _),
+      Cil.Instr (Cil.Call (_, _, _, loc2) :: _) )
+  | Cil.Return (_, loc1), Cil.Return (_, loc2)
+  | Cil.Goto (_, loc1), Cil.Goto (_, loc2)
+  | Cil.If (_, _, _, loc1), Cil.If (_, _, _, loc2)
+  | Cil.Loop (_, loc1, _, _), Cil.Loop (_, loc2, _, _)
+  | Cil.ComputedGoto (_, loc1), Cil.ComputedGoto (_, loc2)
+  | Cil.TryExcept (_, _, _, loc1), Cil.TryExcept (_, _, _, loc2)
+  | Cil.TryFinally (_, _, loc1), Cil.TryFinally (_, _, loc2)
+  | Cil.Break loc1, Cil.Break loc2
+  | Cil.Continue loc1, Cil.Continue loc2 ->
+      loc1.line = loc2.line
   | _ -> false
 
 let remove_comments globs =
   List.rev
     (List.fold_left
-       (fun acc glob -> match glob with Cil.GText _ -> acc | _ -> glob :: acc)
-       [] globs)
+       ~f:(fun acc glob ->
+         match glob with Cil.GText _ -> acc | _ -> glob :: acc)
+       ~init:[] globs)
 
 let print_exp_type exp =
   match exp with
@@ -119,58 +112,32 @@ let string_of_skind sk =
   | Cil.TryFinally _ -> "TryFinally"
   | Cil.Switch _ -> "Switch"
 
-let contains s1 s2 =
-  let re = Str.regexp_string s2 in
-  try
-    ignore (Str.search_forward re s1 0);
-    true
-  with Not_found -> false
-
-let read_lines name =
-  let file = open_in name in
-  let rec read_lines acc =
-    match input_line file with
-    | line -> read_lines (line :: acc)
-    | exception End_of_file -> List.rev acc
-  in
-  let lines = read_lines [] in
-  close_in file;
-  lines
-
-let parse_map path map file_name =
-  let path = path ^ "/" ^ file_name in
-  let lines = read_lines path in
+let parse_map path file_name map =
+  let lines = Filename.concat path file_name |> In_channel.read_lines in
   List.iter
-    (fun line ->
+    ~f:(fun line ->
       let splited = Str.split (Str.regexp "\t") line in
-      let key = List.hd splited in
-      let value = List.hd (List.tl splited) in
+      let key = List.hd_exn splited in
+      let value = List.hd_exn (List.tl_exn splited) in
       Hashtbl.add map key value)
     lines
 
-let parse_node_json sparrow_dir =
+let parse_loc loc =
+  let parsed = String.split ~on:':' loc in
+  if List.length parsed <> 2 then { Maps.file = ""; line = -1 }
+  else
+    {
+      Maps.file = List.nth_exn parsed 0;
+      line = int_of_string (List.nth_exn parsed 1);
+    }
+
+let parse_node_json sparrow_dir loc_map =
   let file = Yojson.Basic.from_file (sparrow_dir ^ "/node.json") in
   let nodes = J.member "nodes" file in
-  let key_list = J.keys nodes in
-  List.fold_left
-    (fun acc key ->
-      let cont = J.member key nodes in
-      let cmd =
-        J.to_list (J.member "cmd" cont)
-        |> List.fold_left
-             (fun acc y ->
-               try J.to_string y :: acc
-               with _ -> (
-                 try
-                   let bool = J.to_bool y in
-                   if bool then "true" :: acc else "false" :: acc
-                 with _ -> "null" :: acc))
-             []
-        |> List.rev
-      in
-      let loc = J.member "loc" cont |> J.to_string in
-      (key, cmd, loc) :: acc)
-    [] key_list
+  J.to_assoc nodes
+  |> List.iter ~f:(fun (key, node) ->
+         J.member "loc" node |> J.to_string |> parse_loc
+         |> Hashtbl.add loc_map key)
 
 let stmt_lst = ref []
 let target_func = ref ""
@@ -194,7 +161,7 @@ class functionVisitor =
     inherit Cil.nopCilVisitor
 
     method! vfunc func =
-      if func.svar.vname = !target_func then (
+      if String.equal func.svar.vname !target_func then (
         stmt_lst := !stmt_lst @ func.sbody.bstmts;
         stmt_lst := collect_stmts_from_block !stmt_lst;
         SkipChildren)
@@ -209,41 +176,22 @@ let extract_target_func_stmt_lst file target =
   !stmt_lst
 
 let extract_target_func ast target =
-  List.find
-    (fun x ->
-      match x with Cil.GFun (x, _) -> x.Cil.svar.vname = target | _ -> false)
+  List.find_exn
+    ~f:(fun x ->
+      match x with
+      | Cil.GFun (x, _) -> String.equal x.Cil.svar.vname target
+      | _ -> false)
     ast.Cil.globals
 
 let extract_target_funcs ast targets =
   List.fold_left
-    (fun acc target -> extract_target_func ast target :: acc)
-    [] targets
-
-let get_first_nth_lines n str =
-  let rec aux acc n str =
-    if n = 0 then List.rev acc
-    else
-      let idx = String.index str '\n' in
-      let line = String.sub str 0 idx in
-      let str = String.sub str (idx + 1) (String.length str - idx - 1) in
-      aux (line :: acc) (n - 1) str
-  in
-  aux [] n str
+    ~f:(fun acc target -> extract_target_func ast target :: acc)
+    ~init:[] targets
 
 let get_target_file target_dir =
   Sys.readdir target_dir |> Array.to_list
-  |> List.filter (fun x -> Filename.check_suffix x ".c")
-  |> List.hd |> Filename.concat target_dir
-
-let parse_model path =
-  let lines = read_lines path in
-  List.fold_left
-    (fun map line ->
-      let splited = Str.split (Str.regexp "\t") line in
-      let key = List.hd splited in
-      let value = List.hd (List.tl splited) in
-      (key, value) :: map)
-    [] lines
+  |> List.filter ~f:(fun x -> Filename.check_suffix x ".c")
+  |> List.hd_exn |> Filename.concat target_dir
 
 let reverse_hashtbl tbl =
   let rev_tbl_init = Hashtbl.create 1000 in

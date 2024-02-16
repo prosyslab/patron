@@ -45,11 +45,14 @@ type translation_lookup_maps = {
   lval_map : (string, string) Hashtbl.t;
 }
 
+type loc = { file : string; line : int }
+
 type t = {
   sym_map : (string, Z3.Expr.expr) Hashtbl.t;
   numeral_map : (int, string) Hashtbl.t;
   ast_map : (Ast.t, int) Hashtbl.t;
   cfg_map : (CfgNode.t, string) Hashtbl.t;
+  loc_map : (string, loc) Hashtbl.t;
   exp_map : (string, string) Hashtbl.t;
   lval_map : (string, string) Hashtbl.t;
   node_map : (string, string) Hashtbl.t;
@@ -61,6 +64,7 @@ let create_maps () =
     numeral_map = Hashtbl.create 1000;
     ast_map = Hashtbl.create 1000;
     cfg_map = Hashtbl.create 1000;
+    loc_map = Hashtbl.create 1000;
     exp_map = Hashtbl.create 1000;
     lval_map = Hashtbl.create 1000;
     node_map = Hashtbl.create 1000;
@@ -85,6 +89,7 @@ let reset_maps maps =
   Hashtbl.reset maps.sym_map;
   Hashtbl.reset maps.numeral_map;
   Hashtbl.reset maps.cfg_map;
+  Hashtbl.reset maps.loc_map;
   Hashtbl.reset maps.node_map;
   Hashtbl.reset maps.exp_map;
   Hashtbl.reset maps.ast_map

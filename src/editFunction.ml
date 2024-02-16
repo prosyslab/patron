@@ -3,14 +3,10 @@ module D = Diff
 module A = AbsDiff
 module H = Utils
 
-let translate_by_model id model =
-  List.find_opt (fun (k, _) -> String.equal k id) model |> function
-  | x -> ( match x with Some (_, v) -> Some v | None -> None)
-
-let translate_node_lst lst model =
+let translate_node_lst lst sol_map =
   List.fold_left
     (fun acc x ->
-      match translate_by_model x model with Some x -> x :: acc | None -> acc)
+      match Hashtbl.find_opt sol_map x with Some x -> x :: acc | None -> acc)
     [] lst
 
 let of_exp node =
@@ -162,89 +158,89 @@ class expTranslationVisitor target =
       if is_found then SkipChildren else DoChildren
   end
 
-let rec translate_exp ast model_map (lookup_maps : Maps.translation_lookup_maps)
+let rec translate_exp ast sol_map (lookup_maps : Maps.translation_lookup_maps)
     sexp =
-  let id = sexp.A.id in
-  if List.exists (fun (k, _) -> String.equal id k) model_map then (
-    let new_id = List.find (fun (k, _) -> String.equal id k) model_map |> snd in
-    let new_exp_str = Hashtbl.find lookup_maps.Maps.lval_map new_id in
+  if Hashtbl.mem sol_map sexp.A.id then (
+    let new_exp_str =
+      Hashtbl.find sol_map sexp.A.id |> Hashtbl.find lookup_maps.Maps.lval_map
+    in
     swap_exp := [];
-    let vis = new expTranslationVisitor new_exp_str in
-    ignore (Cil.visitCilFile (vis :> Cil.cilVisitor) ast);
+    let vis :> Cil.cilVisitor = new expTranslationVisitor new_exp_str in
+    ignore (Cil.visitCilFile vis ast);
     List.hd !swap_exp)
-  else break_down_translate_exp ast model_map lookup_maps sexp.A.node
+  else break_down_translate_exp ast sol_map lookup_maps sexp.A.node
 
-and translate_offset ast model_map lookup_maps abs_offset offset =
+and translate_offset ast sol_map lookup_maps abs_offset offset =
   match (abs_offset, offset) with
   | A.SNoOffset, Cil.NoOffset -> offset
   | A.SField (_, o), Cil.Field (f, o') ->
-      Cil.Field (f, translate_offset ast model_map lookup_maps o o')
+      Cil.Field (f, translate_offset ast sol_map lookup_maps o o')
   | A.SIndex (e, o), Cil.Index (_, o') ->
-      let new_e = translate_exp ast model_map lookup_maps e in
-      let new_o = translate_offset ast model_map lookup_maps o o' in
+      let new_e = translate_exp ast sol_map lookup_maps e in
+      let new_o = translate_offset ast sol_map lookup_maps o o' in
       Cil.Index (new_e, new_o)
   | _ -> failwith "translate_offset: concrete and abstract offset not matched"
 
-and translate_lhost ast model_map lookup_maps abs_lhost lhost =
+and translate_lhost ast sol_map lookup_maps abs_lhost lhost =
   match (abs_lhost, lhost) with
-  | A.SMem e, Cil.Mem _ -> Cil.Mem (translate_exp ast model_map lookup_maps e)
+  | A.SMem e, Cil.Mem _ -> Cil.Mem (translate_exp ast sol_map lookup_maps e)
   | A.SVar _, Cil.Var _ -> lhost
   | _ -> failwith "translate_lhost: concrete and abstract lhost not matched"
 
-and break_down_translate_lval ast model_map lookup_maps lval =
+and break_down_translate_lval ast sol_map lookup_maps lval =
   match lval with
   | A.AbsLval (sym, cil) -> (
       match (sym, cil) with
       | A.SLNull, _ -> failwith "translate_lval:Lval is null"
       | A.Lval (abs_lhost, abs_offset), (lhost, offset) ->
-          ( translate_lhost ast model_map lookup_maps abs_lhost lhost,
-            translate_offset ast model_map lookup_maps abs_offset offset ))
+          ( translate_lhost ast sol_map lookup_maps abs_lhost lhost,
+            translate_offset ast sol_map lookup_maps abs_offset offset ))
   | _ -> failwith "translate_lval: translation target is not an lvalue"
 
-and translate_lval ast model_map (lookup_maps : Maps.translation_lookup_maps)
+and translate_lval ast sol_map (lookup_maps : Maps.translation_lookup_maps)
     slval =
-  let id = slval.A.id in
-  if List.exists (fun (k, _) -> String.equal id k) model_map then (
-    let new_id = List.find (fun (k, _) -> String.equal id k) model_map |> snd in
-    let new_lv_str = Hashtbl.find lookup_maps.lval_map new_id in
+  if Hashtbl.mem sol_map slval.A.id then (
+    let new_lv_str =
+      Hashtbl.find sol_map slval.A.id |> Hashtbl.find lookup_maps.lval_map
+    in
     swap_lval := [];
-    let vis = new lvTranslationVisitor new_lv_str in
-    ignore (Cil.visitCilFile (vis :> Cil.cilVisitor) ast);
+    let vis :> Cil.cilVisitor = new lvTranslationVisitor new_lv_str in
+    ignore (Cil.visitCilFile vis ast);
     List.hd !swap_lval)
-  else break_down_translate_lval ast model_map lookup_maps slval.A.node
+  else break_down_translate_lval ast sol_map lookup_maps slval.A.node
 
-and break_down_translate_exp ast model_map
+and break_down_translate_exp ast sol_map
     (lookup_maps : Maps.translation_lookup_maps) exp =
   match exp with
   | A.AbsExp (sym, cil) -> (
       match (sym, cil) with
       | A.SConst _, Cil.Const _ -> cil
       | A.SELval l, Cil.Lval _ ->
-          let lval = translate_lval ast model_map lookup_maps l in
+          let lval = translate_lval ast sol_map lookup_maps l in
           Cil.Lval lval
       | A.SBinOp (_, l, r, _), Cil.BinOp (op', _, _, t') ->
-          let lval = translate_exp ast model_map lookup_maps l in
-          let rval = translate_exp ast model_map lookup_maps r in
+          let lval = translate_exp ast sol_map lookup_maps l in
+          let rval = translate_exp ast sol_map lookup_maps r in
           Cil.BinOp (op', lval, rval, t')
       | A.SCastE (_, e), Cil.CastE (t, _) ->
-          let exp = translate_exp ast model_map lookup_maps e in
+          let exp = translate_exp ast sol_map lookup_maps e in
           Cil.CastE (t, exp)
       | A.SUnOp (_, t, _), Cil.UnOp (op', _, t') ->
-          let exp = translate_exp ast model_map lookup_maps t in
+          let exp = translate_exp ast sol_map lookup_maps t in
           Cil.UnOp (op', exp, t')
       | A.SSizeOfE e, Cil.SizeOfE _ ->
-          let exp = translate_exp ast model_map lookup_maps e in
+          let exp = translate_exp ast sol_map lookup_maps e in
           Cil.SizeOfE exp
       | A.SAddrOf l, Cil.AddrOf _ ->
-          let lval = translate_lval ast model_map lookup_maps l in
+          let lval = translate_lval ast sol_map lookup_maps l in
           Cil.AddrOf lval
       | A.SStartOf l, Cil.StartOf _ ->
-          let lval = translate_lval ast model_map lookup_maps l in
+          let lval = translate_lval ast sol_map lookup_maps l in
           Cil.StartOf lval
       | A.SQuestion (a, b, c, _), Cil.Question (_, _, _, t) ->
-          let cond = translate_exp ast model_map lookup_maps a in
-          let b_exp = translate_exp ast model_map lookup_maps b in
-          let c_exp = translate_exp ast model_map lookup_maps c in
+          let cond = translate_exp ast sol_map lookup_maps a in
+          let b_exp = translate_exp ast sol_map lookup_maps b in
+          let c_exp = translate_exp ast sol_map lookup_maps c in
           Cil.Question (cond, b_exp, c_exp, t)
       | A.SSizeOf _, Cil.SizeOf _ | A.SSizeOfStr _, Cil.SizeOfStr _ | _ ->
           Utils.print_ekind cil;
@@ -263,54 +259,53 @@ class stmtVisitor (target : Cil.stmt) =
       else DoChildren
   end
 
-let rec translate_stmt ast model_map node_map ast_map lookup_maps stmt =
-  let id = stmt.A.id in
-  if List.exists (fun (k, _) -> String.equal id k) model_map then (
-    let new_id = List.find (fun (k, _) -> String.equal id k) model_map |> snd in
+let rec translate_stmt ast sol_map node_map ast_map lookup_maps stmt =
+  if Hashtbl.mem sol_map stmt.A.id then (
     let new_ast_node =
-      Hashtbl.find node_map new_id
-      |> int_of_string |> Hashtbl.find ast_map |> Ast.ast2stmt
+      Hashtbl.find sol_map stmt.A.id
+      |> Hashtbl.find node_map |> int_of_string |> Hashtbl.find ast_map
+      |> Ast.ast2stmt
     in
     swap_stmt := [];
     let vis = new stmtVisitor new_ast_node in
     ignore (Cil.visitCilFile vis ast);
     List.hd !swap_stmt)
   else
-    break_down_translate_stmt stmt.A.node ast model_map node_map ast_map
+    break_down_translate_stmt stmt.A.node ast sol_map node_map ast_map
       lookup_maps
 
-and break_down_translate_stmt node ast model_map node_map ast_map lookup_maps =
+and break_down_translate_stmt node ast sol_map node_map ast_map lookup_maps =
   match node with
   | A.AbsStmt (sym, cil) -> (
       match (sym, cil.Cil.skind) with
       | A.SIf (scond, sthen_block, selse_block), Cil.If _ ->
-          translate_if_stmt ast model_map node_map ast_map lookup_maps scond
+          translate_if_stmt ast sol_map node_map ast_map lookup_maps scond
             sthen_block selse_block
       | A.SReturn (Some sym), Cil.Return _ ->
-          let exp = translate_exp ast model_map lookup_maps sym in
+          let exp = translate_exp ast sol_map lookup_maps sym in
           Cil.mkStmt (Cil.Return (Some exp, Cil.locUnknown))
       | A.SReturn None, Cil.Return _ ->
           Cil.mkStmt (Cil.Return (None, Cil.locUnknown))
       | A.SGoto _, Cil.Goto _ -> cil
       | abs_instr, Cil.Instr i ->
-          translate_instr ast model_map lookup_maps abs_instr i
+          translate_instr ast sol_map lookup_maps abs_instr i
       | _ -> failwith "translate_stmt: not implemented")
   | _ -> failwith "translate_stmt: translation target is not a statement type"
 
-and translate_if_stmt ast model_map node_map ast_map lookup_maps scond
-    sthen_block selse_block =
-  let cond = translate_exp ast model_map lookup_maps scond in
+and translate_if_stmt ast sol_map node_map ast_map lookup_maps scond sthen_block
+    selse_block =
+  let cond = translate_exp ast sol_map lookup_maps scond in
   let then_block =
     List.fold_left
       (fun acc ss ->
-        translate_stmt ast model_map node_map ast_map lookup_maps ss :: acc)
+        translate_stmt ast sol_map node_map ast_map lookup_maps ss :: acc)
       [] sthen_block
     |> List.rev
   in
   let else_block =
     List.fold_left
       (fun acc ss ->
-        translate_stmt ast model_map node_map ast_map lookup_maps ss :: acc)
+        translate_stmt ast sol_map node_map ast_map lookup_maps ss :: acc)
       [] selse_block
     |> List.rev
   in
@@ -318,19 +313,19 @@ and translate_if_stmt ast model_map node_map ast_map lookup_maps scond
     (Cil.If
        (cond, Cil.mkBlock then_block, Cil.mkBlock else_block, Cil.locUnknown))
 
-and translate_instr ast model_map (lookup_maps : Maps.translation_lookup_maps)
+and translate_instr ast sol_map (lookup_maps : Maps.translation_lookup_maps)
     abs_instr i =
   match (abs_instr, List.hd i) with
   | A.SSet (l, r), Cil.Set _ ->
-      let lval = translate_lval ast model_map lookup_maps l in
-      let rval = translate_exp ast model_map lookup_maps r in
+      let lval = translate_lval ast sol_map lookup_maps l in
+      let rval = translate_exp ast sol_map lookup_maps r in
       Cil.mkStmt (Cil.Instr [ Cil.Set (lval, rval, Cil.locUnknown) ])
   | A.SCall (Some l, f, args), Cil.Call _ ->
-      let lval = translate_lval ast model_map lookup_maps l in
-      let fun_exp = translate_exp ast model_map lookup_maps f in
+      let lval = translate_lval ast sol_map lookup_maps l in
+      let fun_exp = translate_exp ast sol_map lookup_maps f in
       let args =
         List.fold_left
-          (fun acc arg -> translate_exp ast model_map lookup_maps arg :: acc)
+          (fun acc arg -> translate_exp ast sol_map lookup_maps arg :: acc)
           [] args
         |> List.rev
       in
@@ -340,7 +335,7 @@ and translate_instr ast model_map (lookup_maps : Maps.translation_lookup_maps)
       let fun_exp = AbsDiff.get_original_exp f in
       let args =
         List.fold_left
-          (fun acc arg -> translate_exp ast model_map lookup_maps arg :: acc)
+          (fun acc arg -> translate_exp ast sol_map lookup_maps arg :: acc)
           [] args
         |> List.rev
       in
@@ -348,17 +343,16 @@ and translate_instr ast model_map (lookup_maps : Maps.translation_lookup_maps)
   | _ ->
       failwith "translate_stmt: translation target is not an instruction type"
 
-let get_new_patch_id id model =
-  List.find (fun (k, _) -> String.equal k (Utils.mk_ast_node_str id)) model
-  |> snd
+let get_new_patch_id id sol_map =
+  Utils.mk_ast_node_str id |> Hashtbl.find sol_map
   |> Str.global_replace (Str.regexp "AstNode-") ""
   |> int_of_string
 
-let compute_patch_loc (before, after) model_map node_map ast_map_rev =
+let compute_patch_loc (before, after) sol_map node_map ast_map_rev =
   let cfg2ast_stmt node_lst =
     if node_lst = [] then []
     else
-      translate_node_lst node_lst model_map |> fun x ->
+      translate_node_lst node_lst sol_map |> fun x ->
       List.fold_left
         (fun acc x ->
           try
@@ -369,25 +363,6 @@ let compute_patch_loc (before, after) model_map node_map ast_map_rev =
       |> Ast.stmts2path
   in
   (cfg2ast_stmt before, cfg2ast_stmt after)
-
-let find_patch_fun diff model =
-  let get_func str = String.split_on_char '-' str |> List.hd in
-  let untranslated_func_name =
-    match diff with
-    | A.SInsertStmt (ctx, _)
-    | SDeleteStmt (ctx, _)
-    | SUpdateExp (ctx, _, _)
-    | SInsertExp (ctx, _)
-    | SDeleteExp (ctx, _)
-    | SInsertLval (ctx, _)
-    | SDeleteLval (ctx, _)
-    | SUpdateLval (ctx, _, _) ->
-        ctx.func_name
-  in
-  List.find
-    (fun (k, _) -> get_func k |> String.equal untranslated_func_name)
-    model
-  |> snd |> get_func
 
 let extract_id_from_term term =
   match term with
@@ -418,8 +393,8 @@ let find_func_name_of_stmt stmt_id parent_facts ast_map =
   | Ast.Fun f -> f
   | _ -> failwith "find_func_name_of_stmt: unexpected type"
 
-let get_parent_of_stmt parent_id model_map ast_map parent_facts =
-  let new_patch_id = get_new_patch_id parent_id model_map in
+let get_parent_of_stmt parent_id sol_map ast_map parent_facts =
+  let new_patch_id = get_new_patch_id parent_id sol_map in
   let translated_stmt = Hashtbl.find ast_map new_patch_id in
   let func_name =
     match translated_stmt with
@@ -430,16 +405,16 @@ let get_parent_of_stmt parent_id model_map ast_map parent_facts =
   in
   (translated_stmt, func_name)
 
-let translate_insert_stmt ast parent_id ctx stmt model maps ast_map_rev
+let translate_insert_stmt ast parent_id ctx stmt sol_map maps ast_map_rev
     parent_facts =
   let lookup_maps =
     { Maps.exp_map = maps.Maps.exp_map; lval_map = maps.Maps.lval_map }
   in
   let new_parent_node, new_func_name =
-    get_parent_of_stmt parent_id model ast_map_rev parent_facts
+    get_parent_of_stmt parent_id sol_map ast_map_rev parent_facts
   in
   let before, after =
-    compute_patch_loc ctx.A.patch_bound model maps.Maps.node_map ast_map_rev
+    compute_patch_loc ctx.A.patch_bound sol_map maps.Maps.node_map ast_map_rev
   in
   let ctx =
     D.mk_context [ new_parent_node ] before after ctx.A.sibling_idx
@@ -447,58 +422,60 @@ let translate_insert_stmt ast parent_id ctx stmt model maps ast_map_rev
   in
   D.InsertStmt
     ( ctx,
-      translate_stmt ast model maps.Maps.node_map ast_map_rev lookup_maps stmt
+      translate_stmt ast sol_map maps.Maps.node_map ast_map_rev lookup_maps stmt
     )
 
-let translate_delete_stmt ast parent_id ctx stmt model_map maps ast_map_rev
+let translate_delete_stmt ast parent_id ctx stmt sol_map maps ast_map_rev
     parent_facts =
   let loopup_maps =
     { Maps.exp_map = maps.Maps.exp_map; lval_map = maps.Maps.lval_map }
   in
   let new_parent_node, new_func_name =
-    get_parent_of_stmt parent_id model_map ast_map_rev parent_facts
+    get_parent_of_stmt parent_id sol_map ast_map_rev parent_facts
   in
   let ctx =
     D.mk_context [ new_parent_node ] [] [] ctx.A.sibling_idx new_func_name
   in
   let translated_stmt =
-    translate_stmt ast model_map maps.Maps.node_map ast_map_rev loopup_maps stmt
+    translate_stmt ast sol_map maps.Maps.node_map ast_map_rev loopup_maps stmt
   in
   D.DeleteStmt (ctx, translated_stmt)
 
-let translate_update_exp ast parent_id ctx e1 e2 model_map maps ast_map_rev
+let translate_update_exp ast parent_id ctx e1 e2 sol_map maps ast_map_rev
     parent_facts =
   let loopup_maps =
     { Maps.exp_map = maps.Maps.exp_map; lval_map = maps.Maps.lval_map }
   in
   let new_parent_node, new_func_name =
-    get_parent_of_stmt parent_id model_map ast_map_rev parent_facts
+    get_parent_of_stmt parent_id sol_map ast_map_rev parent_facts
   in
   let ctx =
     D.mk_context [ new_parent_node ] [] [] ctx.A.sibling_idx new_func_name
   in
-  let translated_e1 = translate_exp ast model_map loopup_maps e1 in
-  let translated_e2 = translate_exp ast model_map loopup_maps e2 in
+  let translated_e1 = translate_exp ast sol_map loopup_maps e1 in
+  let translated_e2 = translate_exp ast sol_map loopup_maps e2 in
   D.UpdateExp (ctx, translated_e1, translated_e2)
 
-let translate ast abs_diff model_path maps patch_node_ids parent_facts =
+let translate ast abs_diff out_dir target_alarm maps patch_node_ids parent_facts
+    =
   Logger.info "Translating patch...";
-  let model_map = H.parse_model model_path in
+  let sol_map = Hashtbl.create 1000 in
+  H.parse_map out_dir (target_alarm ^ "_sol.map") sol_map;
   let ast_map_rev = Utils.reverse_hashtbl maps.Maps.ast_map in
   List.fold_left2
     (fun acc diff parent_id ->
       match diff with
       | A.SInsertStmt (ctx, stmt) ->
-          translate_insert_stmt ast parent_id ctx stmt model_map maps
-            ast_map_rev parent_facts
+          translate_insert_stmt ast parent_id ctx stmt sol_map maps ast_map_rev
+            parent_facts
           :: acc
       | SDeleteStmt (ctx, stmt) ->
-          translate_delete_stmt ast parent_id ctx stmt model_map maps
-            ast_map_rev parent_facts
+          translate_delete_stmt ast parent_id ctx stmt sol_map maps ast_map_rev
+            parent_facts
           :: acc
       | SUpdateExp (ctx, e1, e2) ->
-          translate_update_exp ast parent_id ctx e1 e2 model_map maps
-            ast_map_rev parent_facts
+          translate_update_exp ast parent_id ctx e1 e2 sol_map maps ast_map_rev
+            parent_facts
           :: acc
       | _ -> failwith "translate: not implemented")
     [] abs_diff patch_node_ids
