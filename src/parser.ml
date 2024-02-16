@@ -352,9 +352,7 @@ let get_alarm_comps alarm splited filename =
     when String.equal a alarm ->
       Chc.of_list
         [ Chc.Elt.FDNumeral e1; Chc.Elt.FDNumeral e2; Chc.Elt.FDNumeral e3 ]
-  | f, _ ->
-      Logger.warn "get_alarm_comps - not implemented: %s" f;
-      raise Not_impl_alarm_comps
+  | f, _ -> Logger.error "get_alarm_comps - not implemented: %s" f
 
 let get_alarm work_dir =
   let src, snk, alarm =
@@ -382,7 +380,9 @@ let get_alarm work_dir =
   in
   (src, snk, alarm_compss)
 
-let make_facts target_dir target_alarm ast out_dir maps =
+let make_facts target_dir target_alarm ast out_dir =
+  let maps = Maps.create_maps () in
+  Maps.reset_maps maps;
   let spo_dir = Filename.concat target_dir "sparrow-out" in
   let alarm_dir = Filename.concat spo_dir ("taint/datalog/" ^ target_alarm) in
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
@@ -395,4 +395,4 @@ let make_facts target_dir target_alarm ast out_dir maps =
   let facts = Chc.union du_facts parent_facts in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;
-  (du_facts, parent_facts, get_alarm alarm_dir)
+  (du_facts, parent_facts, get_alarm alarm_dir, maps)

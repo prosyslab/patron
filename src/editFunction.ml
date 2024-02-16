@@ -460,6 +460,7 @@ let translate ast abs_diff out_dir target_alarm maps patch_node_ids parent_facts
     =
   Logger.info "Translating patch...";
   let sol_map = Hashtbl.create 1000 in
+  Hashtbl.reset sol_map;
   H.parse_map out_dir (target_alarm ^ "_sol.map") sol_map;
   let ast_map_rev = Utils.reverse_hashtbl maps.Maps.ast_map in
   List.fold_left2

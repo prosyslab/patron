@@ -166,45 +166,41 @@ let mk_file_diff orig_path patch_path target_alarm out_dir =
 
 let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast out_dir
     diff =
-  let target_maps = Maps.create_maps () in
-  Maps.reset_maps target_maps;
-  try
-    let du_facts, parent_facts, (src, snk, _) =
-      Parser.make_facts donee_dir target_alarm ast out_dir target_maps
+  let du_facts, parent_facts, (src, snk, _), target_maps =
+    Parser.make_facts donee_dir target_alarm ast out_dir
+  in
+  let parent_facts' = reduce_parent_facts target_maps ast parent_facts in
+  let combined_facts = Chc.union du_facts parent_facts' in
+  let z3env = Z3env.get_env () in
+  L.info "Try matching with %s..." target_alarm;
+  let status =
+    Chc.match_and_log z3env out_dir target_alarm target_maps combined_facts src
+      snk pattern
+  in
+  Maps.dump target_alarm target_maps out_dir;
+  if Option.is_some status then (
+    Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
+    L.info "Matching with %s is done" target_alarm;
+    let patch_parent_lst =
+      AbsDiff.extract_parent diff buggy_maps.Maps.ast_map |> List.map ~f:fst
     in
-    let parent_facts' = reduce_parent_facts target_maps ast parent_facts in
-    let combined_facts = Chc.union du_facts parent_facts' in
-    let z3env = Z3env.get_env () in
-    L.info "Try matching with %s..." target_alarm;
-    let status =
-      Chc.match_and_log z3env out_dir target_alarm target_maps combined_facts
-        src snk pattern
+    let ef =
+      EditFunction.translate ast diff out_dir target_alarm target_maps
+        patch_parent_lst parent_facts
     in
-    Maps.dump target_alarm target_maps out_dir;
-    if Option.is_some status then (
-      Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
-      L.info "Matching with %s is done" target_alarm;
-      let patch_parent_lst =
-        AbsDiff.extract_parent diff buggy_maps.Maps.ast_map |> List.map ~f:fst
-      in
-      let ef =
-        EditFunction.translate ast diff out_dir target_alarm target_maps
-          patch_parent_lst parent_facts
-      in
-      L.info "Applying patch on the target file ...";
-      let out_file_orig =
-        String.concat [ out_dir; "/orig_"; target_alarm; ".c" ]
-      in
-      Patch.write_out out_file_orig ast;
-      let patch_file = Patch.apply diff ast ef in
-      let out_file_patch =
-        String.concat [ out_dir; "/patch_"; target_alarm; ".c" ]
-      in
-      Patch.write_out out_file_patch patch_file;
-      L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
-      mk_file_diff out_file_orig out_file_patch target_alarm out_dir)
-    else L.info "%s is Not Matched" target_alarm
-  with Parser.Not_impl_alarm_comps -> L.info "PASS"
+    L.info "Applying patch on the target file ...";
+    let out_file_orig =
+      String.concat [ out_dir; "/orig_"; target_alarm; ".c" ]
+    in
+    Patch.write_out out_file_orig ast;
+    let patch_file = Patch.apply diff ast ef in
+    let out_file_patch =
+      String.concat [ out_dir; "/patch_"; target_alarm; ".c" ]
+    in
+    Patch.write_out out_file_patch patch_file;
+    L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
+    mk_file_diff out_file_orig out_file_patch target_alarm out_dir)
+  else L.info "%s is Not Matched" target_alarm
 
 let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
   (not
@@ -222,8 +218,6 @@ let match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps buggy_ast
 
 let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     out_dir =
-  let buggy_maps = Maps.create_maps () in
-  Maps.reset_maps buggy_maps;
   let buggy_ast = Parser.parse_ast buggy_dir inline_funcs in
   let patch_ast = Parser.parse_ast patch_dir inline_funcs in
   let donee_ast =
@@ -232,8 +226,8 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
-  let du_facts, parent_facts, (src, snk, alarm_comps) =
-    Parser.make_facts buggy_dir true_alarm buggy_ast out_dir buggy_maps
+  let du_facts, parent_facts, (src, snk, alarm_comps), buggy_maps =
+    Parser.make_facts buggy_dir true_alarm buggy_ast out_dir
   in
   L.info "Make Facts in buggy done";
   let parent_facts' = reduce_parent_facts buggy_maps buggy_ast parent_facts in
