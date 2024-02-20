@@ -1,6 +1,7 @@
 open Core
 module Hashtbl = Stdlib.Hashtbl
 module Set = Stdlib.Set
+module Map = Stdlib.Map
 module F = Format
 module V = String
 module I = Graph.Imperative.Digraph.ConcreteBidirectional (String)
@@ -17,6 +18,7 @@ end
 
 module Dijkstra = Graph.Path.Dijkstra (I) (W)
 module Check = Graph.Path.Check (I)
+module LvalMap = Map.Make (String)
 
 type node_info = { rels : Chc.t; defs : Chc.t; uses : Chc.t }
 
@@ -24,6 +26,7 @@ type t = {
   graph : I.t;
   node_info : (string, node_info) Hashtbl.t; (* Node -> (Rels, Defs, Uses) *)
   label : (string * string, Chc.t) Hashtbl.t; (* Edge -> (FDNumeral Lval) Set *)
+  lvmap_per_func : (string, string LvalMap.t) Hashtbl.t;
 }
 
 type path_checker = Check.path_checker
@@ -33,6 +36,7 @@ let create ~size () =
     graph = I.create ~size ();
     node_info = Hashtbl.create size;
     label = Hashtbl.create (size * size);
+    lvmap_per_func = Hashtbl.create size;
   }
 
 let copy g =
@@ -40,12 +44,14 @@ let copy g =
     graph = I.copy g.graph;
     node_info = Hashtbl.copy g.node_info;
     label = Hashtbl.copy g.label;
+    lvmap_per_func = Hashtbl.copy g.lvmap_per_func;
   }
 
 let clear g =
   I.clear g.graph;
   Hashtbl.clear g.node_info;
-  Hashtbl.clear g.label
+  Hashtbl.clear g.label;
+  Hashtbl.clear g.lvmap_per_func
 
 let mem_vertex g n = I.mem_vertex g.graph n
 let fold_vertex f g a = I.fold_vertex f g.graph a
@@ -99,7 +105,17 @@ let paths2rels =
         ~init:rels path)
     ~init:Chc.empty
 
-let process_vertex g v r =
+let mapping_func_lvmap lval_map v lvs g =
+  let lvm =
+    List.fold_left
+      ~f:(fun lvm lv -> LvalMap.add (Hashtbl.find lval_map lv) lv lvm)
+      ~init:LvalMap.empty lvs
+  in
+  let func_name = String.split ~on:'-' v |> List.hd_exn in
+  Hashtbl.replace g.lvmap_per_func func_name lvm;
+  g
+
+let process_vertex lval_map v r g =
   if mem_vertex g v then (info_of_v g v, g)
   else
     let terms = Chc.Elt.numer v |> Chc.singleton in
@@ -110,9 +126,11 @@ let process_vertex g v r =
     let defs = Chc.find_defs reach in
     let uses = Chc.find_uses reach in
     let g' = add_vertex (v, reach, defs, uses) g in
-    (info_of_v g' v, g')
+    let lvs = Chc.union defs uses |> Chc.to_list |> Chc.Elt.numers2strs in
+    let g'' = mapping_func_lvmap lval_map v lvs g' in
+    (info_of_v g'' v, g'')
 
-let of_facts rels =
+let of_facts lval_map rels =
   let module NodeSet = Set.Make (String) in
   let du_rels, ast_rels = Chc.partition Chc.Elt.is_duedge rels in
   let nodes =
@@ -126,8 +144,8 @@ let of_facts rels =
   Chc.fold
     (fun rel g ->
       let src, dst = Chc.Elt.extract_src_dst rel in
-      let src_info, g' = process_vertex g src ast_rels in
-      let dst_info, g'' = process_vertex g' dst ast_rels in
+      let src_info, g' = process_vertex lval_map src ast_rels g in
+      let dst_info, g'' = process_vertex lval_map dst ast_rels g' in
       let lvs =
         if Chc.is_empty src_info.defs then dst_info.uses
         else if Chc.is_empty dst_info.uses then src_info.defs

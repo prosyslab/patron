@@ -640,6 +640,7 @@ let prop_deps ?(ignore_duedge = false) terms = function
 let find_defs rels =
   let fd = function
     | Elt.FuncApply ("Set", [ _; lv; _ ]) -> singleton lv
+    | Elt.FuncApply ("AddrOf", [ _; lv ]) -> singleton lv
     | _ -> empty
   in
   fold (fun r s -> fd r |> union s) rels empty

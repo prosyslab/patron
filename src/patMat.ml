@@ -232,13 +232,12 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   L.info "Make Facts in buggy done";
   let parent_facts' = reduce_parent_facts buggy_maps buggy_ast parent_facts in
   let combined_facts = Chc.union du_facts parent_facts' in
-  L.info "Mapping CFG Elements to AST nodes...";
-  let dug = Dug.of_facts du_facts in
-  let abs_diff =
-    AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff du_facts
-      (Dug.copy dug) (src, snk)
+  L.info "Makeing DUG...";
+  let dug = Dug.of_facts buggy_maps.lval_map du_facts in
+  let abs_diff, patch_comps =
+    AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff (Dug.copy dug)
+      du_facts (src, snk)
   in
-  let patch_comps = AbsDiff.mk_patch_comp abs_diff in
   if write_out then (
     L.info "Writing out the edit script...";
     DiffJson.dump abs_diff out_dir);

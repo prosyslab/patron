@@ -2,9 +2,6 @@ open Core
 module H = Utils
 module F = Format
 
-(* for the readability reference *)
-let beginning_idx = 0
-
 type action_type = Insertion | Deletion | Update
 type parent_branch = NoBranch | TrueBranch | FalseBranch
 
@@ -698,9 +695,9 @@ and decide_next_step_glob depth diff hd1 hd2 tl1 tl2 new_l_sibs l_sibs =
         | _ -> diff @ fold_continue_point_glob depth hd1 hd2 diff tl1 tl2 l_sibs
       else diff @ fold_continue_point_glob depth hd1 hd2 diff tl1 tl2 l_sibs
 
-and fold_globals2 depth doner_gobals patch_globals left_sibs =
+and fold_globals2 depth donor_gobals patch_globals left_sibs =
   let prev_node = List.hd left_sibs |> Ast.glob2ast in
-  match (doner_gobals, patch_globals) with
+  match (donor_gobals, patch_globals) with
   | [], [] -> []
   | hd1 :: tl1, hd2 :: tl2 ->
       let updated_left_sibs = hd1 :: left_sibs in
@@ -731,4 +728,4 @@ let define_diff buggy_file patch_file =
     ( H.remove_comments buggy_file.Cil.globals,
       H.remove_comments patch_file.Cil.globals )
   in
-  fold_globals2 beginning_idx globs1 globs2 []
+  fold_globals2 0 globs1 globs2 []

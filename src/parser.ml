@@ -223,45 +223,27 @@ let mk_parent_tuples globs stmts =
   in
   glob_tuples @ stmt_tuples
 
-let eq_instrs ast_instr cfg_instr =
-  match (ast_instr, cfg_instr) with
-  | [ Cil.Call (_, _, _, loc) ], Maps.CfgNode.CCall (_, _, _, cloc, _) ->
-      AbsDiff.eq_line loc cloc
-  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CSet (_, _, cloc, _)
-  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CAlloc (_, _, cloc, _)
-  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CSalloc (_, _, cloc, _)
-  | [ Cil.Set (_, _, loc) ], Maps.CfgNode.CFalloc (_, _, cloc, _) ->
-      AbsDiff.eq_line loc cloc
-  | _ -> false
-
-let lookup_eq_nodes ast_node cfg =
-  let stmt_node = Ast.ast2stmt ast_node in
-  Hashtbl.fold
-    (fun cnode id acc ->
-      (match (stmt_node.Cil.skind, cnode) with
-      | Cil.Instr i, cn -> eq_instrs i cn
-      | Cil.If (_, _, _, loc), Maps.CfgNode.CIf cloc
-      | Cil.If (_, _, _, loc), Maps.CfgNode.CAssume (_, _, cloc, _) ->
-          AbsDiff.eq_line loc cloc
-      | Cil.Return (_, loc), Maps.CfgNode.CReturn1 (_, cloc, _)
-      | Cil.Return (_, loc), Maps.CfgNode.CReturn2 cloc ->
-          AbsDiff.eq_line loc cloc
-      | _ -> false)
-      |> fun bool -> if bool then id :: acc else acc)
-    cfg []
-  |> fun x -> if List.length x = 0 then None else Some (List.hd_exn x)
+let match_stmt_id loc_map = function
+  | Cil.Instr (Cil.Set (_, _, loc) :: _)
+  | Cil.Instr (Cil.Call (_, _, _, loc) :: _)
+  | Cil.Return (_, loc)
+  | Cil.If (_, _, _, loc)
+  | Cil.Loop (_, loc, _, _) ->
+      Hashtbl.find_opt loc_map { Maps.file = loc.file; line = loc.line }
+  | _ -> None
 
 let match_eq_nodes fmt maps ast_node =
   let ast_num = Hashtbl.find maps.Maps.ast_map ast_node |> string_of_int in
   let ast_id = "AstNode-" ^ ast_num in
   let ast_term = mk_term ast_id in
-  let cfg_id_opt = lookup_eq_nodes ast_node maps.Maps.cfg_map in
-  if Option.is_some cfg_id_opt then (
-    let cfg_id = Option.value_exn cfg_id_opt in
-    let cfg_term = mk_term cfg_id in
-    F.fprintf fmt "%s\t%s\n" cfg_id ast_id;
-    Hashtbl.add maps.Maps.node_map cfg_id ast_num;
-    [ Chc.Elt.FuncApply ("EqNode", [ cfg_term; ast_term ]) ])
+  let stmt = Ast.ast2stmt ast_node in
+  let dug_id_opt = match_stmt_id maps.Maps.loc_map stmt.skind in
+  if Option.is_some dug_id_opt then (
+    let dug_id = Option.value_exn dug_id_opt in
+    let dug_term = mk_term dug_id in
+    F.fprintf fmt "%s\t%s\n" dug_id ast_id;
+    Hashtbl.add maps.Maps.node_map dug_id ast_num;
+    [ Chc.Elt.FuncApply ("EqNode", [ dug_term; ast_term ]) ])
   else []
 
 let astnode_cnt = ref 1

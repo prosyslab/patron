@@ -136,8 +136,8 @@ let parse_node_json sparrow_dir loc_map =
   let nodes = J.member "nodes" file in
   J.to_assoc nodes
   |> List.iter ~f:(fun (key, node) ->
-         J.member "loc" node |> J.to_string |> parse_loc
-         |> Hashtbl.add loc_map key)
+         let loc = J.member "loc" node |> J.to_string |> parse_loc in
+         Hashtbl.add loc_map loc key)
 
 let stmt_lst = ref []
 let target_func = ref ""

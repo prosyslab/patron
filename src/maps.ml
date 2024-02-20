@@ -3,43 +3,6 @@ module Hashtbl = Stdlib.Hashtbl
 module J = Yojson.Basic.Util
 module F = Format
 
-module CfgNode = struct
-  type loc = { file : string; line : int }
-
-  type t =
-    | CNone
-    | CSet of string * string * loc * string list (* (lv, e, loc, rest lvals) *)
-    | CExternal of string * loc * string list (*(lv, loc)*)
-    | CAlloc of string * string * loc * string list (*(lv, Array e, _, loc) *)
-    | CSalloc of string * string * loc * string list (*(lv, s, loc) *)
-    | CFalloc of string * string * loc * string list (*(lv, f, loc) *)
-    | CCall of string * string * string list * loc * string list
-    (*(Some lv, fexp, params, loc))*)
-    | CReturn1 of string * loc * string list (*(Some e, loc) *)
-    | CReturn2 of loc (*(None, loc) *)
-    | CIf of loc (*(_, _, _, loc) *)
-    | CAssume of bool * string * loc * string list (*(e, _, loc) *)
-    | CLoop of loc (*loc *)
-    | CAsm of loc (*(_, _, _, _, _, loc) *)
-    | CSkip of loc (*(_, loc)*)
-
-  let pp = function
-    | CNone -> "CNone"
-    | CSet (lv, e, _, _) -> F.sprintf "CSet(%s, %s)" lv e
-    | CExternal (lv, _, _) -> F.sprintf "CExternal(%s)" lv
-    | CAlloc (lv, e, _, _) -> F.sprintf "CAlloc(%s, %s)" lv e
-    | CSalloc (lv, s, _, _) -> F.sprintf "CSalloc(%s, %s)" lv s
-    | CFalloc (lv, f, _, _) -> F.sprintf "CFalloc(%s, %s)" lv f
-    | CCall (lv, _, _, _, _) -> F.sprintf "CCall(%s)" lv
-    | CReturn1 (e, _, _) -> F.sprintf "CReturn1(%s)" e
-    | CReturn2 _ -> "CReturn2"
-    | CIf _ -> "CIf"
-    | CAssume (_, e, _, _) -> F.sprintf "CAssume(%s)" e
-    | CLoop _ -> "CLoop"
-    | CAsm _ -> "CAsm"
-    | CSkip _ -> "CSkip"
-end
-
 type translation_lookup_maps = {
   exp_map : (string, string) Hashtbl.t;
   lval_map : (string, string) Hashtbl.t;
@@ -51,8 +14,7 @@ type t = {
   sym_map : (string, Z3.Expr.expr) Hashtbl.t;
   numeral_map : (int, string) Hashtbl.t;
   ast_map : (Ast.t, int) Hashtbl.t;
-  cfg_map : (CfgNode.t, string) Hashtbl.t;
-  loc_map : (string, loc) Hashtbl.t;
+  loc_map : (loc, string) Hashtbl.t;
   exp_map : (string, string) Hashtbl.t;
   lval_map : (string, string) Hashtbl.t;
   node_map : (string, string) Hashtbl.t;
@@ -63,7 +25,6 @@ let create_maps () =
     sym_map = Hashtbl.create 1000;
     numeral_map = Hashtbl.create 1000;
     ast_map = Hashtbl.create 1000;
-    cfg_map = Hashtbl.create 1000;
     loc_map = Hashtbl.create 1000;
     exp_map = Hashtbl.create 1000;
     lval_map = Hashtbl.create 1000;
@@ -88,11 +49,11 @@ let load_numeral_map = load_map int_of_string Fun.id
 let reset_maps maps =
   Hashtbl.reset maps.sym_map;
   Hashtbl.reset maps.numeral_map;
-  Hashtbl.reset maps.cfg_map;
+  Hashtbl.reset maps.ast_map;
   Hashtbl.reset maps.loc_map;
-  Hashtbl.reset maps.node_map;
   Hashtbl.reset maps.exp_map;
-  Hashtbl.reset maps.ast_map
+  Hashtbl.reset maps.lval_map;
+  Hashtbl.reset maps.node_map
 
 let dump_map a_to_string b_to_string map_name mode map out_dir =
   let sym_map_file =

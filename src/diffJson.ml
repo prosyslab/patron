@@ -63,14 +63,7 @@ let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
 let rec mk_json_obj saction =
   let context_json (context : abs_context) =
     let func_name_json = ("func_name", `String context.func_name) in
-    let sid_lst =
-      `List
-        (List.fold_left
-           ~f:(fun acc node -> `String node.id :: acc)
-           ~init:[] context.root_path)
-    in
-    let parent_json = ("parent", sid_lst) in
-    ("context", `Assoc [ func_name_json; parent_json ])
+    ("context", `Assoc [ func_name_json ])
   in
   match saction with
   | SInsertStmt (context1, snode) ->
