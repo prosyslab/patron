@@ -2,6 +2,7 @@ open Core
 module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module Set = Stdlib.Set
+module L = Logger
 module J = Yojson.Basic.Util
 module H = Utils
 module D = Diff
@@ -472,7 +473,7 @@ let match_lval_id func dug lv =
   let module LvalMap = Map.Make (String) in
   Hashtbl.find dug.Dug.lvmap_per_func func
   |> LvalMap.find_opt (Ast.s_lv lv)
-  (* TODO: There should not be None *)
+  (* NOTE: Only function name should be None *)
   |> Option.value ~default:"None"
 
 let extract_fun_name g =

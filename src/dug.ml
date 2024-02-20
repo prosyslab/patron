@@ -2,6 +2,7 @@ open Core
 module Hashtbl = Stdlib.Hashtbl
 module Set = Stdlib.Set
 module Map = Stdlib.Map
+module L = Logger
 module F = Format
 module V = String
 module I = Graph.Imperative.Digraph.ConcreteBidirectional (String)
@@ -112,17 +113,23 @@ let mapping_func_lvmap lval_map v lvs g =
       ~init:LvalMap.empty lvs
   in
   let func_name = String.split ~on:'-' v |> List.hd_exn in
-  Hashtbl.replace g.lvmap_per_func func_name lvm;
+  if Hashtbl.mem g.lvmap_per_func func_name then
+    let orig_lvmap = Hashtbl.find g.lvmap_per_func func_name in
+    LvalMap.union
+      (fun _ a_sym b_sym ->
+        if String.equal a_sym b_sym |> not then
+          L.warn "There are two symbols of same lv in one func";
+        Some a_sym)
+      orig_lvmap lvm
+    |> Hashtbl.replace g.lvmap_per_func func_name
+  else Hashtbl.replace g.lvmap_per_func func_name lvm;
   g
 
 let process_vertex lval_map v r g =
   if mem_vertex g v then (info_of_v g v, g)
   else
     let terms = Chc.Elt.numer v |> Chc.singleton in
-    let reach =
-      Chc.fixedpoint (Chc.prop_deps ~ignore_duedge:true) r terms Chc.empty
-      |> fst
-    in
+    let reach = Chc.fixedpoint Chc.from_node_to_ast r terms Chc.empty |> fst in
     let defs = Chc.find_defs reach in
     let uses = Chc.find_uses reach in
     let g' = add_vertex (v, reach, defs, uses) g in

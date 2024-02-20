@@ -599,21 +599,9 @@ let all_args_has_dep terms args =
 
 let exists_dep_arg terms args = List.exists ~f:(fun arg -> mem arg terms) args
 
-let prop_deps ?(ignore_duedge = false) terms = function
-  (* | Elt.FuncApply ("DetailedDUEdge", [ src; dst; loc ]) ->
-      if mem dst terms && mem loc terms && not (mem src terms) then
-        (true, add src terms)
-      else (false, terms) *)
-  | Elt.FuncApply ("DUEdge", [ src; dst ]) ->
-      if (not ignore_duedge) && mem dst terms then (true, add src terms)
-      else (false, terms)
-  (* | Elt.FuncApply ("CFPath", args) | FuncApply ("DUPath", args) ->
-      if all_args_has_dep terms args then (true, terms) else (false, terms) *)
-  | FuncApply ("EvalLv", [ n; lv; loc ]) ->
-      if mem n terms && mem lv terms then (true, add loc terms)
-      else (false, terms)
-  | FuncApply ("Set", [ n; lv; e ]) ->
-      if mem n terms && mem lv terms then (true, add e terms) else (false, terms)
+let from_node_to_ast terms = function
+  | Elt.FuncApply ("Set", [ n; lv; e ]) ->
+      if mem n terms then (true, terms |> add lv |> add e) else (false, terms)
   | FuncApply ("Assume", [ n; e ]) | FuncApply ("Return", [ n; e ]) ->
       if mem n terms then (true, add e terms) else (false, terms)
   | FuncApply ("Arg", [ arg_list; _; e ]) ->

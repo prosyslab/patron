@@ -74,12 +74,10 @@ let remove_before_src_after_snk src snk rels =
   let before_src = Chc.collect_node ~before:true src_node rels in
   let after_snk = Chc.collect_node ~before:false snk_node rels in
   let before_deps =
-    Chc.fixedpoint (Chc.prop_deps ~ignore_duedge:true) rels before_src Chc.empty
-    |> fst
+    Chc.fixedpoint Chc.from_node_to_ast rels before_src Chc.empty |> fst
   in
   let after_deps =
-    Chc.fixedpoint (Chc.prop_deps ~ignore_duedge:true) rels after_snk Chc.empty
-    |> fst
+    Chc.fixedpoint Chc.from_node_to_ast rels after_snk Chc.empty |> fst
   in
   rels |> (Fun.flip Chc.diff) before_deps |> (Fun.flip Chc.diff) after_deps
 
@@ -234,6 +232,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   let combined_facts = Chc.union du_facts parent_facts' in
   L.info "Makeing DUG...";
   let dug = Dug.of_facts buggy_maps.lval_map du_facts in
+  let module LvalMap = Map.Make (String) in
   let abs_diff, patch_comps =
     AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff (Dug.copy dug)
       du_facts (src, snk)
