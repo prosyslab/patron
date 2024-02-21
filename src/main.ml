@@ -12,6 +12,8 @@ let extract_bug_pattern opts donor_dir donee_dir true_alarm out_dir =
 
 let main () =
   let options = Options.parse () in
+  if options.Options.z3_mem_limit then
+    Z3.set_global_param "memory_high_watermark" "4294967295";
   if options.Options.memtrace then
     Memtrace.start_tracing ~context:(Some "patron") ~sampling_rate:1e-6
       ~filename:(Filename.concat options.Options.out_dir "memtrace")

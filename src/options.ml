@@ -16,6 +16,7 @@ type t = {
   inline : string list;
   write_out : bool;
   debug : bool;
+  z3_mem_limit : bool;
   memtrace : bool;
 }
 
@@ -27,7 +28,7 @@ let mkdir dirname =
   else Unix.mkdir dirname 0o755
 
 let init donor_dir donee_dir true_alarm out_dir debug inline memtrace write_out
-    =
+    z3_mem_limit =
   if debug then L.set_level L.DEBUG else L.set_level L.INFO;
   mkdir out_dir;
   Filename.concat out_dir "log.txt" |> L.from_file;
@@ -39,6 +40,7 @@ let init donor_dir donee_dir true_alarm out_dir debug inline memtrace write_out
     inline;
     write_out;
     debug;
+    z3_mem_limit;
     memtrace;
   }
 
@@ -80,7 +82,7 @@ let main_cmd =
     Arg.(
       value
       & opt string Filename.(concat current_dir_name "patron-out")
-      & info [ "o"; "out-dir" ] ~docs ~docv:"OUT_DIR"
+      & info [ "o"; "out_dir" ] ~docs ~docv:"OUT_DIR"
           ~doc:"The output directory")
   in
   let debug =
@@ -100,13 +102,16 @@ let main_cmd =
   let write_out =
     Arg.(
       value & flag
-      & info [ "w"; "write-out" ]
+      & info [ "w"; "write_out" ]
           ~doc:"write out the diff.json file containing the detailed diff info")
+  in
+  let z3_mem_limit =
+    Arg.(value & flag & info [ "m"; "mem_limit" ] ~doc:"Memory limit for Z3")
   in
   Cmd.v info
     Term.(
       const init $ donor_dir $ donee_dir $ true_alarm $ out_dir $ debug
-      $ inline_opt $ memtrace $ write_out)
+      $ inline_opt $ memtrace $ write_out $ z3_mem_limit)
 
 let parse () =
   match Cmd.eval_value main_cmd with
