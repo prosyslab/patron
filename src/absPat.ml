@@ -192,7 +192,7 @@ let find_rels_by_lv full_rels dug snk lv =
   in
   NodeSet.fold collect_rels def_nodes Chc.empty
 
-let abstract_by_comps du_facts dug patch_comps snk alarm_comps =
+let abs_by_comps dug patch_comps snk alarm_comps du_facts =
   L.info "patch_comps: %s" (String.concat ~sep:", " patch_comps);
   L.info "alarm_comps: %s"
     (alarm_comps |> Chc.to_list |> Chc.Elt.numers2strs
@@ -203,24 +203,25 @@ let abstract_by_comps du_facts dug patch_comps snk alarm_comps =
       ~init:Chc.empty patch_comps
   in
   let collected_by_alarm_comps = collect_ast_rels du_facts snk alarm_comps in
-  Chc.union collected_by_patch_comps collected_by_alarm_comps
+  Chc.union collected_by_patch_comps collected_by_alarm_comps |> Chc.to_list
 
-let run du_facts ast_facts dug patch_comps src snk alarm_comps maps diff ast =
-  let fst_abs_facts =
-    abstract_by_comps du_facts dug patch_comps snk alarm_comps
+let abs_ast_rels maps du_fact_lst abs_diff ast ast_facts =
+  let ast_node_lst =
+    Chc.extract_nodes_in_facts du_fact_lst maps.Maps.node_map
   in
-  let fact_lst = Chc.to_list fst_abs_facts in
-  let ast_node_lst = Chc.extract_nodes_in_facts fact_lst maps.Maps.node_map in
   if List.length ast_node_lst = 0 then
     failwith "abstract_bug_pattern: no AST nodes corresponding CFG nodes found";
-  let parents = AbsDiff.extract_parent diff maps.Maps.ast_map in
-  let smallest_ast_patterns =
-    List.fold ~init:[]
-      ~f:(fun acc (parent, func) ->
-        compute_ast_pattern ast_facts ast_node_lst parent func maps ast @ acc)
-      parents
-    |> Stdlib.List.sort_uniq Chc.Elt.compare
-  in
+  let parents = AbsDiff.extract_parent abs_diff maps.Maps.ast_map in
+  List.fold ~init:[]
+    ~f:(fun acc (parent, func) ->
+      compute_ast_pattern ast_facts ast_node_lst parent func maps ast @ acc)
+    parents
+  |> Stdlib.List.sort_uniq Chc.Elt.compare
+
+let run maps dug ast patch_comps alarm_comps src snk abs_diff du_facts ast_facts
+    =
+  let abs_du_facts = abs_by_comps dug patch_comps snk alarm_comps du_facts in
+  let abs_ast_facts = abs_ast_rels maps abs_du_facts abs_diff ast ast_facts in
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
@@ -228,7 +229,7 @@ let run du_facts ast_facts dug patch_comps src snk alarm_comps maps diff ast =
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
   let pattern_in_numeral =
-    Chc.Elt.Implies (fact_lst @ smallest_ast_patterns, errtrace)
+    Chc.Elt.Implies (abs_du_facts @ abs_ast_facts, errtrace)
   in
   ( pattern_in_numeral |> Chc.singleton,
     pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton )

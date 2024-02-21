@@ -679,26 +679,6 @@ let is_child var = function
 
 let collect_children var rels = filter (is_child var) rels
 
-let is_removable rels = function
-  | Elt.FuncApply ("CFPath", args) | FuncApply ("DUPath", args) ->
-      List.exists ~f:(fun arg -> collect_children arg rels |> cardinal = 0) args
-  | FuncApply ("Set", _ :: _ :: args)
-  | FuncApply ("Return", _ :: args)
-  | FuncApply ("Arg", _ :: _ :: args)
-  | FuncApply ("BinOp", _ :: _ :: args)
-  | FuncApply ("UnOp", _ :: _ :: args)
-  | FuncApply ("LvalExp", _ :: args)
-  | FuncApply ("Call", _ :: _ :: args)
-  | FuncApply ("LibCall", _ :: _ :: args)
-  | FuncApply ("Alloc", _ :: args)
-  | FuncApply ("SAlloc", _ :: args) ->
-      List.for_all
-        ~f:(fun arg -> collect_children arg rels |> cardinal = 0)
-        args
-  | _ -> false
-
-let collect_removable chcs = filter (is_removable chcs) chcs
-
 let extract_nodes_in_facts deps node_map =
   List.fold_left ~init:[]
     ~f:(fun acc dep ->
@@ -706,7 +686,6 @@ let extract_nodes_in_facts deps node_map =
       (* TODO: case where nodes are used but not by Set *)
       | Elt.FuncApply ("Set", args) -> List.hd_exn args :: acc
       | Elt.FuncApply ("DUEdge", args) -> args @ acc
-      | Elt.FuncApply ("EvalLv", args) -> List.hd_exn args :: acc
       | _ -> acc)
     deps
   |> List.fold_left ~init:[] ~f:(fun acc node ->

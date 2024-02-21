@@ -224,42 +224,41 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
-  let du_facts, parent_facts, (src, snk, alarm_comps), buggy_maps =
+  let du_facts, parent_facts, (src, snk, alarm_comps), maps =
     Parser.make_facts buggy_dir true_alarm buggy_ast out_dir
   in
   L.info "Making Facts in buggy done";
-  let parent_facts' = reduce_parent_facts buggy_maps buggy_ast parent_facts in
-  let combined_facts = Chc.union du_facts parent_facts' in
+  let parent_facts' = reduce_parent_facts maps buggy_ast parent_facts in
+  let facts = Chc.union du_facts parent_facts' in
   L.info "Making DUG...";
-  let dug = Dug.of_facts buggy_maps.lval_map du_facts in
+  let dug = Dug.of_facts maps.lval_map du_facts in
   L.info "Making DUG is done";
   L.info "Making Abstract Diff...";
   let abs_diff, patch_comps =
-    AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff dug du_facts (src, snk)
+    AbsDiff.define_abs_diff maps buggy_ast dug du_facts ast_diff
   in
   L.info "Making Abstract Diff is done";
   if write_out then (
     L.info "Writing out the edit script...";
     DiffJson.dump abs_diff out_dir);
-  Maps.dump_ast "buggy" buggy_maps out_dir;
+  Maps.dump_ast "buggy" maps out_dir;
   let pattern_in_numeral, pattern =
-    AbsPat.run du_facts parent_facts' dug patch_comps src snk alarm_comps
-      buggy_maps abs_diff buggy_ast
+    AbsPat.run maps dug buggy_ast patch_comps alarm_comps src snk abs_diff
+      du_facts parent_facts'
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   let z3env = Z3env.get_env () in
   L.info "Try matching with buggy...";
-  ( Chc.match_and_log z3env out_dir "buggy" buggy_maps combined_facts src snk
-      pattern
+  ( Chc.match_and_log z3env out_dir "buggy" maps facts src snk pattern
   |> fun status -> assert (Option.is_some status) );
-  Maps.dump "buggy" buggy_maps out_dir;
+  Maps.dump "buggy" maps out_dir;
   L.info "Try matching with buggy numeral...";
-  ( Chc.match_and_log z3env out_dir "buggy_numer" buggy_maps combined_facts src
-      snk pattern_in_numeral
+  ( Chc.match_and_log z3env out_dir "buggy_numer" maps facts src snk
+      pattern_in_numeral
   |> fun status -> assert (Option.is_some status) );
-  Maps.dump "buggy_numer" buggy_maps out_dir;
-  match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps donee_ast
-    pattern out_dir abs_diff;
+  Maps.dump "buggy_numer" maps out_dir;
+  match_with_new_alarms buggy_dir true_alarm donee_dir maps donee_ast pattern
+    out_dir abs_diff;
   L.info "Done."

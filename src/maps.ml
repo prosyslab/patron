@@ -11,13 +11,13 @@ type translation_lookup_maps = {
 type loc = { file : string; line : int }
 
 type t = {
-  sym_map : (string, Z3.Expr.expr) Hashtbl.t;
-  numeral_map : (int, string) Hashtbl.t;
-  ast_map : (Ast.t, int) Hashtbl.t;
-  loc_map : (loc, string) Hashtbl.t;
-  exp_map : (string, string) Hashtbl.t;
-  lval_map : (string, string) Hashtbl.t;
-  node_map : (string, string) Hashtbl.t;
+  sym_map : (string, Z3.Expr.expr) Hashtbl.t; (* symbol -> z3 expr *)
+  numeral_map : (int, string) Hashtbl.t; (* z3 numeral -> symbol *)
+  ast_map : (Ast.t, int) Hashtbl.t; (* ast structure -> ast id(nume) *)
+  loc_map : (loc, string) Hashtbl.t; (* location -> node symbol *)
+  exp_map : (string, string) Hashtbl.t; (* exp symbol -> exp literal *)
+  lval_map : (string, string) Hashtbl.t; (* lval symbol -> lval literal *)
+  node_map : (string, string) Hashtbl.t; (* node symbol -> ast id(num) *)
 }
 
 let create_maps () =

@@ -692,8 +692,8 @@ let mk_abs_action maps dug du_facts = function
       (SUpdateExp (s_ctx, abs_exp1, abs_exp2), patch_comps2)
   | _ -> failwith "mk_sdiff: not implemented"
 
-let define_abs_diff maps buggy diff dug du_facts _ =
-  get_gvars buggy;
+let define_abs_diff maps ast dug du_facts diff =
+  get_gvars ast;
   List.fold_left
     ~f:(fun (abs_actions, patch_comps) (action, _) ->
       let abs_action, pc = mk_abs_action maps dug du_facts action in
