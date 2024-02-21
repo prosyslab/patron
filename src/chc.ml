@@ -599,30 +599,41 @@ let all_args_has_dep terms args =
 
 let exists_dep_arg terms args = List.exists ~f:(fun arg -> mem arg terms) args
 
-let from_node_to_ast terms = function
+let from_node_to_ast ?(leaf = empty) terms = function
   | Elt.FuncApply ("Set", [ n; lv; e ]) ->
-      if mem n terms then (true, terms |> add lv |> add e) else (false, terms)
+      if (not (mem n leaf)) && mem n terms then (true, terms |> add lv |> add e)
+      else (false, terms)
   | FuncApply ("Assume", [ n; e ]) | FuncApply ("Return", [ n; e ]) ->
-      if mem n terms then (true, add e terms) else (false, terms)
+      if (not (mem n leaf)) && mem n terms then (true, add e terms)
+      else (false, terms)
   | FuncApply ("Arg", [ arg_list; _; e ]) ->
-      if mem arg_list terms then (true, add e terms) else (false, terms)
+      if (not (mem arg_list leaf)) && mem arg_list terms then (true, add e terms)
+      else (false, terms)
   | FuncApply ("BinOpExp", [ e; _; e1; e2 ]) ->
-      if mem e terms then (true, terms |> add e1 |> add e2) else (false, terms)
+      if (not (mem e leaf)) && mem e terms then (true, terms |> add e1 |> add e2)
+      else (false, terms)
   | FuncApply ("UnOpExp", [ e; _; e1 ]) ->
-      if mem e terms then (true, add e1 terms) else (false, terms)
+      if (not (mem e leaf)) && mem e terms then (true, add e1 terms)
+      else (false, terms)
   | FuncApply ("AddrOf", [ e; lv ]) | FuncApply ("LvalExp", [ e; lv ]) ->
-      if mem e terms then (true, add lv terms) else (false, terms)
+      if (not (mem e leaf)) && mem e terms then (true, add lv terms)
+      else (false, terms)
   | FuncApply ("Index", [ lv; lv'; e ]) ->
-      if mem lv terms then (true, terms |> add lv' |> add e) else (false, terms)
+      if (not (mem lv leaf)) && mem lv terms then
+        (true, terms |> add lv' |> add e)
+      else (false, terms)
   | FuncApply ("Mem", [ lv; e ]) ->
-      if mem lv terms then (true, add e terms) else (false, terms)
+      if (not (mem lv leaf)) && mem lv terms then (true, add e terms)
+      else (false, terms)
   | FuncApply ("CallExp", [ e; _; arg_list ])
   | FuncApply ("LibCallExp", [ e; _; arg_list ]) ->
-      if mem e terms then (true, add arg_list terms) else (false, terms)
+      if (not (mem e leaf)) && mem e terms then (true, add arg_list terms)
+      else (false, terms)
   | FuncApply ("AllocExp", [ e; size_e ]) ->
-      if mem e terms then (true, add size_e terms) else (false, terms)
+      if (not (mem e leaf)) && mem e terms then (true, add size_e terms)
+      else (false, terms)
   | FuncApply ("SAllocExp", [ e; _ ]) ->
-      if mem e terms then (true, terms) else (false, terms)
+      if (not (mem e leaf)) && mem e terms then (true, terms) else (false, terms)
   | _ -> (false, terms)
 
 let find_defs rels =
@@ -759,7 +770,7 @@ let add_all z3env maps solver =
       if Elt.is_rel chc then add_fact z3env maps solver chc
       else add_rule z3env maps solver chc)
 
-let road_to_node terms = function
+let from_ast_to_node terms = function
   | Elt.FuncApply ("Set", [ n; lv; e ]) ->
       if mem e terms || mem lv terms then (true, add n terms) else (false, terms)
   | FuncApply ("Assume", [ n; e ]) | FuncApply ("Return", [ n; e ]) ->

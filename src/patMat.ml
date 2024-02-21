@@ -227,16 +227,17 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   let du_facts, parent_facts, (src, snk, alarm_comps), buggy_maps =
     Parser.make_facts buggy_dir true_alarm buggy_ast out_dir
   in
-  L.info "Make Facts in buggy done";
+  L.info "Making Facts in buggy done";
   let parent_facts' = reduce_parent_facts buggy_maps buggy_ast parent_facts in
   let combined_facts = Chc.union du_facts parent_facts' in
-  L.info "Makeing DUG...";
+  L.info "Making DUG...";
   let dug = Dug.of_facts buggy_maps.lval_map du_facts in
-  let module LvalMap = Map.Make (String) in
+  L.info "Making DUG is done";
+  L.info "Making Abstract Diff...";
   let abs_diff, patch_comps =
-    AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff (Dug.copy dug)
-      du_facts (src, snk)
+    AbsDiff.define_abs_diff buggy_maps buggy_ast ast_diff dug du_facts (src, snk)
   in
+  L.info "Making Abstract Diff is done";
   if write_out then (
     L.info "Writing out the edit script...";
     DiffJson.dump abs_diff out_dir);

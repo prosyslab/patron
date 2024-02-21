@@ -481,7 +481,7 @@ let extract_fun_name g =
   | Cil.GFun (f, _) -> f.Cil.svar.Cil.vname
   | _ -> failwith "extract_fun_name: not a function"
 
-let ast2absnode maps dug func = function
+let mk_dummy_abs_node maps dug func = function
   | Ast.Stmt s ->
       let id = match_stmt_id maps.Maps.loc_map s.Cil.skind in
       let node = AbsStmt (SSNull, s) in
@@ -506,7 +506,7 @@ let ast2absnode maps dug func = function
 
 let mk_s_sibs func dug maps path facts =
   let facts_lst = Chc.to_list facts in
-  List.map ~f:(ast2absnode maps dug func) path
+  List.map ~f:(mk_dummy_abs_node maps dug func) path
   |> symbolize_sibs
   |> filter_nodes (Chc.extract_nodes_in_facts facts_lst maps.Maps.node_map)
 
@@ -516,7 +516,7 @@ let mk_abs_ctx ctx maps dug du_facts =
   let patch_node =
     if List.is_empty ctx.D.root_path then
       { node = AbsGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
-    else List.hd_exn ctx.D.root_path |> ast2absnode maps dug parent_func
+    else List.hd_exn ctx.D.root_path |> mk_dummy_abs_node maps dug parent_func
   in
   let left_sibs, right_sibs = ctx.patch_bound in
   (* TODO: get abstract patch between using DUG -> get s_sibs from patch between *)

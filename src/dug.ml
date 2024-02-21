@@ -20,6 +20,7 @@ end
 module Dijkstra = Graph.Path.Dijkstra (I) (W)
 module Check = Graph.Path.Check (I)
 module LvalMap = Map.Make (String)
+module NodeSet = Set.Make (String)
 
 type node_info = { rels : Chc.t; defs : Chc.t; uses : Chc.t }
 
@@ -28,6 +29,9 @@ type t = {
   node_info : (string, node_info) Hashtbl.t; (* Node -> (Rels, Defs, Uses) *)
   label : (string * string, Chc.t) Hashtbl.t; (* Edge -> (FDNumeral Lval) Set *)
   lvmap_per_func : (string, string LvalMap.t) Hashtbl.t;
+      (* func -> (Lval literal -> Lval symbol) *)
+  def_map : (Chc.Elt.t, NodeSet.t) Hashtbl.t; (* Lval -> NodeSet *)
+  use_map : (Chc.Elt.t, NodeSet.t) Hashtbl.t; (* Lval -> NodeSet *)
 }
 
 type path_checker = Check.path_checker
@@ -38,6 +42,8 @@ let create ~size () =
     node_info = Hashtbl.create size;
     label = Hashtbl.create (size * size);
     lvmap_per_func = Hashtbl.create size;
+    def_map = Hashtbl.create (size * size);
+    use_map = Hashtbl.create (size * size);
   }
 
 let copy g =
@@ -46,20 +52,33 @@ let copy g =
     node_info = Hashtbl.copy g.node_info;
     label = Hashtbl.copy g.label;
     lvmap_per_func = Hashtbl.copy g.lvmap_per_func;
+    def_map = Hashtbl.copy g.def_map;
+    use_map = Hashtbl.copy g.use_map;
   }
 
 let clear g =
   I.clear g.graph;
   Hashtbl.clear g.node_info;
   Hashtbl.clear g.label;
-  Hashtbl.clear g.lvmap_per_func
+  Hashtbl.clear g.lvmap_per_func;
+  Hashtbl.clear g.def_map;
+  Hashtbl.clear g.use_map
 
 let mem_vertex g n = I.mem_vertex g.graph n
 let fold_vertex f g a = I.fold_vertex f g.graph a
+let fold_succ f g v a = I.fold_succ f g.graph v a
 let info_of_v g v = Hashtbl.find g.node_info v
 
 let add_vertex (v, rels, defs, uses) g =
   Hashtbl.replace g.node_info v { rels; defs; uses };
+  let mk_dumap map =
+    Chc.iter (fun l ->
+        Hashtbl.find_opt map l
+        |> Option.value ~default:NodeSet.empty
+        |> NodeSet.add v |> Hashtbl.replace map l)
+  in
+  mk_dumap g.def_map defs;
+  mk_dumap g.use_map uses;
   I.add_vertex g.graph v;
   g
 
@@ -96,6 +115,12 @@ let edges2lst edge_lst =
 
 let create_path_checker = Check.create
 let check_path pc src dst = Check.check_path pc src dst
+
+let path2rels =
+  List.fold_left
+    ~f:(fun rels edge ->
+      Chc.add (Chc.Elt.duedge (I.E.src edge) (I.E.dst edge)) rels)
+    ~init:Chc.empty
 
 let paths2rels =
   List.fold_left
@@ -153,10 +178,9 @@ let of_facts lval_map rels =
       let src, dst = Chc.Elt.extract_src_dst rel in
       let src_info, g' = process_vertex lval_map src ast_rels g in
       let dst_info, g'' = process_vertex lval_map dst ast_rels g' in
-      let lvs =
-        if Chc.is_empty src_info.defs then dst_info.uses
-        else if Chc.is_empty dst_info.uses then src_info.defs
-        else Chc.inter src_info.defs dst_info.uses
-      in
+      let inter = Chc.inter src_info.defs dst_info.uses in
+      let union = Chc.union src_info.defs dst_info.uses in
+      (* NOTE: hack for function call, interprocedural edge *)
+      let lvs = if Chc.is_empty inter then union else inter in
       add_edge_e (src, lvs, dst) g'')
     du_rels dug

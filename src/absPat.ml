@@ -1,4 +1,6 @@
 open Core
+module Set = Stdlib.Set
+module Map = Stdlib.Map
 module Hashtbl = Stdlib.Hashtbl
 module L = Logger
 
@@ -160,30 +162,48 @@ let compute_ast_pattern ast_facts ast_node_lst parent_of_patch patch_func maps
     in
     mk_ast_bug_pattern ast_facts node_map solution)
 
-let abstract_by_comps chc dug patch_comps snk alarm_comps =
+let collect_ast_rels full_rels node leaf =
+  let terms = Chc.Elt.numer node |> Chc.singleton in
+  let n2l =
+    Chc.fixedpoint (Chc.from_node_to_ast ~leaf) full_rels terms Chc.empty |> fst
+  in
+  let l2n =
+    Chc.fixedpoint Chc.from_ast_to_node full_rels leaf Chc.empty |> fst
+  in
+  Chc.inter n2l l2n
+
+let find_rels_by_lv full_rels dug snk lv =
+  let module NodeSet = Set.Make (String) in
+  let lv_term = Chc.Elt.numer lv in
+  let def_nodes = Hashtbl.find dug.Dug.def_map lv_term in
+  let collect_rels node rels_acc =
+    let lv_terms = Chc.singleton lv_term in
+    let ast_rels = collect_ast_rels full_rels node lv_terms in
+    Dug.fold_succ
+      (fun succ path_rels ->
+        if Hashtbl.find dug.label (node, succ) |> Chc.mem lv_term then
+          Dug.shortest_path dug succ snk
+          |> Dug.path2rels
+          |> Chc.add (Chc.Elt.duedge node succ)
+          |> Chc.union path_rels
+        else path_rels)
+      dug node rels_acc
+    |> Chc.union ast_rels
+  in
+  NodeSet.fold collect_rels def_nodes Chc.empty
+
+let abstract_by_comps du_facts dug patch_comps snk alarm_comps =
   L.info "patch_comps: %s" (String.concat ~sep:", " patch_comps);
   L.info "alarm_comps: %s"
     (alarm_comps |> Chc.to_list |> Chc.Elt.numers2strs
    |> String.concat ~sep:", ");
-  let du_rels = Chc.filter Chc.Elt.is_duedge chc in
-  let ast_rels = Chc.diff chc du_rels in
-  let terms =
-    List.map ~f:(fun s -> Chc.Elt.FDNumeral s) patch_comps
-    |> Chc.of_list |> Chc.union alarm_comps
-  in
-  let abs_ast_rels, terms' =
-    Chc.fixedpoint Chc.road_to_node ast_rels terms Chc.empty
-  in
-  let nodes = Chc.to_list terms' |> Chc.Elt.numers2strs |> Chc.filter_by_node in
-  L.info "nodes: %s" (String.concat ~sep:", " nodes);
-  let dug = Dug.copy dug in
-  let paths =
+  let collected_by_patch_comps =
     List.fold_left
-      ~f:(fun paths src -> Dug.shortest_path dug src snk :: paths)
-      ~init:[] nodes
+      ~f:(fun rels lv -> find_rels_by_lv du_facts dug snk lv |> Chc.union rels)
+      ~init:Chc.empty patch_comps
   in
-  let abs_du_rels = Dug.paths2rels paths in
-  Chc.union abs_ast_rels abs_du_rels
+  let collected_by_alarm_comps = collect_ast_rels du_facts snk alarm_comps in
+  Chc.union collected_by_patch_comps collected_by_alarm_comps
 
 let run du_facts ast_facts dug patch_comps src snk alarm_comps maps diff ast =
   let fst_abs_facts =
