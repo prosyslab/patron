@@ -71,14 +71,6 @@ let info_of_v g v = Hashtbl.find g.node_info v
 
 let add_vertex (v, rels, defs, uses) g =
   Hashtbl.replace g.node_info v { rels; defs; uses };
-  let mk_dumap map =
-    Chc.iter (fun l ->
-        Hashtbl.find_opt map l
-        |> Option.value ~default:NodeSet.empty
-        |> NodeSet.add v |> Hashtbl.replace map l)
-  in
-  mk_dumap g.def_map defs;
-  mk_dumap g.use_map uses;
   I.add_vertex g.graph v;
   g
 
@@ -162,6 +154,12 @@ let process_vertex lval_map v r g =
     let g'' = mapping_func_lvmap lval_map v lvs g' in
     (info_of_v g'' v, g'')
 
+let mk_dumap v map =
+  Chc.iter (fun l ->
+      Hashtbl.find_opt map l
+      |> Option.value ~default:NodeSet.empty
+      |> NodeSet.add v |> Hashtbl.replace map l)
+
 let of_facts lval_map rels =
   let module NodeSet = Set.Make (String) in
   let du_rels, ast_rels = Chc.partition Chc.Elt.is_duedge rels in
@@ -182,5 +180,7 @@ let of_facts lval_map rels =
       let union = Chc.union src_info.defs dst_info.uses in
       (* NOTE: hack for function call, interprocedural edge *)
       let lvs = if Chc.is_empty inter then union else inter in
+      mk_dumap src g.def_map lvs;
+      mk_dumap dst g.use_map lvs;
       add_edge_e (src, lvs, dst) g'')
     du_rels dug
