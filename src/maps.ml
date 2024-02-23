@@ -15,6 +15,7 @@ type t = {
   numeral_map : (int, string) Hashtbl.t; (* z3 numeral -> symbol *)
   ast_map : (Ast.t, int) Hashtbl.t; (* ast structure -> ast id(nume) *)
   loc_map : (loc, string) Hashtbl.t; (* location -> node symbol *)
+  cmd_map : (string, string) Hashtbl.t; (* node symbol -> cmd (skip, ...) *)
   exp_map : (string, string) Hashtbl.t; (* exp symbol -> exp literal *)
   lval_map : (string, string) Hashtbl.t; (* lval symbol -> lval literal *)
   node_map : (string, string) Hashtbl.t; (* node symbol -> ast id(num) *)
@@ -26,6 +27,7 @@ let create_maps () =
     numeral_map = Hashtbl.create 1000;
     ast_map = Hashtbl.create 1000;
     loc_map = Hashtbl.create 1000;
+    cmd_map = Hashtbl.create 1000;
     exp_map = Hashtbl.create 1000;
     lval_map = Hashtbl.create 1000;
     node_map = Hashtbl.create 1000;
@@ -51,6 +53,7 @@ let reset_maps maps =
   Hashtbl.reset maps.numeral_map;
   Hashtbl.reset maps.ast_map;
   Hashtbl.reset maps.loc_map;
+  Hashtbl.reset maps.cmd_map;
   Hashtbl.reset maps.exp_map;
   Hashtbl.reset maps.lval_map;
   Hashtbl.reset maps.node_map

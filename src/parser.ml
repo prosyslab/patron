@@ -370,7 +370,7 @@ let make_facts target_dir target_alarm ast out_dir =
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
   Utils.parse_map alarm_dir "Exp.map" maps.Maps.exp_map;
   Utils.parse_map alarm_dir "Lval.map" maps.Maps.lval_map;
-  Utils.parse_node_json spo_dir maps.Maps.loc_map;
+  Utils.parse_node_json spo_dir maps.Maps.loc_map maps.Maps.cmd_map;
   let ast_nodes = (Ast.extract_globs ast, Ast.extract_stmts ast) in
   let du_facts = make_du_facts alarm_dir in
   let parent_facts = make_parent_facts alarm_dir maps ast_nodes in

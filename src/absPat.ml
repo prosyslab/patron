@@ -172,34 +172,51 @@ let collect_ast_rels full_rels node leaf =
   in
   Chc.inter n2l l2n
 
-let find_rels_by_lv full_rels dug snk lv =
+let find_rels_by_lv full_rels dug cmd_map snk lv =
   let module NodeSet = Set.Make (String) in
   let lv_term = Chc.Elt.numer lv in
-  let def_nodes = Hashtbl.find dug.Dug.def_map lv_term in
-  let collect_rels node rels_acc =
-    let lv_terms = Chc.singleton lv_term in
-    let ast_rels = collect_ast_rels full_rels node lv_terms in
-    Dug.fold_succ
-      (fun succ path_rels ->
-        if Hashtbl.find dug.label (node, succ) |> Chc.mem lv_term then
-          Dug.shortest_path dug succ snk
-          |> Dug.path2rels
-          |> Chc.add (Chc.Elt.duedge node succ)
-          |> Chc.union path_rels
-        else path_rels)
-      dug node rels_acc
-    |> Chc.union ast_rels
+  let lv_terms = Chc.singleton lv_term in
+  let def_skip_nodes, def_nodes =
+    Hashtbl.find dug.Dug.def_map lv_term
+    |> NodeSet.partition (Dug.is_skip_node cmd_map)
   in
-  NodeSet.fold collect_rels def_nodes Chc.empty
+  (* NOTE: hack for skip node (ENTRY, EXIT, ReturnNode, ...) *)
+  if NodeSet.is_empty def_nodes then
+    let node = NodeSet.choose def_skip_nodes in
+    let succ =
+      Hashtbl.find dug.Dug.use_map lv_term
+      |> NodeSet.find_first (fun s -> Dug.mem_edge dug node s)
+    in
+    let ast_rels = collect_ast_rels full_rels succ lv_terms in
+    Dug.shortest_path dug succ snk
+    |> Dug.path2rels
+    |> Chc.add (Chc.Elt.duedge node succ)
+    |> Chc.union ast_rels
+  else
+    let collect_rels node rels_acc =
+      let ast_rels = collect_ast_rels full_rels node lv_terms in
+      Dug.fold_succ
+        (fun succ path_rels ->
+          if Hashtbl.find dug.label (node, succ) |> Chc.mem lv_term then
+            Dug.shortest_path dug succ snk
+            |> Dug.path2rels
+            |> Chc.add (Chc.Elt.duedge node succ)
+            |> Chc.union path_rels
+          else path_rels)
+        dug node rels_acc
+      |> Chc.union ast_rels
+    in
+    NodeSet.fold collect_rels def_nodes Chc.empty
 
-let abs_by_comps dug patch_comps snk alarm_comps du_facts =
+let abs_by_comps dug patch_comps snk alarm_comps cmd_map du_facts =
   L.info "patch_comps: %s" (String.concat ~sep:", " patch_comps);
   L.info "alarm_comps: %s"
     (alarm_comps |> Chc.to_list |> Chc.Elt.numers2strs
    |> String.concat ~sep:", ");
   let collected_by_patch_comps =
     List.fold_left
-      ~f:(fun rels lv -> find_rels_by_lv du_facts dug snk lv |> Chc.union rels)
+      ~f:(fun rels lv ->
+        find_rels_by_lv du_facts dug cmd_map snk lv |> Chc.union rels)
       ~init:Chc.empty patch_comps
   in
   let collected_by_alarm_comps = collect_ast_rels du_facts snk alarm_comps in
@@ -220,7 +237,9 @@ let abs_ast_rels maps du_fact_lst abs_diff ast ast_facts =
 
 let run maps dug ast patch_comps alarm_comps src snk abs_diff du_facts ast_facts
     =
-  let abs_du_facts = abs_by_comps dug patch_comps snk alarm_comps du_facts in
+  let abs_du_facts =
+    abs_by_comps dug patch_comps snk alarm_comps maps.Maps.cmd_map du_facts
+  in
   let abs_ast_facts = abs_ast_rels maps abs_du_facts abs_diff ast ast_facts in
   let errtrace =
     Chc.Elt.FuncApply

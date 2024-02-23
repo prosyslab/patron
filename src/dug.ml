@@ -65,6 +65,7 @@ let clear g =
   Hashtbl.clear g.use_map
 
 let mem_vertex g n = I.mem_vertex g.graph n
+let mem_edge g s t = I.mem_edge g.graph s t
 let fold_vertex f g a = I.fold_vertex f g.graph a
 let fold_succ f g v a = I.fold_succ f g.graph v a
 let info_of_v g v = Hashtbl.find g.node_info v
@@ -142,6 +143,12 @@ let mapping_func_lvmap lval_map v lvs g =
   else Hashtbl.replace g.lvmap_per_func func_name lvm;
   g
 
+let mk_dumap v map =
+  Chc.iter (fun l ->
+      Hashtbl.find_opt map l
+      |> Option.value ~default:NodeSet.empty
+      |> NodeSet.add v |> Hashtbl.replace map l)
+
 let process_vertex lval_map v r g =
   if mem_vertex g v then (info_of_v g v, g)
   else
@@ -149,18 +156,18 @@ let process_vertex lval_map v r g =
     let reach = Chc.fixedpoint Chc.from_node_to_ast r terms Chc.empty |> fst in
     let defs = Chc.find_defs reach in
     let uses = Chc.find_uses reach in
+    mk_dumap v g.def_map defs;
+    mk_dumap v g.use_map uses;
     let g' = add_vertex (v, reach, defs, uses) g in
     let lvs = Chc.union defs uses |> Chc.to_list |> Chc.Elt.numers2strs in
     let g'' = mapping_func_lvmap lval_map v lvs g' in
     (info_of_v g'' v, g'')
 
-let mk_dumap v map =
-  Chc.iter (fun l ->
-      Hashtbl.find_opt map l
-      |> Option.value ~default:NodeSet.empty
-      |> NodeSet.add v |> Hashtbl.replace map l)
+let is_skip_node cmd_map n =
+  let cmd = Hashtbl.find cmd_map n in
+  List.exists ~f:(String.equal cmd) [ "skip"; "assume" ]
 
-let of_facts lval_map rels =
+let of_facts lval_map cmd_map rels =
   let module NodeSet = Set.Make (String) in
   let du_rels, ast_rels = Chc.partition Chc.Elt.is_duedge rels in
   let nodes =
@@ -178,9 +185,8 @@ let of_facts lval_map rels =
       let dst_info, g'' = process_vertex lval_map dst ast_rels g' in
       let inter = Chc.inter src_info.defs dst_info.uses in
       let union = Chc.union src_info.defs dst_info.uses in
-      (* NOTE: hack for function call, interprocedural edge *)
+      (* NOTE: hack for skip node (ENTRY, EXIT, ReturnNode, ...) *)
       let lvs = if Chc.is_empty inter then union else inter in
-      mk_dumap src g.def_map lvs;
-      mk_dumap dst g.use_map lvs;
+      if is_skip_node cmd_map src then mk_dumap src g''.def_map lvs;
       add_edge_e (src, lvs, dst) g'')
     du_rels dug

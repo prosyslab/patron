@@ -231,7 +231,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   let parent_facts' = reduce_parent_facts maps buggy_ast parent_facts in
   let facts = Chc.union du_facts parent_facts' in
   L.info "Making DUG...";
-  let dug = Dug.of_facts maps.lval_map du_facts in
+  let dug = Dug.of_facts maps.lval_map maps.cmd_map du_facts in
   L.info "Making DUG is done";
   L.info "Making Abstract Diff...";
   let abs_diff, patch_comps =
