@@ -182,6 +182,7 @@ module Elt = struct
     | Implies (cons, hd) -> Sexp.List (chc2sexp hd :: List.map ~f:chc2sexp cons)
 
   let duedge src dst = FuncApply ("DUEdge", [ numer src; numer dst ])
+  let real_lv lv = FuncApply ("RealLv", [ numer lv ])
   let is_rel = function FuncApply _ -> true | _ -> false
   let is_rule = function Implies _ -> true | _ -> false
   let is_duedge = function FuncApply ("DUEdge", _) -> true | _ -> false
@@ -440,7 +441,6 @@ include Set.Make (Elt)
 
 let to_list s = fold (fun c l -> c :: l) s []
 let node = "node"
-let ast_node = "ast_node"
 let lval = "lval"
 let expr = "expr"
 let binop = "binop"
@@ -452,19 +452,7 @@ let const = "const"
 let str_literal = "str_literal"
 
 let types =
-  [
-    node;
-    ast_node;
-    lval;
-    expr;
-    binop;
-    unop;
-    arg_list;
-    pos;
-    loc;
-    const;
-    str_literal;
-  ]
+  [ node; lval; expr; binop; unop; arg_list; pos; loc; const; str_literal ]
 
 let rels =
   [
@@ -480,13 +468,12 @@ let rels =
     ("AddrOf", [ expr; lval ]);
     ("LibCallExp", [ expr; expr; arg_list ]);
     ("LvalExp", [ expr; lval ]);
+    ("RealLv", [ lval ]);
     ("Return", [ node; expr ]);
     ("SAllocExp", [ expr; str_literal ]);
     ("Skip", [ node ]);
     ("EvalLv", [ node; lval; loc ]);
     ("Assume", [ node; expr ]);
-    ("AstParent", [ ast_node; ast_node ]);
-    ("EqNode", [ node; ast_node ]);
     ("ErrTrace", [ node; node ]);
   ]
 
@@ -678,22 +665,6 @@ let is_child var = function
   | _ -> false
 
 let collect_children var rels = filter (is_child var) rels
-
-let extract_nodes_in_facts deps node_map =
-  List.fold_left ~init:[]
-    ~f:(fun acc dep ->
-      match dep with
-      (* TODO: case where nodes are used but not by Set *)
-      | Elt.FuncApply ("Set", args) -> List.hd_exn args :: acc
-      | Elt.FuncApply ("DUEdge", args) -> args @ acc
-      | _ -> acc)
-    deps
-  |> List.fold_left ~init:[] ~f:(fun acc node ->
-         match node with
-         | Elt.FDNumeral n -> (
-             try Hashtbl.find node_map n :: n :: acc with _ -> n :: acc)
-         | _ -> acc)
-  |> Stdlib.List.sort_uniq (fun x y -> String.compare x y)
 
 let collect_node ~before node chcs =
   let befores =

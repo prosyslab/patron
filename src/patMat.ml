@@ -6,81 +6,6 @@ module Set = Stdlib.Set
 module Map = Stdlib.Map
 module Sys = Stdlib.Sys
 
-let get_func str = String.split_on_chars ~on:[ '-' ] str |> List.hd_exn
-let get_id str = String.split_on_chars ~on:[ '-' ] str |> List.last_exn
-
-let extract_id elt =
-  List.fold_left ~init:[]
-    ~f:(fun acc e ->
-      match e with
-      | Chc.Elt.FDNumeral s | Chc.Elt.Var s -> get_id s :: acc
-      | _ -> acc)
-    elt
-
-let extract_func elt =
-  List.fold_left ~init:[]
-    ~f:(fun acc e ->
-      match e with
-      | Chc.Elt.FDNumeral s | Chc.Elt.Var s -> get_func s :: acc
-      | _ -> acc)
-    elt
-
-let extract_funcs_from_facts facts =
-  Chc.fold
-    (fun c acc ->
-      match c with
-      | Chc.Elt.FuncApply (_, elt) -> extract_func elt @ acc
-      | _ -> acc)
-    facts []
-  |> List.dedup_and_sort ~compare:String.compare
-
-let reduce_parent_facts maps ast facts =
-  let func_lst = extract_funcs_from_facts facts in
-  let interesting_stmts =
-    List.fold ~init:[]
-      ~f:(fun acc f ->
-        (Utils.extract_target_func_stmt_lst ast f
-        |> List.map ~f:(fun s -> Ast.stmt2ast (Some s)))
-        @ acc)
-      func_lst
-    |> List.fold ~init:[] ~f:(fun acc s ->
-           try (Hashtbl.find maps.Maps.ast_map s |> string_of_int) :: acc
-           with _ -> acc)
-  in
-  Chc.fold
-    (fun c acc ->
-      match c with
-      | Chc.Elt.FuncApply ("AstParent", elt) ->
-          let nodes = [ List.hd_exn elt; List.last_exn elt ] |> extract_id in
-          List.fold_left ~init:Chc.empty
-            ~f:(fun acc' node ->
-              if List.exists ~f:(fun n -> String.equal n node) interesting_stmts
-              then Chc.add c acc'
-              else acc')
-            nodes
-          |> Chc.union acc
-      | Chc.Elt.FuncApply ("EqNode", elt) ->
-          let (func : string) =
-            [ List.hd_exn elt ] |> extract_func |> List.hd_exn
-          in
-          if List.exists ~f:(fun y -> String.equal func y) func_lst then
-            Chc.add c acc
-          else acc
-      | _ -> acc)
-    facts Chc.empty
-
-let remove_before_src_after_snk src snk rels =
-  let src_node, snk_node = (Chc.Elt.FDNumeral src, Chc.Elt.FDNumeral snk) in
-  let before_src = Chc.collect_node ~before:true src_node rels in
-  let after_snk = Chc.collect_node ~before:false snk_node rels in
-  let before_deps =
-    Chc.fixedpoint Chc.from_node_to_ast rels before_src Chc.empty |> fst
-  in
-  let after_deps =
-    Chc.fixedpoint Chc.from_node_to_ast rels after_snk Chc.empty |> fst
-  in
-  rels |> (Fun.flip Chc.diff) before_deps |> (Fun.flip Chc.diff) after_deps
-
 let sort_rule_optimize ref deps =
   let get_args = function
     | Chc.Elt.FuncApply (s, args) -> (s, args)
@@ -142,13 +67,6 @@ let sort_rule_optimize ref deps =
   in
   (lcs |> List.rev) @ (unsorted |> List.rev)
 
-let is_patch_under_func parent ast_map =
-  Stdlib.Hashtbl.fold
-    (fun k v acc -> if int_of_string parent = v then k :: acc else acc)
-    ast_map []
-  |> List.hd_exn
-  |> fun node -> Ast.is_glob node || Ast.is_fun node
-
 let mk_file_diff orig_path patch_path target_alarm out_dir =
   Sys.command
     (String.concat
@@ -164,34 +82,28 @@ let mk_file_diff orig_path patch_path target_alarm out_dir =
 
 let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast out_dir
     diff =
-  let du_facts, parent_facts, (src, snk, _), target_maps =
+  let facts, (src, snk, _), target_maps =
     Parser.make_facts donee_dir target_alarm ast out_dir
   in
-  let parent_facts' = reduce_parent_facts target_maps ast parent_facts in
-  let combined_facts = Chc.union du_facts parent_facts' in
   let z3env = Z3env.get_env () in
   L.info "Try matching with %s..." target_alarm;
   let status =
-    Chc.match_and_log z3env out_dir target_alarm target_maps combined_facts src
-      snk pattern
+    Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
+      pattern
   in
   Maps.dump target_alarm target_maps out_dir;
   if Option.is_some status then (
     Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
     L.info "Matching with %s is done" target_alarm;
-    let patch_parent_lst =
-      AbsDiff.extract_parent diff buggy_maps.Maps.ast_map |> List.map ~f:fst
-    in
-    let ef =
+    let target_diff =
       EditFunction.translate ast diff out_dir target_alarm target_maps
-        patch_parent_lst parent_facts
     in
     L.info "Applying patch on the target file ...";
     let out_file_orig =
       String.concat [ out_dir; "/orig_"; target_alarm; ".c" ]
     in
     Patch.write_out out_file_orig ast;
-    let patch_file = Patch.apply diff ast ef in
+    let patch_file = Patch.apply ast target_diff in
     let out_file_patch =
       String.concat [ out_dir; "/patch_"; target_alarm; ".c" ]
     in
@@ -224,27 +136,23 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
-  let du_facts, parent_facts, (src, snk, alarm_comps), maps =
+  let facts, (src, snk, alarm_comps), maps =
     Parser.make_facts buggy_dir true_alarm buggy_ast out_dir
   in
   L.info "Making Facts in buggy done";
-  let parent_facts' = reduce_parent_facts maps buggy_ast parent_facts in
-  let facts = Chc.union du_facts parent_facts' in
   L.info "Making DUG...";
-  let dug = Dug.of_facts maps.lval_map maps.cmd_map du_facts in
+  let dug = Dug.of_facts maps.lval_map maps.cmd_map facts in
   L.info "Making DUG is done";
   L.info "Making Abstract Diff...";
   let abs_diff, patch_comps =
-    AbsDiff.define_abs_diff maps buggy_ast dug du_facts ast_diff
+    AbsDiff.define_abs_diff maps buggy_ast dug ast_diff
   in
   L.info "Making Abstract Diff is done";
   if write_out then (
     L.info "Writing out the edit script...";
     DiffJson.dump abs_diff out_dir);
-  Maps.dump_ast "buggy" maps out_dir;
   let pattern_in_numeral, pattern =
-    AbsPat.run maps dug buggy_ast patch_comps alarm_comps src snk abs_diff
-      du_facts parent_facts'
+    AbsPat.run maps dug patch_comps alarm_comps src snk facts
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;

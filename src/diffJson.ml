@@ -1,7 +1,11 @@
 open Core
 open AbsDiff
+module Set = Stdlib.Set
+module StrSet = Set.Make (String)
 
 type t = Yojson.Safe.t
+
+let string_of_ids ids = StrSet.fold (fun id s -> s ^ id ^ ", ") ids ""
 
 let sbinop_to_sym op =
   match op with
@@ -61,29 +65,22 @@ let rec styp_to_sym styp =
 let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
 
 let rec mk_json_obj saction =
-  let context_json (context : abs_context) =
-    let func_name_json = ("func_name", `String context.func_name) in
-    ("context", `Assoc [ func_name_json ])
-  in
   match saction with
-  | SInsertStmt (context1, snode) ->
+  | SInsertStmt (_, ss, _) ->
       let action_json = ("action", `String "insert_stmt") in
-      let ctx_json = context_json context1 in
-      let change_json = ("change", sstmt_to_json snode) in
-      `Assoc [ action_json; ctx_json; change_json ]
-  | SDeleteStmt (context1, snode) ->
+      let change_json = ("change", `List (List.map ~f:sstmt_to_json ss)) in
+      `Assoc [ action_json; change_json ]
+  | SDeleteStmt ss ->
       let action_json = ("action", `String "delete_stmt") in
-      let ctx_json = context_json context1 in
-      let change_json = ("change", sstmt_to_json snode) in
-      `Assoc [ action_json; ctx_json; change_json ]
-  | SUpdateExp (context1, e1, e2) ->
+      let change_json = ("change", `List (List.map ~f:sstmt_to_json ss)) in
+      `Assoc [ action_json; change_json ]
+  | SUpdateExp (_, e1, e2) ->
       let action_json = ("action", `String "update_exp") in
-      let ctx_json = context_json context1 in
       let change_json =
         ( "change",
           `Assoc [ ("before", sexp_to_json e1); ("after", sexp_to_json e2) ] )
       in
-      `Assoc [ action_json; ctx_json; change_json ]
+      `Assoc [ action_json; change_json ]
   | _ -> failwith "mk_json_obj: not implemented"
 
 and sexps_to_json lst =
@@ -97,7 +94,7 @@ and sstmts_to_json lst =
     |> List.rev)
 
 and sstmt_to_json (sstmt : abs_node) =
-  let node = sstmt.node in
+  let node = sstmt.ast in
   let stmt =
     match node with
     | AbsStmt (s, _) -> s
@@ -109,7 +106,7 @@ and sstmt_to_json (sstmt : abs_node) =
       let then_json = ("then", sstmts_to_json tb1) in
       let else_json = ("else", sstmts_to_json eb1) in
       let node_json = ("node", `Assoc [ cond_json; then_json; else_json ]) in
-      let id_json = ("id", `String sstmt.id) in
+      let id_json = ("ids", `String (string_of_ids sstmt.ids)) in
       let literal_json = ("literal", `String sstmt.literal) in
       let if_json = ("if", `Assoc [ node_json; id_json; literal_json ]) in
       `Assoc [ if_json ]
@@ -117,7 +114,7 @@ and sstmt_to_json (sstmt : abs_node) =
       let lval_json = ("lval", slval_to_json lv1) in
       let exp_json = ("exp", sexp_to_json e1) in
       let node_json = ("node", `Assoc [ lval_json; exp_json ]) in
-      let id_json = ("id", `String sstmt.id) in
+      let id_json = ("id", `String (string_of_ids sstmt.ids)) in
       let literal_json = ("literal", `String sstmt.literal) in
       let set_json = ("set", `Assoc [ node_json; id_json; literal_json ]) in
       `Assoc [ set_json ]
@@ -126,7 +123,7 @@ and sstmt_to_json (sstmt : abs_node) =
       let exp_json = ("exp", sexp_to_json e1) in
       let exps_json = ("exps", sexps_to_json es1) in
       let node_json = ("node", `Assoc [ lval_json; exp_json; exps_json ]) in
-      let id_json = ("id", `String sstmt.id) in
+      let id_json = ("id", `String (string_of_ids sstmt.ids)) in
       let literal_json = ("literal", `String sstmt.literal) in
       let call_json = ("call", `Assoc [ node_json; id_json; literal_json ]) in
       `Assoc [ call_json ]
@@ -135,14 +132,14 @@ and sstmt_to_json (sstmt : abs_node) =
       let exp_json = ("exp", sexp_to_json e1) in
       let exps_json = ("exps", sexps_to_json es1) in
       let node_json = ("node", `Assoc [ lval_json; exp_json; exps_json ]) in
-      let id_json = ("id", `String sstmt.id) in
+      let id_json = ("id", `String (string_of_ids sstmt.ids)) in
       let literal_json = ("literal", `String sstmt.literal) in
       let call_json = ("call", `Assoc [ node_json; id_json; literal_json ]) in
       `Assoc [ call_json ]
   | SReturn (Some e1) ->
       let exp_json = ("exp", sexp_to_json e1) in
       let node_json = ("node", `Assoc [ exp_json ]) in
-      let id_json = ("id", `String sstmt.id) in
+      let id_json = ("id", `String (string_of_ids sstmt.ids)) in
       let literal_json = ("literal", `String sstmt.literal) in
       let return_json =
         ("return", `Assoc [ node_json; id_json; literal_json ])
@@ -151,7 +148,7 @@ and sstmt_to_json (sstmt : abs_node) =
   | SReturn None ->
       let exp_json = ("exp", `String "None") in
       let node_json = ("node", `Assoc [ exp_json ]) in
-      let id_json = ("id", `String sstmt.id) in
+      let id_json = ("id", `String (string_of_ids sstmt.ids)) in
       let literal_json = ("literal", `String sstmt.literal) in
       let return_json =
         ("return", `Assoc [ node_json; id_json; literal_json ])
@@ -160,19 +157,19 @@ and sstmt_to_json (sstmt : abs_node) =
   | SGoto s1 ->
       let stmt_json = ("stmt", sstmt_to_json s1) in
       let node_json = ("node", `Assoc [ stmt_json ]) in
-      let id_json = ("id", `String sstmt.id) in
+      let id_json = ("id", `String (string_of_ids sstmt.ids)) in
       let literal_json = ("literal", `String sstmt.literal) in
       let goto_json = ("goto", `Assoc [ node_json; id_json; literal_json ]) in
       `Assoc [ goto_json ]
   | SBreak ->
       let node_json = ("node", `String "break") in
-      let id_json = ("id", `String sstmt.id) in
+      let id_json = ("id", `String (string_of_ids sstmt.ids)) in
       let literal_json = ("literal", `String sstmt.literal) in
       let break_json = ("break", `Assoc [ node_json; id_json; literal_json ]) in
       `Assoc [ break_json ]
   | SContinue ->
       let node_json = ("node", `String "continue") in
-      let id_json = ("id", `String sstmt.id) in
+      let id_json = ("id", `String (string_of_ids sstmt.ids)) in
       let literal_json = ("literal", `String sstmt.literal) in
       let continue_json =
         ("continue", `Assoc [ node_json; id_json; literal_json ])
@@ -181,7 +178,7 @@ and sstmt_to_json (sstmt : abs_node) =
   | _ -> `Null
 
 and sexp_to_json sexp =
-  let node = sexp.node in
+  let node = sexp.ast in
   let exp =
     match node with
     | AbsExp (e, _) -> e
@@ -191,7 +188,7 @@ and sexp_to_json sexp =
   | SConst const ->
       let const_json = ("const", sconst_to_json const) in
       let node_json = ("node", `Assoc [ const_json ]) in
-      let id_json = ("id", `String sexp.id) in
+      let id_json = ("ids", `String (string_of_ids sexp.ids)) in
       let literal_json = ("literal", `String sexp.literal) in
       `Assoc [ node_json; id_json; literal_json ]
   | SELval l -> `Assoc [ ("lval", slval_to_json l) ]
@@ -199,7 +196,7 @@ and sexp_to_json sexp =
       let e_json = ("exp", sexp_to_json e1) in
       let sizeof_json = ("sizeof", `Assoc [ e_json ]) in
       let node_json = ("node", `Assoc [ sizeof_json ]) in
-      let id_json = ("id", `String sexp.id) in
+      let id_json = ("id", `String (string_of_ids sexp.ids)) in
       let literal_json = ("literal", `String sexp.literal) in
       `Assoc [ node_json; id_json; literal_json ]
   | SBinOp (op1, e1_1, e2_1, typ1) ->
@@ -211,7 +208,7 @@ and sexp_to_json sexp =
         ("binop", `Assoc [ op_json; typ_json; e1_json; e2_json ])
       in
       let node_json = ("node", `Assoc [ binop_json ]) in
-      let id_json = ("id", `String sexp.id) in
+      let id_json = ("id", `String (string_of_ids sexp.ids)) in
       let literal_json = ("literal", `String sexp.literal) in
       `Assoc [ node_json; id_json; literal_json ]
   | SCastE (typ, e1) ->
@@ -219,7 +216,7 @@ and sexp_to_json sexp =
       let e_json = ("e", sexp_to_json e1) in
       let cast_json = ("cast", `Assoc [ typ_json; e_json ]) in
       let node_json = ("node", `Assoc [ cast_json ]) in
-      let id_json = ("id", `String sexp.id) in
+      let id_json = ("id", `String (string_of_ids sexp.ids)) in
       let literal_json = ("literal", `String sexp.literal) in
       `Assoc [ node_json; id_json; literal_json ]
   | SUnOp (op1, e1_1, typ1) ->
@@ -228,7 +225,7 @@ and sexp_to_json sexp =
       let e_json = ("e", sexp_to_json e1_1) in
       let unop_json = ("unop", `Assoc [ op_json; typ_json; e_json ]) in
       let node_json = ("node", `Assoc [ unop_json ]) in
-      let id_json = ("id", `String sexp.id) in
+      let id_json = ("id", `String (string_of_ids sexp.ids)) in
       let literal_json = ("literal", `String sexp.literal) in
       `Assoc [ node_json; id_json; literal_json ]
   | _ ->
@@ -236,7 +233,7 @@ and sexp_to_json sexp =
       failwith "sexp_to_json: undefined AbsExp"
 
 and slval_to_json slval =
-  let node = slval.node in
+  let node = slval.ast in
   let lval =
     match node with
     | AbsLval (l, _) -> l
@@ -249,7 +246,7 @@ and slval_to_json slval =
       let offset_json = ("offset", soffset_to_json offset) in
       let lval_json = ("lval", `Assoc [ lhost_json; offset_json ]) in
       let node_json = ("node", `Assoc [ lval_json ]) in
-      let id_json = ("id", `String slval.id) in
+      let id_json = ("id", `String (string_of_ids slval.ids)) in
       let literal_json = ("literal", `String slval.literal) in
       `Assoc [ node_json; id_json; literal_json ]
 
@@ -303,19 +300,19 @@ and sconst_to_json sconst =
       let literal_json = ("literal", `String (String.make 1 c)) in
       `Assoc [ type_json; literal_json ]
 
-let dump abs_list out_dir =
+let dump abs_diff out_dir =
   let oc_diff_json = Stdlib.open_out (out_dir ^ "/diff.json") in
-  let rec make_json (id : int) abs_list acc =
-    match abs_list with
+  let rec make_json (id : int) abs_diff acc =
+    match abs_diff with
     | [] -> acc
     | s_action :: s_rest ->
         let json_obj = mk_json_obj s_action in
-        if Yojson.equal json_obj `Null then make_json id abs_list acc
+        if Yojson.equal json_obj `Null then make_json id abs_diff acc
         else
           let acc = ("diff-" ^ string_of_int id, json_obj) :: acc in
           make_json (id + 1) s_rest acc
   in
-  let actions = `Assoc (List.rev (make_json 0 abs_list [])) in
+  let actions = `Assoc (List.rev (make_json 0 abs_diff [])) in
   let json_obj = `Assoc [ ("diffs", actions) ] in
   Yojson.Safe.pretty_to_channel oc_diff_json json_obj;
   Stdlib.close_out oc_diff_json

@@ -14,7 +14,6 @@ type t = {
   two : Z3.Expr.expr;
   three : Z3.Expr.expr;
   node : Z3.Sort.sort;
-  ast_node : Z3.Sort.sort;
   lval : Z3.Sort.sort;
   expr : Z3.Sort.sort;
   binop_sort : Z3.Sort.sort;
@@ -25,8 +24,6 @@ type t = {
   loc : Z3.Sort.sort;
   value : Z3.Sort.sort;
   const : Z3.Sort.sort;
-  ast_parent : Z3.FuncDecl.func_decl;
-  eq_node : Z3.FuncDecl.func_decl;
   src : Z3.FuncDecl.func_decl;
   snk : Z3.FuncDecl.func_decl;
   skip : Z3.FuncDecl.func_decl;
@@ -35,6 +32,7 @@ type t = {
   salloc : Z3.FuncDecl.func_decl;
   assume : Z3.FuncDecl.func_decl;
   lval_exp : Z3.FuncDecl.func_decl;
+  real_lv : Z3.FuncDecl.func_decl;
   var : Z3.FuncDecl.func_decl;
   index : Z3.FuncDecl.func_decl;
   deref : Z3.FuncDecl.func_decl;
@@ -44,7 +42,6 @@ type t = {
   arg : Z3.FuncDecl.func_decl;
   constexp : Z3.FuncDecl.func_decl;
   ret : Z3.FuncDecl.func_decl;
-  (* TODO: add extra relations for expr *)
   cast : Z3.FuncDecl.func_decl;
   binop : Z3.FuncDecl.func_decl;
   unop : Z3.FuncDecl.func_decl;
@@ -91,8 +88,6 @@ let mk_fixedpoint z3ctx =
   s
 
 let reg_rel_to_solver env solver =
-  Z3.Fixedpoint.register_relation solver env.eq_node;
-  Z3.Fixedpoint.register_relation solver env.ast_parent;
   Z3.Fixedpoint.register_relation solver env.src;
   Z3.Fixedpoint.register_relation solver env.snk;
   Z3.Fixedpoint.register_relation solver env.skip;
@@ -101,6 +96,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.salloc;
   Z3.Fixedpoint.register_relation solver env.assume;
   Z3.Fixedpoint.register_relation solver env.lval_exp;
+  Z3.Fixedpoint.register_relation solver env.real_lv;
   Z3.Fixedpoint.register_relation solver env.var;
   Z3.Fixedpoint.register_relation solver env.index;
   Z3.Fixedpoint.register_relation solver env.deref;
@@ -143,6 +139,7 @@ let fact_files =
     "DUPath.facts";
     "LibCallExp.facts";
     "LvalExp.facts";
+    "RealLv.facts";
     "Index.facts";
     "Mem.facts";
     "AddrOf.facts";
@@ -172,9 +169,6 @@ let mk_env () =
   let two = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 2 in
   let three = Z3.Arithmetic.Integer.mk_numeral_i z3ctx 3 in
   let node = Z3.FiniteDomain.mk_sort_s z3ctx "node" (Int64.of_int !sort_size) in
-  let ast_node =
-    Z3.FiniteDomain.mk_sort_s z3ctx "ast_node" (Int64.of_int !sort_size)
-  in
   let lval = Z3.FiniteDomain.mk_sort_s z3ctx "lval" (Int64.of_int !sort_size) in
   let expr = Z3.FiniteDomain.mk_sort_s z3ctx "expr" (Int64.of_int !sort_size) in
   let binop_sort = Z3.FiniteDomain.mk_sort_s z3ctx "binop" (Int64.of_int 25) in
@@ -195,13 +189,6 @@ let mk_env () =
   let const =
     Z3.FiniteDomain.mk_sort_s z3ctx "const" (Int64.of_int !sort_size)
   in
-  let ast_parent =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "AstParent" [ ast_node; ast_node ]
-      boolean_sort
-  in
-  let eq_node =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "EqNode" [ node; ast_node ] boolean_sort
-  in
   let src = Z3.FuncDecl.mk_func_decl_s z3ctx "Src" [ node ] boolean_sort in
   let snk = Z3.FuncDecl.mk_func_decl_s z3ctx "Snk" [ node ] boolean_sort in
   let skip = Z3.FuncDecl.mk_func_decl_s z3ctx "Skip" [ node ] boolean_sort in
@@ -220,6 +207,9 @@ let mk_env () =
   in
   let lval_exp =
     Z3.FuncDecl.mk_func_decl_s z3ctx "LvalExp" [ expr; lval ] boolean_sort
+  in
+  let real_lv =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "RealLv" [ lval ] boolean_sort
   in
   let var =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Var" [ lval; identifier ] boolean_sort
@@ -332,7 +322,6 @@ let mk_env () =
       two;
       three;
       node;
-      ast_node;
       lval;
       expr;
       binop_sort;
@@ -343,8 +332,6 @@ let mk_env () =
       loc;
       value;
       const;
-      ast_parent;
-      eq_node;
       src;
       snk;
       skip;
@@ -353,6 +340,7 @@ let mk_env () =
       salloc;
       assume;
       lval_exp;
+      real_lv;
       var;
       index;
       deref;

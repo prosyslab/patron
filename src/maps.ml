@@ -13,24 +13,22 @@ type loc = { file : string; line : int }
 type t = {
   sym_map : (string, Z3.Expr.expr) Hashtbl.t; (* symbol -> z3 expr *)
   numeral_map : (int, string) Hashtbl.t; (* z3 numeral -> symbol *)
-  ast_map : (Ast.t, int) Hashtbl.t; (* ast structure -> ast id(nume) *)
   loc_map : (loc, string) Hashtbl.t; (* location -> node symbol *)
   cmd_map : (string, string) Hashtbl.t; (* node symbol -> cmd (skip, ...) *)
   exp_map : (string, string) Hashtbl.t; (* exp symbol -> exp literal *)
   lval_map : (string, string) Hashtbl.t; (* lval symbol -> lval literal *)
-  node_map : (string, string) Hashtbl.t; (* node symbol -> ast id(num) *)
+  ast_map : (string, Ast.t) Hashtbl.t; (* symbol -> ast id(num) *)
 }
 
 let create_maps () =
   {
     sym_map = Hashtbl.create 1000;
     numeral_map = Hashtbl.create 1000;
-    ast_map = Hashtbl.create 1000;
     loc_map = Hashtbl.create 1000;
     cmd_map = Hashtbl.create 1000;
     exp_map = Hashtbl.create 1000;
     lval_map = Hashtbl.create 1000;
-    node_map = Hashtbl.create 1000;
+    ast_map = Hashtbl.create 1000;
   }
 
 let load_map cast1 cast2 ic map =
@@ -51,12 +49,11 @@ let load_numeral_map = load_map int_of_string Fun.id
 let reset_maps maps =
   Hashtbl.reset maps.sym_map;
   Hashtbl.reset maps.numeral_map;
-  Hashtbl.reset maps.ast_map;
   Hashtbl.reset maps.loc_map;
   Hashtbl.reset maps.cmd_map;
   Hashtbl.reset maps.exp_map;
   Hashtbl.reset maps.lval_map;
-  Hashtbl.reset maps.node_map
+  Hashtbl.reset maps.ast_map
 
 let dump_map a_to_string b_to_string map_name mode map out_dir =
   let sym_map_file =
@@ -99,18 +96,6 @@ let dump_ast_glob x =
   | Cil.GFun (f, l) -> "gfun:" ^ f.Cil.svar.vname ^ Ast.s_location l
   | _ -> failwith "dump_ast_glob"
 
-let dump_ast_map =
-  dump_map
-    (fun x ->
-      match x with
-      | Ast.Global g -> dump_ast_glob g
-      | Ast.Stmt s -> dump_ast_stmt s
-      | _ -> failwith "dump_ast_map: unexpected ast type")
-    string_of_int "ast"
-
 let dump mode maps out_dir =
   dump_sym_map mode maps.sym_map out_dir;
-  dump_numeral_map mode maps.numeral_map out_dir;
-  dump_ast_map mode maps.ast_map out_dir
-
-let dump_ast mode maps out_dir = dump_ast_map mode maps.ast_map out_dir
+  dump_numeral_map mode maps.numeral_map out_dir

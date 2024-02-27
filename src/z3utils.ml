@@ -5,8 +5,6 @@ module Hashtbl = Stdlib.Hashtbl
 let match_func z3env f =
   match f with
   | "Assume" -> z3env.Z3env.assume
-  | "AstParent" -> z3env.ast_parent
-  | "EqNode" -> z3env.eq_node
   | "Src" -> z3env.src
   | "Snk" -> z3env.snk
   | "Skip" -> z3env.skip
@@ -14,6 +12,7 @@ let match_func z3env f =
   | "AllocExp" -> z3env.alloc
   | "SAllocExp" -> z3env.salloc
   | "LvalExp" -> z3env.lval_exp
+  | "RealLv" -> z3env.real_lv
   | "Var" -> z3env.var
   | "Index" -> z3env.index
   | "Mem" -> z3env.deref
@@ -135,7 +134,6 @@ let match_sort z3env s =
     | "Loc" -> z3env.loc
     | "Val" -> z3env.value
     | "Pos" -> z3env.int_sort
-    | "AstNode" -> z3env.ast_node
     | _ -> z3env.node
 
 let numer_cnt = ref 24 (* for binop, unop *)

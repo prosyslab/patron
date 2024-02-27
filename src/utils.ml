@@ -123,11 +123,13 @@ let parse_map path file_name map =
     lines
 
 let parse_loc loc =
-  let parsed = String.split ~on:':' loc in
+  let parsed =
+    String.split ~on:'/' loc |> List.last_exn |> String.split ~on:':'
+  in
   if List.length parsed <> 2 then { Maps.file = ""; line = -1 }
   else
     {
-      Maps.file = List.nth_exn parsed 0;
+      Maps.file = List.hd_exn parsed;
       line = int_of_string (List.nth_exn parsed 1);
     }
 
@@ -201,5 +203,3 @@ let reverse_hashtbl tbl =
   let rev_tbl_init = Hashtbl.create 1000 in
   Hashtbl.iter (fun k v -> Hashtbl.add rev_tbl_init v k) tbl;
   rev_tbl_init
-
-let mk_ast_node_str id = "AstNode-" ^ id

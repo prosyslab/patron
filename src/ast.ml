@@ -8,11 +8,12 @@ type t =
   | Lval of lval
   | NotApplicable
 
-let buggy_ast = ref [ Cil.dummyFile ]
-
-let get_buggy_ast () =
-  if !buggy_ast |> List.length <> 1 then List.hd !buggy_ast
-  else failwith "No buggy AST"
+let compare a b =
+  match (a, b) with
+  | Global g1, Global g2 -> compareLoc (get_globalLoc g1) (get_globalLoc g2)
+  | Fun f1, Fun f2 -> String.compare f1 f2
+  | Stmt s1, Stmt s2 -> compareLoc (get_stmtLoc s1.skind) (get_stmtLoc s2.skind)
+  | _ -> Stdlib.compare a b
 
 let is_glob = function Global _ -> true | _ -> false
 let is_fun = function Fun _ -> true | _ -> false
@@ -30,26 +31,26 @@ let globs2path globs = List.map (fun g -> Global g) globs
 let stmts2path stmts = List.map (fun s -> Stmt s) stmts
 let exps2path exps = List.map (fun e -> Exp e) exps
 
-let glob2ast element =
+let of_glob element =
   match element with None -> NotApplicable | Some x -> Global x
 
-let stmt2ast element =
+let of_stmt element =
   match element with None -> NotApplicable | Some x -> Stmt x
 
-let exp2ast element =
+let of_exp element =
   match element with None -> NotApplicable | Some x -> Exp x
 
-let lval2ast element =
+let of_lval element =
   match element with None -> NotApplicable | Some x -> Lval x
 
-let ast2stmt element =
+let to_stmt element =
   match element with
   | Stmt x -> x
   | Exp _ -> failwith "Exp"
   | Global _ -> failwith "glob"
   | _ -> failwith "Not a statement"
 
-let path2stmts path = List.map ast2stmt path
+let path2stmts path = List.map to_stmt path
 let compare = compare
 let flip f y x = f x y
 let list_fold f list init = List.fold_left (flip f) init list

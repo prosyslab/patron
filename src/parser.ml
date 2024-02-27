@@ -67,8 +67,6 @@ let parse_ast target_dir inline_funcs =
     if List.length inline_funcs <> 0 then Inline.perform inline_funcs cil
     else cil
   in
-  if List.length !Ast.buggy_ast = 1 then
-    Ast.buggy_ast := post_processed_cil :: !Ast.buggy_ast;
   post_processed_cil
 
 let mk_term s =
@@ -99,6 +97,7 @@ let file2func = function
   | "AddrOf.facts" -> "AddrOf"
   | "LibCallExp.facts" -> "LibCallExp"
   | "LvalExp.facts" -> "LvalExp"
+  | "RealLv.facts" -> "RealLv"
   | "Return.facts" -> "Return"
   | "SAllocExp.facts" -> "SAlloc"
   | "Skip.facts" -> "Skip"
@@ -190,119 +189,36 @@ let parse_chc chc_file =
          try (Sexp.of_string rule |> sexp2chc) :: chc_list with _ -> chc_list)
   |> Chc.of_list
 
-let mk_parent_tuples globs stmts =
-  let mk_glob_parents parent stmts acc =
-    let parent = Ast.glob2ast (Some parent) in
-    List.fold_left ~init:acc
-      ~f:(fun a s -> (parent, Ast.stmt2ast (Some s)) :: a)
-      stmts
-  in
-  let mk_stmt_parents parent stmts acc =
-    let parent = Ast.stmt2ast (Some parent) in
-    List.fold_left ~init:acc
-      ~f:(fun a s -> (parent, Ast.stmt2ast (Some s)) :: a)
-      stmts
-  in
-  let glob_tuples =
-    List.fold_left ~init:[]
-      ~f:(fun acc g ->
-        match g with
-        | Cil.GFun (f, _) -> mk_glob_parents g f.sbody.bstmts acc
-        | _ -> acc)
-      globs
-  in
-  let stmt_tuples =
-    List.fold_left ~init:[]
-      ~f:(fun acc s ->
-        match s.Cil.skind with
-        | Cil.Block b | Cil.Loop (b, _, _, _) -> mk_stmt_parents s b.bstmts acc
-        | Cil.If (_, tb, eb, _) ->
-            acc |> mk_stmt_parents s tb.bstmts |> mk_stmt_parents s eb.bstmts
-        | _ -> acc)
-      stmts
-  in
-  glob_tuples @ stmt_tuples
+let find_node_id loc_map loc =
+  let file = String.split ~on:'/' loc.Cil.file |> List.last_exn in
+  let line = loc.line in
+  Hashtbl.find_opt loc_map { Maps.file; line }
 
-let match_stmt_id loc_map = function
+let add_ast_map maps loc stmt =
+  let dug_id_opt = find_node_id maps.Maps.loc_map loc in
+  if Option.is_some dug_id_opt then
+    let dug_id = Option.value_exn dug_id_opt in
+    Hashtbl.add maps.Maps.ast_map dug_id (Ast.of_stmt (Some stmt))
+
+let rec mk_ast_map maps stmt =
+  match stmt.Cil.skind with
   | Cil.Instr (Cil.Set (_, _, loc) :: _)
   | Cil.Instr (Cil.Call (_, _, _, loc) :: _)
-  | Cil.Return (_, loc)
-  | Cil.If (_, _, _, loc)
-  | Cil.Loop (_, loc, _, _) ->
-      Hashtbl.find_opt loc_map { Maps.file = loc.file; line = loc.line }
-  | _ -> None
-
-let match_eq_nodes fmt maps ast_node =
-  let ast_num = Hashtbl.find maps.Maps.ast_map ast_node |> string_of_int in
-  let ast_id = "AstNode-" ^ ast_num in
-  let ast_term = mk_term ast_id in
-  let stmt = Ast.ast2stmt ast_node in
-  let dug_id_opt = match_stmt_id maps.Maps.loc_map stmt.skind in
-  if Option.is_some dug_id_opt then (
-    let dug_id = Option.value_exn dug_id_opt in
-    let dug_term = mk_term dug_id in
-    F.fprintf fmt "%s\t%s\n" dug_id ast_id;
-    Hashtbl.add maps.Maps.node_map dug_id ast_num;
-    [ Chc.Elt.FuncApply ("EqNode", [ dug_term; ast_term ]) ])
-  else []
-
-let astnode_cnt = ref 1
-
-let new_astnode_id maps stmt =
-  let id = "AstNode-" ^ string_of_int !astnode_cnt in
-  incr astnode_cnt;
-  Hashtbl.add maps.Maps.ast_map stmt !astnode_cnt;
-  id
-
-let ast2astid maps ast =
-  if Hashtbl.mem maps.Maps.ast_map ast then
-    let n = Hashtbl.find maps.ast_map ast in
-    "AstNode-" ^ string_of_int n
-  else new_astnode_id maps ast
-
-let mk_ast_rels parent_fmt eqnode_fmt maps acc (parent, child)
-    (parent_id, child_id) =
-  F.fprintf parent_fmt "%s\t%s\n" parent_id child_id;
-  let parent_term = mk_term parent_id in
-  let child_term = mk_term child_id in
-  let parent_rel =
-    Chc.Elt.FuncApply ("AstParent", [ parent_term; child_term ])
-  in
-  if match parent with Ast.Stmt _ -> false | _ -> true then parent_rel :: acc
-  else
-    let eqnode_rels =
-      match_eq_nodes eqnode_fmt maps parent
-      @ match_eq_nodes eqnode_fmt maps child
-    in
-    (parent_rel :: eqnode_rels) @ acc
-
-let make_parent_facts work_dir maps (globs, stmts) =
-  let parent_tups = mk_parent_tuples globs stmts in
-  let parent_oc =
-    Filename.concat work_dir "AstParent.facts" |> Out_channel.create
-  in
-  let eqnode_oc =
-    Filename.concat work_dir "EqNode.facts" |> Out_channel.create
-  in
-  let parent_fmt = F.formatter_of_out_channel parent_oc in
-  let eqnode_fmt = F.formatter_of_out_channel eqnode_oc in
-  let facts =
-    List.fold_left ~init:[]
-      ~f:(fun acc (parent, child) ->
-        let parent_id = ast2astid maps parent in
-        let child_id = ast2astid maps child in
-        (parent_id, child_id) :: acc)
-      parent_tups
-    |> List.fold2_exn ~init:[]
-         ~f:(mk_ast_rels parent_fmt eqnode_fmt maps)
-         parent_tups
-    |> Chc.of_list
-  in
-  F.pp_print_flush parent_fmt ();
-  F.pp_print_flush eqnode_fmt ();
-  Out_channel.close parent_oc;
-  Out_channel.close eqnode_oc;
-  facts
+  | Cil.Return (_, loc) ->
+      add_ast_map maps loc stmt
+  | Cil.If (_, tb, fb, loc) ->
+      List.iter ~f:(mk_ast_map maps) tb.bstmts;
+      List.iter ~f:(mk_ast_map maps) fb.bstmts;
+      add_ast_map maps loc stmt
+  | Cil.Block b -> List.iter ~f:(mk_ast_map maps) b.bstmts
+  | Cil.Loop (b, loc, _, _) ->
+      List.iter ~f:(mk_ast_map maps) b.bstmts;
+      add_ast_map maps loc stmt
+  | Cil.Switch (_, b, sl, loc) ->
+      List.iter ~f:(mk_ast_map maps) b.bstmts;
+      List.iter ~f:(mk_ast_map maps) sl;
+      add_ast_map maps loc stmt
+  | _ -> L.debug "mk_ast_map - not implemented stmt kind"
 
 let read_and_split file =
   In_channel.read_lines file |> List.map ~f:(fun l -> String.split ~on:'\t' l)
@@ -372,9 +288,8 @@ let make_facts target_dir target_alarm ast out_dir =
   Utils.parse_map alarm_dir "Lval.map" maps.Maps.lval_map;
   Utils.parse_node_json spo_dir maps.Maps.loc_map maps.Maps.cmd_map;
   let ast_nodes = (Ast.extract_globs ast, Ast.extract_stmts ast) in
+  List.iter ~f:(mk_ast_map maps) (snd ast_nodes);
   let du_facts = make_du_facts alarm_dir in
-  let parent_facts = make_parent_facts alarm_dir maps ast_nodes in
-  let facts = Chc.union du_facts parent_facts in
-  Chc.pretty_dump (Filename.concat out_dir target_alarm) facts;
-  Chc.sexp_dump (Filename.concat out_dir target_alarm) facts;
-  (du_facts, parent_facts, get_alarm alarm_dir, maps)
+  Chc.pretty_dump (Filename.concat out_dir target_alarm) du_facts;
+  Chc.sexp_dump (Filename.concat out_dir target_alarm) du_facts;
+  (du_facts, get_alarm alarm_dir, maps)

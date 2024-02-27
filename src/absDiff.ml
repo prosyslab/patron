@@ -6,7 +6,7 @@ module L = Logger
 module J = Yojson.Basic.Util
 module H = Utils
 module D = Diff
-module PatchComps = Set.Make (String)
+module StrSet = Set.Make (String)
 
 type abs_ast =
   | Null
@@ -100,25 +100,25 @@ and abs_stmt =
   | SContinue
 
 and abs_global = SGNull | SGFun | GVar of string * string
-and abs_node = { node : abs_ast; id : string; literal : string }
+and abs_node = { ast : abs_ast; ids : StrSet.t; literal : string }
 
 let get_original_exp node =
-  match node.node with
+  match node.ast with
   | AbsExp (_, e) -> e
   | _ -> failwith "get_original_exp: not an expression"
 
 let get_original_lv node =
-  match node.node with
+  match node.ast with
   | AbsLval (_, l) -> l
   | _ -> failwith "get_original_lv: not a lval"
 
 let get_original_stmt node =
-  match node.node with
+  match node.ast with
   | AbsStmt (_, s) -> s
   | _ -> failwith "get_original_stmt: not a statement"
 
 let rec pp_node fmt e =
-  match e.node with
+  match e.ast with
   | Null -> Format.fprintf fmt "SNull"
   | AbsStmt (s, _) -> Format.fprintf fmt "AbsStmt(%a)" pp_absstmt s
   | AbsExp (e, _) -> Format.fprintf fmt "AbsExp(%a)" pp_absExp e
@@ -271,47 +271,17 @@ and pp_sunop fmt op =
 let to_null = Null
 let compare = compare
 
-type abs_context = {
-  parent_of_patch : abs_node;
-  patch_bound : string list * string list;
-  func_name : string;
-  sibling_idx : int;
-}
-
 type t =
-  | SInsertStmt of abs_context * abs_node
-  | SDeleteStmt of abs_context * abs_node
-  | SInsertExp of abs_context * abs_node
-  | SDeleteExp of abs_context * abs_node
-  | SUpdateExp of abs_context * abs_node * abs_node
-  | SInsertLval of abs_context * abs_node
-  | SDeleteLval of abs_context * abs_node
-  | SUpdateLval of abs_context * abs_node * abs_node
-
-let get_ctx = function
-  | SInsertStmt (ctx, _)
-  | SDeleteStmt (ctx, _)
-  | SInsertExp (ctx, _)
-  | SDeleteExp (ctx, _)
-  | SUpdateExp (ctx, _, _)
-  | SInsertLval (ctx, _)
-  | SDeleteLval (ctx, _)
-  | SUpdateLval (ctx, _, _) ->
-      ctx
-
-let extract_func_name sdiff =
-  match sdiff with
-  | SInsertStmt (ctx, _) | SDeleteStmt (ctx, _) -> ctx.func_name
-  | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) ->
-      ctx.func_name
-  | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) ->
-      ctx.func_name
-
-let extract_context sdiff =
-  match sdiff with
-  | SInsertStmt (ctx, _) | SDeleteStmt (ctx, _) -> ctx
-  | SInsertExp (ctx, _) | SDeleteExp (ctx, _) | SUpdateExp (ctx, _, _) -> ctx
-  | SInsertLval (ctx, _) | SDeleteLval (ctx, _) | SUpdateLval (ctx, _, _) -> ctx
+  (* same format with Diff.t excluding func name *)
+  (* func name is not necessary *)
+  | SInsertStmt of abs_node list * abs_node list * abs_node list
+  | SDeleteStmt of abs_node list
+  | SInsertExp of abs_node * abs_node list * abs_node list * abs_node list
+  | SDeleteExp of abs_node * abs_node list
+  | SUpdateExp of abs_node * abs_node * abs_node
+  | SInsertLval of abs_node * abs_node
+  | SDeleteLval of abs_node * abs_node
+  | SUpdateLval of abs_node * abs_node * abs_node
 
 let rec to_styp t =
   match t with
@@ -441,23 +411,7 @@ let get_gvars ast =
   let gv = new globVisitor in
   Cil.visitCilFile gv ast
 
-let symbolize_sibs sibs =
-  List.fold_left ~f:(fun acc s -> s.id :: acc) ~init:[] sibs |> List.rev
-
-let filter_nodes du_facts nodes =
-  List.fold_left
-    ~f:(fun acc n -> if Stdlib.List.mem n du_facts then n :: acc else acc)
-    ~init:[] nodes
-  |> List.rev
-
 let is_lv_or_exp t = Ast.is_exp t || Ast.is_lv t
-
-let get_parent_of_exp_sibs (left_sibs, right_sibs) patch_node =
-  let open Option in
-  let l = List.hd left_sibs >>| is_lv_or_exp |> exists ~f:Fun.id in
-  let r = List.hd right_sibs >>| is_lv_or_exp |> exists ~f:Fun.id in
-  if (l || r) && not (String.equal patch_node.id "None") then [ patch_node.id ]
-  else []
 
 let match_stmt_id loc_map = function
   | Cil.Instr (Cil.Set (_, _, loc) :: _)
@@ -465,263 +419,223 @@ let match_stmt_id loc_map = function
   | Cil.Return (_, loc)
   | Cil.If (_, _, _, loc)
   | Cil.Loop (_, loc, _, _) ->
-      Hashtbl.find_opt loc_map { Maps.file = loc.file; line = loc.line }
-      |> Option.value ~default:"None"
-  | _ -> "None"
+      let file = String.split ~on:'/' loc.file |> List.last_exn in
+      let line = loc.line in
+      Hashtbl.find_all loc_map { Maps.file; line }
+      |> List.fold_left ~f:(fun ss id -> StrSet.add id ss) ~init:StrSet.empty
+  | _ -> StrSet.empty
 
-let match_lval_id func dug lv =
+let match_lval_id func_name dug lv =
   let module LvalMap = Map.Make (String) in
-  Hashtbl.find dug.Dug.lvmap_per_func func
+  Hashtbl.find dug.Dug.lvmap_per_func func_name
   |> LvalMap.find_opt (Ast.s_lv lv)
   (* NOTE: Only function name should be None *)
-  |> Option.value ~default:"None"
+  |> Option.fold ~f:(fun ss id -> StrSet.add id ss) ~init:StrSet.empty
 
 let extract_fun_name g =
   match g with
   | Cil.GFun (f, _) -> f.Cil.svar.Cil.vname
   | _ -> failwith "extract_fun_name: not a function"
 
-let mk_dummy_abs_node maps dug func = function
+let mk_dummy_abs_node maps dug func_name = function
   | Ast.Stmt s ->
-      let id = match_stmt_id maps.Maps.loc_map s.Cil.skind in
-      let node = AbsStmt (SSNull, s) in
+      let ids = match_stmt_id maps.Maps.loc_map s.Cil.skind in
+      let ast = AbsStmt (SSNull, s) in
       let literal = Ast.s_stmt s in
-      { id; node; literal }
+      { ids; ast; literal }
   | Ast.Exp e ->
-      let id = "None" in
-      let node = AbsExp (SENULL, e) in
+      let ids = StrSet.empty in
+      let ast = AbsExp (SENULL, e) in
       let literal = Ast.s_exp e in
-      { id; node; literal }
+      { ids; ast; literal }
   | Ast.Lval l ->
-      let id = match_lval_id func dug l in
-      let node = AbsLval (SLNull, l) in
+      let ids = match_lval_id func_name dug l in
+      let ast = AbsLval (SLNull, l) in
       let literal = Ast.s_lv l in
-      { id; node; literal }
+      { ids; ast; literal }
   | Ast.Global g ->
-      let id = extract_fun_name g in
-      let node = AbsGlob (SGNull, g) in
+      let ids = extract_fun_name g |> StrSet.singleton in
+      let ast = AbsGlob (SGNull, g) in
       let literal = Ast.s_glob g in
-      { id; node; literal }
+      { ids; ast; literal }
   | _ -> failwith "ast2absnode: context failed to be read"
 
-let mk_s_sibs func dug maps path facts =
-  let facts_lst = Chc.to_list facts in
-  List.map ~f:(mk_dummy_abs_node maps dug func) path
-  |> symbolize_sibs
-  |> filter_nodes (Chc.extract_nodes_in_facts facts_lst maps.Maps.node_map)
-
-let mk_abs_ctx ctx maps dug du_facts =
-  let parent_func = ctx.D.top_func_name in
-  let prnt_fun = get_parent_fun ctx.D.root_path in
-  let patch_node =
-    if List.is_empty ctx.D.root_path then
-      { node = AbsGlob (SGFun, prnt_fun); id = "None"; literal = "None" }
-    else List.hd_exn ctx.D.root_path |> mk_dummy_abs_node maps dug parent_func
-  in
-  let left_sibs, right_sibs = ctx.patch_bound in
-  (* TODO: get abstract patch between using DUG -> get s_sibs from patch between *)
-  let s_left_sibs = mk_s_sibs parent_func dug maps left_sibs du_facts in
-  let s_right_sibs = mk_s_sibs parent_func dug maps right_sibs du_facts in
-  {
-    parent_of_patch = patch_node;
-    patch_bound = (s_left_sibs, s_right_sibs);
-    func_name = ctx.D.top_func_name;
-    sibling_idx = ctx.D.sibling_idx;
-  }
-
-let rec mk_abs_offset func dug loc_map = function
+let rec mk_abs_offset func_name dug loc_map = function
   | Cil.NoOffset -> SNoOffset
   | Cil.Field (f, o) ->
       let fcomp = { cname = f.fcomp.cname; cstruct = true } in
       let fname = f.fname in
       let ftype = to_styp f.ftype in
-      SField ({ fcomp; fname; ftype }, mk_abs_offset func dug loc_map o)
+      SField ({ fcomp; fname; ftype }, mk_abs_offset func_name dug loc_map o)
   | Cil.Index (e, o) ->
-      let abs_exp_node, _ = mk_abs_exp func dug loc_map (e, PatchComps.empty) in
-      SIndex (abs_exp_node, mk_abs_offset func dug loc_map o)
+      let abs_exp_node, _ =
+        mk_abs_exp func_name dug loc_map (e, StrSet.empty)
+      in
+      SIndex (abs_exp_node, mk_abs_offset func_name dug loc_map o)
 
 (* NOTE: patch_comps has only lval that is not sub lval *)
-and mk_abs_lv func dug loc_map (lv, pc) =
-  let id = match_lval_id func dug lv in
+and mk_abs_lv func_name dug loc_map (lv, pc) =
+  let ids = match_lval_id func_name dug lv in
   let lhost, offset = lv in
   let slhost =
     match lhost with
     | Cil.Var v -> SVar { vname = v.vname; vtype = to_styp v.vtype }
     | Cil.Mem e ->
         let abs_exp_node, _ =
-          mk_abs_exp func dug loc_map (e, PatchComps.empty)
+          mk_abs_exp func_name dug loc_map (e, StrSet.empty)
         in
         SMem abs_exp_node
   in
-  let soffset = mk_abs_offset func dug loc_map offset in
-  let node = AbsLval (Lval (slhost, soffset), lv) in
+  let soffset = mk_abs_offset func_name dug loc_map offset in
+  let ast = AbsLval (Lval (slhost, soffset), lv) in
   let literal = Ast.s_lv lv in
-  ({ node; id; literal }, PatchComps.add id pc)
+  ({ ids; ast; literal }, StrSet.union ids pc)
 
-and mk_abs_exp func dug loc_map (e, pc) =
-  let id = "None" in
+and mk_abs_exp func_name dug loc_map (e, pc) =
+  let ids = StrSet.empty in
   let abs_exp, pc' =
     match e with
     | Cil.Const c -> (SConst (to_sconst c), pc)
     | Cil.Lval l ->
-        let abs_lv_node, pc1 = mk_abs_lv func dug loc_map (l, pc) in
+        let abs_lv_node, pc1 = mk_abs_lv func_name dug loc_map (l, pc) in
         (SELval abs_lv_node, pc1)
     | Cil.SizeOf t -> (SSizeOf (to_styp t), pc)
     | Cil.SizeOfE e' ->
-        let abs_exp_node, pc1 = mk_abs_exp func dug loc_map (e', pc) in
+        let abs_exp_node, pc1 = mk_abs_exp func_name dug loc_map (e', pc) in
         (SSizeOfE abs_exp_node, pc1)
     | Cil.SizeOfStr s -> (SSizeOfStr s, pc)
     | Cil.BinOp (op, e1, e2, t) ->
-        let abs_exp_node1, pc1 = mk_abs_exp func dug loc_map (e1, pc) in
-        let abs_exp_node2, pc2 = mk_abs_exp func dug loc_map (e2, pc1) in
+        let abs_exp_node1, pc1 = mk_abs_exp func_name dug loc_map (e1, pc) in
+        let abs_exp_node2, pc2 = mk_abs_exp func_name dug loc_map (e2, pc1) in
         (SBinOp (to_sbinop op, abs_exp_node1, abs_exp_node2, to_styp t), pc2)
     | Cil.UnOp (op, e', t) ->
-        let abs_exp_node, pc1 = mk_abs_exp func dug loc_map (e', pc) in
+        let abs_exp_node, pc1 = mk_abs_exp func_name dug loc_map (e', pc) in
         (SUnOp (to_sunop op, abs_exp_node, to_styp t), pc1)
     | Cil.CastE (t, e') ->
-        let abs_exp_node, pc1 = mk_abs_exp func dug loc_map (e', pc) in
+        let abs_exp_node, pc1 = mk_abs_exp func_name dug loc_map (e', pc) in
         (SCastE (to_styp t, abs_exp_node), pc1)
     | Cil.Question (e1, e2, e3, t) ->
-        let abs_exp_node1, pc1 = mk_abs_exp func dug loc_map (e1, pc) in
-        let abs_exp_node2, pc2 = mk_abs_exp func dug loc_map (e2, pc1) in
-        let abs_exp_node3, pc3 = mk_abs_exp func dug loc_map (e3, pc2) in
+        let abs_exp_node1, pc1 = mk_abs_exp func_name dug loc_map (e1, pc) in
+        let abs_exp_node2, pc2 = mk_abs_exp func_name dug loc_map (e2, pc1) in
+        let abs_exp_node3, pc3 = mk_abs_exp func_name dug loc_map (e3, pc2) in
         (SQuestion (abs_exp_node1, abs_exp_node2, abs_exp_node3, to_styp t), pc3)
     | Cil.AddrOf l ->
-        let abs_lv_node, pc1 = mk_abs_lv func dug loc_map (l, pc) in
+        let abs_lv_node, pc1 = mk_abs_lv func_name dug loc_map (l, pc) in
         (SAddrOf abs_lv_node, pc1)
     | Cil.StartOf l ->
-        let abs_lv_node, pc1 = mk_abs_lv func dug loc_map (l, pc) in
+        let abs_lv_node, pc1 = mk_abs_lv func_name dug loc_map (l, pc) in
         (SStartOf abs_lv_node, pc1)
     | _ -> failwith "match_exp: not implemented"
   in
-  let node = AbsExp (abs_exp, e) in
+  let ast = AbsExp (abs_exp, e) in
   let literal = Ast.s_exp e in
-  ({ node; id; literal }, pc')
+  ({ ids; ast; literal }, pc')
 
-and mk_abs_exps func dug loc_map (es, pc) =
+and mk_abs_exps func_name dug loc_map (es, pc) =
   List.fold_left
     ~f:(fun (abs_es, pc) e ->
-      let abs_e, pc' = mk_abs_exp func dug loc_map (e, pc) in
+      let abs_e, pc' = mk_abs_exp func_name dug loc_map (e, pc) in
       (abs_e :: abs_es, pc'))
     ~init:([], pc) es
 
-and mk_abs_instr func dug loc_map (i, pc) =
+and mk_abs_instr func_name dug loc_map (i, pc) =
   match i with
   | Cil.Set (l, e, _) ->
-      let abs_lv_node, pc1 = mk_abs_lv func dug loc_map (l, pc) in
-      let abs_exp_node, pc2 = mk_abs_exp func dug loc_map (e, pc1) in
+      let abs_lv_node, pc1 = mk_abs_lv func_name dug loc_map (l, pc) in
+      let abs_exp_node, pc2 = mk_abs_exp func_name dug loc_map (e, pc1) in
       (SSet (abs_lv_node, abs_exp_node), pc2)
   | Cil.Call (Some l, e, es, _) ->
-      let abs_lv_node, pc1 = mk_abs_lv func dug loc_map (l, pc) in
-      let abs_exp_node, pc2 = mk_abs_exp func dug loc_map (e, pc1) in
-      let abs_exp_nodes, pc3 = mk_abs_exps func dug loc_map (es, pc2) in
+      let abs_lv_node, pc1 = mk_abs_lv func_name dug loc_map (l, pc) in
+      let abs_exp_node, pc2 = mk_abs_exp func_name dug loc_map (e, pc1) in
+      let abs_exp_nodes, pc3 = mk_abs_exps func_name dug loc_map (es, pc2) in
       (SCall (Some abs_lv_node, abs_exp_node, abs_exp_nodes), pc3)
   | Cil.Call (None, e, es, _) ->
-      let abs_exp_node, pc1 = mk_abs_exp func dug loc_map (e, pc) in
-      let abs_exp_nodes, pc2 = mk_abs_exps func dug loc_map (es, pc1) in
+      let abs_exp_node, pc1 = mk_abs_exp func_name dug loc_map (e, pc) in
+      let abs_exp_nodes, pc2 = mk_abs_exps func_name dug loc_map (es, pc1) in
       (SCall (None, abs_exp_node, abs_exp_nodes), pc2)
   | _ -> failwith "match_stmt: not supported"
 
-and mk_abs_stmt func dug loc_map (s, pc) =
-  let id = match_stmt_id loc_map s.Cil.skind in
+and mk_abs_stmt func_name dug loc_map (s, pc) =
+  let ids = match_stmt_id loc_map s.Cil.skind in
   let abs_stmt, pc' =
     match s.Cil.skind with
     | Cil.If (e, s1, s2, _) ->
-        let abs_exp_node, pc1 = mk_abs_exp func dug loc_map (e, pc) in
+        let abs_exp_node, pc1 = mk_abs_exp func_name dug loc_map (e, pc) in
         let abs_stmt_node1, pc2 =
-          mk_abs_stmts func dug loc_map (s1.Cil.bstmts, pc1)
+          mk_abs_stmts func_name dug loc_map (s1.Cil.bstmts, pc1)
         in
         let abs_stmt_node2, pc3 =
-          mk_abs_stmts func dug loc_map (s2.Cil.bstmts, pc2)
+          mk_abs_stmts func_name dug loc_map (s2.Cil.bstmts, pc2)
         in
         (SIf (abs_exp_node, abs_stmt_node1, abs_stmt_node2), pc3)
-    | Cil.Instr il -> mk_abs_instr func dug loc_map (List.hd_exn il, pc)
+    | Cil.Instr il -> mk_abs_instr func_name dug loc_map (List.hd_exn il, pc)
     | Cil.Block b ->
         let abs_stmts_node, pc1 =
-          mk_abs_stmts func dug loc_map (b.bstmts, pc)
+          mk_abs_stmts func_name dug loc_map (b.bstmts, pc)
         in
         (SBlock abs_stmts_node, pc1)
     | Cil.Return (Some e, _) ->
-        let abs_exp_node, pc1 = mk_abs_exp func dug loc_map (e, pc) in
+        let abs_exp_node, pc1 = mk_abs_exp func_name dug loc_map (e, pc) in
         (SReturn (Some abs_exp_node), pc1)
     | Cil.Return (None, _) -> (SReturn None, pc)
     | Cil.Goto (s', _) ->
-        let node = AbsStmt (SSNull, !s') in
-        let id = "GOTO_DST" in
+        let ids = StrSet.singleton "GOTO_DST" in
+        let ast = AbsStmt (SSNull, !s') in
         let literal = Ast.s_stmt !s' in
-        (SGoto { node; id; literal }, pc)
+        (SGoto { ids; ast; literal }, pc)
     | Cil.Break _ -> (SBreak, pc)
     | Cil.Continue _ -> (SContinue, pc)
     | _ -> failwith "mk_abs_stmt: not implemented"
   in
-  let node = AbsStmt (abs_stmt, s) in
+  let ast = AbsStmt (abs_stmt, s) in
   let literal = Ast.s_stmt s in
-  ({ node; id; literal }, pc')
+  ({ ids; ast; literal }, pc')
 
-and mk_abs_stmts func dug loc_map (ss, patch_comps) =
+and mk_abs_stmts func_name dug loc_map (ss, patch_comps) =
   List.fold_left
     ~f:(fun (abs_ss, pc) s ->
-      let abs_s, pc' = mk_abs_stmt func dug loc_map (s, pc) in
+      let abs_s, pc' = mk_abs_stmt func_name dug loc_map (s, pc) in
       (abs_s :: abs_ss, pc'))
     ~init:([], patch_comps) ss
 
-let mk_abs_action maps dug du_facts = function
-  | D.InsertStmt (ctx, s) ->
-      let func = ctx.top_func_name in
-      let s_ctx = mk_abs_ctx ctx maps dug du_facts in
-      let abs_stmt, patch_comps =
-        mk_abs_stmt func dug maps.loc_map (s, PatchComps.empty)
+let mk_abs_action maps dug = function
+  | D.InsertStmt (func_name, before, ss, after) ->
+      let abs_before, _ =
+        mk_abs_stmts func_name dug maps.Maps.loc_map (before, StrSet.empty)
       in
-      (SInsertStmt (s_ctx, abs_stmt), patch_comps)
-  | D.DeleteStmt (ctx, s) ->
-      let func = ctx.top_func_name in
-      let s_ctx = mk_abs_ctx ctx maps dug du_facts in
-      let abs_stmt, patch_comps =
-        mk_abs_stmt func dug maps.loc_map (s, PatchComps.empty)
+      let abs_stmts, patch_comps =
+        mk_abs_stmts func_name dug maps.loc_map (ss, StrSet.empty)
       in
-      (SDeleteStmt (s_ctx, abs_stmt), patch_comps)
-  | D.UpdateExp (ctx, e1, e2) ->
-      let func = ctx.top_func_name in
-      let s_ctx = mk_abs_ctx ctx maps dug du_facts in
+      let abs_after, _ =
+        mk_abs_stmts func_name dug maps.loc_map (after, StrSet.empty)
+      in
+      (SInsertStmt (abs_before, abs_stmts, abs_after), patch_comps)
+  | D.DeleteStmt (func_name, ss) ->
+      let abs_stmts, patch_comps =
+        mk_abs_stmts func_name dug maps.loc_map (ss, StrSet.empty)
+      in
+      (SDeleteStmt abs_stmts, patch_comps)
+  | D.UpdateExp (func_name, s, e1, e2) ->
+      let abs_stmt, _ =
+        mk_abs_stmt func_name dug maps.loc_map (s, StrSet.empty)
+      in
       let abs_exp1, patch_comps1 =
-        mk_abs_exp func dug maps.loc_map (e1, PatchComps.empty)
+        mk_abs_exp func_name dug maps.loc_map (e1, StrSet.empty)
       in
       let abs_exp2, patch_comps2 =
-        mk_abs_exp func dug maps.loc_map (e2, patch_comps1)
+        mk_abs_exp func_name dug maps.loc_map (e2, patch_comps1)
       in
-      (SUpdateExp (s_ctx, abs_exp1, abs_exp2), patch_comps2)
+      (SUpdateExp (abs_stmt, abs_exp1, abs_exp2), patch_comps2)
   | _ -> failwith "mk_sdiff: not implemented"
 
-let define_abs_diff maps ast dug du_facts diff =
+let define_abs_diff maps ast dug diff =
   get_gvars ast;
   List.fold_left
     ~f:(fun (abs_actions, patch_comps) (action, _) ->
-      let abs_action, pc = mk_abs_action maps dug du_facts action in
-      (abs_action :: abs_actions, PatchComps.union pc patch_comps))
-    ~init:([], PatchComps.empty) diff
+      let abs_action, pc = mk_abs_action maps dug action in
+      (abs_action :: abs_actions, StrSet.union pc patch_comps))
+    ~init:([], StrSet.empty) diff
   |> fun (actions, patch_comps) ->
   ( List.rev actions,
-    let pc = PatchComps.remove "None" patch_comps in
-    PatchComps.fold (fun pc l -> pc :: l) pc [] )
-
-let extract_parent abs_diff (ast_map : (Ast.t, int) Hashtbl.t) =
-  let parent_of_patch =
-    List.fold_left ~init:[]
-      ~f:(fun acc diff -> extract_context diff :: acc)
-      abs_diff
-    (* Consider that patch occured in a single location for now *)
-    |> List.fold_left ~init:[] ~f:(fun acc c ->
-           (c.parent_of_patch.node, c.func_name) :: acc)
-  in
-  List.fold_left ~init:[]
-    ~f:(fun acc (p, f) ->
-      match p with
-      | AbsGlob (_, g) ->
-          (Ast.glob2ast (Some g) |> Hashtbl.find ast_map |> string_of_int, f)
-          :: acc
-      | AbsStmt (_, s) ->
-          (Ast.stmt2ast (Some s) |> Hashtbl.find ast_map |> string_of_int, f)
-          :: acc
-      | _ -> failwith "parent not found")
-    parent_of_patch
-  |> List.rev
+    let pc = StrSet.remove "None" patch_comps in
+    StrSet.fold (fun pc l -> pc :: l) pc [] )
