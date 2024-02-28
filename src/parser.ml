@@ -221,7 +221,6 @@ let rec mk_ast_map maps stmt =
   | _ -> L.debug "mk_ast_map - not implemented stmt kind"
 
 let get_alarm_comps alarm splited filename =
-  (* TODO: add expression relation that have error e.g. DivExp --> Div relation *)
   match (Filename.basename filename |> Filename.chop_extension, splited) with
   | "AlarmArrayExp", a :: l :: e :: lvs when String.equal a alarm ->
       ( Chc.of_list [ Chc.Elt.FDNumeral l; Chc.Elt.FDNumeral e ],
@@ -230,6 +229,7 @@ let get_alarm_comps alarm splited filename =
   | "AlarmDerefExp", a :: e :: lvs
   | "AlarmPrintf", a :: e :: lvs
   | "AlarmDivExp", a :: _ :: e :: lvs
+  | "AlarmFread", a :: _ :: e :: lvs
     when String.equal a alarm ->
       ( Chc.singleton (Chc.Elt.FDNumeral e),
         List.map ~f:Chc.Elt.numer lvs |> Chc.of_list )
@@ -272,10 +272,12 @@ let get_alarm work_dir =
   let alarm_exps, alarm_lvs =
     Array.fold
       ~f:(fun alarm_comps file ->
-        match Filename.concat work_dir file |> read_and_split with
-        | hd :: [] -> get_alarm_comps alarm hd file
-        | [] -> alarm_comps
-        | _ -> alarm_comps)
+        if String.equal file "AlarmTaint.facts" then alarm_comps
+        else
+          match Filename.concat work_dir file |> read_and_split with
+          | hd :: [] -> get_alarm_comps alarm hd file
+          | [] -> alarm_comps
+          | _ -> alarm_comps)
       ~init:(Chc.empty, Chc.empty) alarm_exp_files
   in
   (src, snk, alarm_exps, alarm_lvs)
