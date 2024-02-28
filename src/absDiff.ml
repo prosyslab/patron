@@ -573,6 +573,14 @@ and mk_abs_stmts func_name dug loc_map (ss, patch_comps) =
       (abs_s :: abs_ss, pc'))
     ~init:([], patch_comps) ss
 
+let mk_dummy_abs_stmt loc_map stmt =
+  let ids = match_stmt_id loc_map stmt.Cil.skind in
+  let ast = AbsStmt (SSNull, stmt) in
+  let literal = Ast.s_stmt stmt in
+  { ids; ast; literal }
+
+let mk_dummy_abs_stmts loc_map = List.map ~f:(mk_dummy_abs_stmt loc_map)
+
 let collect_node_id =
   List.fold_left
     ~f:(fun ns abs_node -> abs_node.ids |> StrSet.union ns)
@@ -580,15 +588,11 @@ let collect_node_id =
 
 let mk_abs_action maps dug = function
   | D.InsertStmt (func_name, before, ss, after) ->
-      let abs_before, _ =
-        mk_abs_stmts func_name dug maps.Maps.loc_map (before, StrSet.empty)
-      in
+      let abs_before = mk_dummy_abs_stmts maps.Maps.loc_map before in
       let abs_stmts, patch_comps =
         mk_abs_stmts func_name dug maps.loc_map (ss, StrSet.empty)
       in
-      let abs_after, _ =
-        mk_abs_stmts func_name dug maps.loc_map (after, StrSet.empty)
-      in
+      let abs_after = mk_dummy_abs_stmts maps.loc_map after in
       (SInsertStmt (abs_before, abs_stmts, abs_after), patch_comps)
   | D.DeleteStmt (func_name, s) ->
       let abs_stmt, patch_comps =
@@ -596,9 +600,7 @@ let mk_abs_action maps dug = function
       in
       (SDeleteStmt abs_stmt, StrSet.union patch_comps abs_stmt.ids)
   | D.UpdateExp (func_name, s, e1, e2) ->
-      let abs_stmt, _ =
-        mk_abs_stmt func_name dug maps.loc_map (s, StrSet.empty)
-      in
+      let abs_stmt = mk_dummy_abs_stmt maps.loc_map s in
       let abs_exp1, _ =
         mk_abs_exp func_name dug maps.loc_map (e1, StrSet.empty)
       in
