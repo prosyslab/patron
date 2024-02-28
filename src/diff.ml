@@ -32,15 +32,15 @@ type t =
   (* orig before globals * new globals * orig after globals *)
   | InsertGlobal of Cil.global list * Cil.global list * Cil.global list
   (* deleted globals *)
-  | DeleteGlobal of Cil.global list
+  | DeleteGlobal of Cil.global
   (* func name * orig before stmts * new stmts * orig after stmts *)
   | InsertStmt of string * Cil.stmt list * Cil.stmt list * Cil.stmt list
   (* func name * deleted stmts *)
-  | DeleteStmt of string * Cil.stmt list
+  | DeleteStmt of string * Cil.stmt
   (* func name * target stmt (may be call exp) * orig before exps * new exps * orig after exps *)
   | InsertExp of string * Cil.stmt * Cil.exp list * Cil.exp list * Cil.exp list
   (* func name * target stmt * deleted exps *)
-  | DeleteExp of string * Cil.stmt * Cil.exp list
+  | DeleteExp of string * Cil.stmt * Cil.exp
   (* func name * target stmt * orig exp * new exp *)
   | UpdateExp of string * Cil.stmt * Cil.exp * Cil.exp
   (* func name * target stmt (may be call instr) * new lval *)
@@ -65,10 +65,10 @@ let pp_diff fmt action =
       F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_glob after);
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_glob gs)
-  | DeleteGlobal gs ->
+  | DeleteGlobal g ->
       F.fprintf fmt "\tDeletGlobal: \n";
       F.fprintf fmt "Diff Summary:\n";
-      F.fprintf fmt "Deleted:%s\n" (lst2strlines Ast.s_glob gs)
+      F.fprintf fmt "Deleted:%s\n" (Ast.s_glob g)
   | InsertStmt (func, before, ss, after) ->
       F.fprintf fmt "\tInsertStmt: \n";
       F.fprintf fmt "Function: %s\n" func;
@@ -76,11 +76,11 @@ let pp_diff fmt action =
       F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_stmt after);
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_stmt ss)
-  | DeleteStmt (func, ss) ->
+  | DeleteStmt (func, s) ->
       F.fprintf fmt "\tDeleteStmt: \n";
       F.fprintf fmt "Function: %s\n" func;
       F.fprintf fmt "Diff Summary:\n";
-      F.fprintf fmt "Deleted:%s\n" (lst2strlines Ast.s_stmt ss)
+      F.fprintf fmt "Deleted:%s\n" (Ast.s_stmt s)
   | InsertExp (func, s, before, es, after) ->
       F.fprintf fmt "\tInsertExp: \n";
       F.fprintf fmt "Function: %s\n" func;
@@ -89,12 +89,12 @@ let pp_diff fmt action =
       F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_exp after);
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_exp es)
-  | DeleteExp (func, s, es) ->
+  | DeleteExp (func, s, e) ->
       F.fprintf fmt "\tDeleteExp: \n";
       F.fprintf fmt "Function: %s\n" func;
       F.fprintf fmt "Stmt:%s\n" (Ast.s_stmt s);
       F.fprintf fmt "Diff Summary:\n";
-      F.fprintf fmt "Deleted:%s\n" (lst2strlines Ast.s_exp es)
+      F.fprintf fmt "Deleted:%s\n" (Ast.s_exp e)
   | UpdateExp (func, s, e1, e2) ->
       F.fprintf fmt "\tUpdateExp: \n";
       F.fprintf fmt "Function: %s\n" func;
@@ -140,7 +140,8 @@ let mk_diff_exp code func_name parent depth left_sibs right_sibs exp_lst =
   match code with
   | Insertion ->
       [ (InsertExp (func_name, parent, left_sibs, exp_lst, right_sibs), env) ]
-  | Deletion -> [ (DeleteExp (func_name, parent, exp_lst), env) ]
+  | Deletion ->
+      List.map ~f:(fun e -> (DeleteExp (func_name, parent, e), env)) exp_lst
   | _ -> failwith "mk_diff_exp: unexpected code"
 
 let rec find_continue_point_exp exp1 param =
@@ -231,7 +232,7 @@ and fold_param2 func_name parent depth el1 el2 left_sibs =
       [ (InsertExp (func_name, parent, left_sibs, lst, []), env) ]
   | lst, [] ->
       let env = mk_diff_env depth [] prev_node in
-      [ (DeleteExp (func_name, parent, lst), env) ]
+      List.map ~f:(fun e -> (DeleteExp (func_name, parent, e), env)) lst
 
 let extract_call func_name parent depth lv1 e1 el1 lv2 e2 el2 =
   let env = mk_diff_env depth [] Ast.NotApplicable in
@@ -294,7 +295,8 @@ let rec mk_diff_stmt code func_name prnt_brnch depth acc_left acc_right stmt_lst
   match code with
   | Insertion ->
       [ (InsertStmt (func_name, acc_left, stmt_lst, acc_right), env) ]
-  | Deletion -> [ (DeleteStmt (func_name, stmt_lst), env) ]
+  | Deletion ->
+      List.map ~f:(fun stmt -> (DeleteStmt (func_name, stmt), env)) stmt_lst
   | _ -> failwith "mk_diff_stmt: unexpected code"
 
 and fold_continue_point_stmt func_name prnt_brnch depth h1 h2 tl1 tl2 es acc =
@@ -328,7 +330,7 @@ and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs
     if List.is_empty deleted_stmts then
       let env = mk_diff_env depth prnt_brnch prev_node in
       [
-        (DeleteStmt (func_name, [ hd1 ]), env);
+        (DeleteStmt (func_name, hd1), env);
         (InsertStmt (func_name, left_sibs, [ hd2 ], tl1), env);
       ]
     else
@@ -425,7 +427,7 @@ and fold_stmts2 func_name prnt_brnch depth stmts1 stmts2 left_sibs =
       [ (InsertStmt (func_name, left_sibs, lst, []), env) ]
   | lst, [] ->
       let env = mk_diff_env depth prnt_brnch prev_node in
-      [ (DeleteStmt (func_name, lst), env) ]
+      List.map ~f:(fun stmt -> (DeleteStmt (func_name, stmt), env)) lst
 
 and extract_block func_name prnt_brnch depth block1 block2 =
   let remove_empty_instrs stmts =
@@ -460,7 +462,7 @@ let rec mk_diff_glob code depth acc_left acc_right glob_lst =
   let env = mk_diff_env depth [] prev_node in
   match code with
   | Insertion -> [ (InsertGlobal (acc_left, glob_lst, acc_right), env) ]
-  | Deletion -> [ (DeleteGlobal glob_lst, env) ]
+  | Deletion -> List.map ~f:(fun glob -> (DeleteGlobal glob, env)) glob_lst
   | _ -> failwith "mk_diff_glob: unexpected code"
 
 and fold_continue_point_glob depth glob1 glob2 es tl1 tl2 =
@@ -489,7 +491,7 @@ and get_followup_diff_glob depth glob1 glob2 tl1 tl2 left_sibs =
     if List.is_empty deleted_globs then
       let env = mk_diff_env depth [] prev_node in
       [
-        (DeleteGlobal [ glob1 ], env);
+        (DeleteGlobal glob1, env);
         (InsertGlobal (left_sibs, [ glob2 ], tl1), env);
       ]
     else
@@ -551,7 +553,7 @@ and fold_globals2 depth donor_gobals patch_globals left_sibs =
       [ (InsertGlobal (left_sibs, lst, []), env) ]
   | lst, [] ->
       let env = mk_diff_env depth [] prev_node in
-      [ (DeleteGlobal lst, env) ]
+      List.map ~f:(fun glob -> (DeleteGlobal glob, env)) lst
 
 let compare = compare
 

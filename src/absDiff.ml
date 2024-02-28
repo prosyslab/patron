@@ -273,9 +273,9 @@ type t =
   (* same format with Diff.t excluding func name *)
   (* func name is not necessary *)
   | SInsertStmt of abs_node list * abs_node list * abs_node list
-  | SDeleteStmt of abs_node list
+  | SDeleteStmt of abs_node
   | SInsertExp of abs_node * abs_node list * abs_node list * abs_node list
-  | SDeleteExp of abs_node * abs_node list
+  | SDeleteExp of abs_node * abs_node
   | SUpdateExp of abs_node * abs_node * abs_node
   | SInsertLval of abs_node * abs_node
   | SDeleteLval of abs_node * abs_node
@@ -590,12 +590,11 @@ let mk_abs_action maps dug = function
         mk_abs_stmts func_name dug maps.loc_map (after, StrSet.empty)
       in
       (SInsertStmt (abs_before, abs_stmts, abs_after), patch_comps)
-  | D.DeleteStmt (func_name, ss) ->
-      let abs_stmts, patch_comps =
-        mk_abs_stmts func_name dug maps.loc_map (ss, StrSet.empty)
+  | D.DeleteStmt (func_name, s) ->
+      let abs_stmt, patch_comps =
+        mk_abs_stmt func_name dug maps.loc_map (s, StrSet.empty)
       in
-      let patch_nodes = collect_node_id abs_stmts in
-      (SDeleteStmt abs_stmts, StrSet.union patch_comps patch_nodes)
+      (SDeleteStmt abs_stmt, StrSet.union patch_comps abs_stmt.ids)
   | D.UpdateExp (func_name, s, e1, e2) ->
       let abs_stmt, _ =
         mk_abs_stmt func_name dug maps.loc_map (s, StrSet.empty)

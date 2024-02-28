@@ -7,35 +7,6 @@ module L = Logger
 
 let is_patched = ref false
 
-let check_sibling_exp sibling exp_list =
-  match sibling with
-  | Ast.Exp e -> List.exists ~f:(fun x -> Ast.isom_exp x e) exp_list
-  | _ ->
-      failwith
-        "check_sibling_exp: sibling of an expression must be an expression"
-
-let check_stmt stmt stmt_list =
-  List.exists ~f:(fun x -> Ast.isom_stmt x stmt) stmt_list
-
-let check_exp exp exp_list =
-  List.exists ~f:(fun x -> Ast.isom_exp x exp) exp_list
-
-let get_sibling_exp sibling exp_list =
-  match sibling with
-  | Ast.Exp e -> List.find ~f:(fun x -> Ast.isom_exp x e) exp_list
-  | _ ->
-      failwith "get_sibling_exp: sibling of an expression must be an expression"
-
-let get_snk snk stmt_list =
-  match snk with
-  | Ast.Stmt s -> List.find ~f:(fun x -> Ast.isom_stmt x s) stmt_list
-  | _ -> failwith "get_snk: snk must be a stmt"
-
-let check_snk snk stmt_list =
-  match snk with
-  | Ast.Stmt s -> List.exists ~f:(fun x -> Ast.isom_stmt x s) stmt_list
-  | _ -> failwith "check_snk: snk must be a stmt"
-
 let replace_exp_in_stmt stmt from_exp to_exp =
   match stmt.Cil.skind with
   | Cil.Instr i ->
@@ -57,16 +28,6 @@ let replace_exp_in_stmt stmt from_exp to_exp =
       in
       { stmt with skind = Cil.Instr new_instr }
   | _ -> failwith "replace_exp_in_stmt: not implemented"
-
-let delete_elt_stmt elt list =
-  let rec aux acc = function
-    | [] -> List.rev acc
-    | hd :: tl ->
-        if Ast.isom_stmt elt hd then aux acc tl else aux (hd :: acc) tl
-  in
-  let result = aux [] list in
-  if List.length result = List.length list - 1 then result
-  else failwith "stmt_list delete error"
 
 let replace_exp_in_stmts stmts parent from_exp to_exp =
   List.fold_left
@@ -134,15 +95,37 @@ class stmtInsertVisitorUnderStmt target_func before after ss =
       else DoChildren
   end
 
-class stmtDeleteVisitor stmt =
+let delete_elt_stmt s stmts =
+  let new_stmts, patched =
+    List.fold_left
+      ~f:(fun (new_stmts, patched) stmt ->
+        if (not patched) && phys_equal stmt s then (new_stmts, true)
+        else (stmt :: new_stmts, patched))
+      ~init:([], false) stmts
+  in
+  (List.rev new_stmts, patched)
+
+class deleteStmtfromBlockVisitor s =
   object
     inherit Cil.nopCilVisitor
 
     method! vblock (b : Cil.block) =
-      if check_stmt stmt b.bstmts then (
+      let new_bstmts, patched = delete_elt_stmt s b.bstmts in
+      if patched then (
         is_patched := true;
-        ChangeTo { b with bstmts = delete_elt_stmt stmt b.bstmts })
+        ChangeTo { b with bstmts = new_bstmts })
       else DoChildren
+  end
+
+class deleteStmtfromFuncVisitor target_func ss =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vfunc (f : Cil.fundec) =
+      if String.equal f.svar.vname target_func then
+        let vis = new deleteStmtfromBlockVisitor ss in
+        ChangeTo (Cil.visitCilFunction vis f)
+      else SkipChildren
   end
 
 class expUpdateVisitor target_func parent from_exp to_exp =
@@ -174,9 +157,18 @@ let apply_insert_stmt func_name before after ss donee =
   if not !is_patched then Logger.warn "failed to apply InsertStmt"
   else Logger.info "Successfully applied InsertStmt at %s" func_name
 
+let apply_delete_stmt func_name s donee =
+  Logger.info "Applying DeleteStmt...";
+  is_patched := false;
+  let vis = new deleteStmtfromFuncVisitor func_name s in
+  ignore (Cil.visitCilFile vis donee);
+  if not !is_patched then Logger.warn "failed to apply DeleteStmt"
+  else Logger.info "Successfully applied DeleteStmt at %s" func_name
+
 let apply_action donee = function
   | D.InsertStmt (func_name, before, ss, after) ->
       apply_insert_stmt func_name before after ss donee
+  | D.DeleteStmt (func_name, s) -> apply_delete_stmt func_name s donee
   | _ -> failwith "apply_action:Not implemented"
 
 let write_out path ast =

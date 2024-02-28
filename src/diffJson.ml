@@ -70,9 +70,9 @@ let rec mk_json_obj saction =
       let action_json = ("action", `String "insert_stmt") in
       let change_json = ("change", `List (List.map ~f:sstmt_to_json ss)) in
       `Assoc [ action_json; change_json ]
-  | SDeleteStmt ss ->
+  | SDeleteStmt s ->
       let action_json = ("action", `String "delete_stmt") in
-      let change_json = ("change", `List (List.map ~f:sstmt_to_json ss)) in
+      let change_json = ("change", sstmt_to_json s) in
       `Assoc [ action_json; change_json ]
   | SUpdateExp (_, e1, e2) ->
       let action_json = ("action", `String "update_exp") in

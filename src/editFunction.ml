@@ -340,6 +340,11 @@ let translate_insert_stmt ast sol_map maps before after ss =
   let target_after = translate_orig_stmts sol_map maps.Maps.ast_map after in
   D.InsertStmt (target_func_name, target_before, new_ss, target_after)
 
+let translate_delete_stmt ast sol_map maps s =
+  let target_func_name = translate_func_name sol_map [ s ] in
+  let new_s = translate_new_stmt ast sol_map maps.Maps.lval_map s.A.ast in
+  D.DeleteStmt (target_func_name, new_s)
+
 let translate ast abs_diff out_dir target_alarm maps =
   Logger.info "Translating patch...";
   let sol_map = Hashtbl.create 1000 in
@@ -350,5 +355,6 @@ let translate ast abs_diff out_dir target_alarm maps =
       match diff with
       | A.SInsertStmt (before, ss, after) ->
           translate_insert_stmt ast sol_map maps before after ss
+      | A.SDeleteStmt s -> translate_delete_stmt ast sol_map maps s
       | _ -> failwith "translate: not implemented")
     abs_diff
