@@ -54,70 +54,85 @@ let pp_env fmt env =
   F.fprintf fmt "Depth: %d\n" env.patch_depth;
   F.fprintf fmt "Previous Sibling Node: \n%s\n" (Ast.s_node env.prev_sibling)
 
-(* let pp_diff fmt action =
-   match action with
-   | InsertGlobal (ctx, g2) ->
-       F.fprintf fmt "\tInsertGlobal: \n";
-       F.fprintf fmt "%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "%s\n" (Ast.s_glob g2)
-   | DeleteGlobal (ctx, g2) ->
-       F.fprintf fmt "\tDeletGlobal: \n";
-       F.fprintf fmt "%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "%s\n" (Ast.s_glob g2)
-   | InsertStmt (ctx, s1) ->
-       F.fprintf fmt "\tInsertStmt: \n";
-       F.fprintf fmt "%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "%s\n" (Ast.s_stmt s1)
-   | DeleteStmt (ctx, s1) ->
-       F.fprintf fmt "\tDeletStmt: \n";
-       F.fprintf fmt "%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "%s\n" (Ast.s_stmt s1)
-   | InsertExp (ctx, e1) ->
-       F.fprintf fmt "\tInsertExp: \n";
-       F.fprintf fmt "%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "%s\n" (Ast.s_exp e1)
-   | DeleteExp (ctx, e1) ->
-       F.fprintf fmt "\tDeleteExp: \n";
-       F.fprintf fmt "%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "%s\n" (Ast.s_exp e1)
-   | UpdateExp (ctx, e1, e2) ->
-       F.fprintf fmt "\tUpdateExp: \n";
-       F.fprintf fmt "%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "From:\t%s\n" (Ast.s_exp e1);
-       F.fprintf fmt "To:\t%s\n" (Ast.s_exp e2)
-   | InsertLval (ctx, l1) ->
-       F.fprintf fmt "\t%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "InsertLval: %s" (Ast.s_lv l1)
-   | DeleteLval (ctx, l1) ->
-       F.fprintf fmt "\t%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "DeleteLval: \n%s" (Ast.s_lv l1)
-   | UpdateLval (ctx, l1, l2) ->
-       F.fprintf fmt "\tUpdateLval: \n";
-       F.fprintf fmt "%a\n" pp_ctx ctx;
-       F.fprintf fmt "Diff Summary:\n";
-       F.fprintf fmt "From:\t%s\n" (Ast.s_lv l1);
-       F.fprintf fmt "To:\t%s\n" (Ast.s_lv l2) *)
+let lst2strlines to_string =
+  List.fold_left ~f:(fun s a -> s ^ "\n" ^ to_string a) ~init:""
 
-(* let pp_edit_script fmt es =
-   F.fprintf fmt "Edit Script Summary:\n";
-   F.fprintf fmt "Size: %d\n" (List.length es);
-   List.iteri
-     ~f:(fun i x ->
-       let diff, env = x in
-       F.fprintf fmt "============diff-%d============\n" i;
-       F.fprintf fmt "Meta Data:\n%a\n\n" pp_env env;
-       F.fprintf fmt "\n%a\n" pp_diff diff;
-       F.fprintf fmt "================================\n")
-     es *)
+let pp_diff fmt action =
+  match action with
+  | InsertGlobal (before, gs, after) ->
+      F.fprintf fmt "\tInsertGlobal: \n";
+      F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_glob before);
+      F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_glob after);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_glob gs)
+  | DeleteGlobal gs ->
+      F.fprintf fmt "\tDeletGlobal: \n";
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "Deleted:%s\n" (lst2strlines Ast.s_glob gs)
+  | InsertStmt (func, before, ss, after) ->
+      F.fprintf fmt "\tInsertStmt: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_stmt before);
+      F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_stmt after);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_stmt ss)
+  | DeleteStmt (func, ss) ->
+      F.fprintf fmt "\tDeleteStmt: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "Deleted:%s\n" (lst2strlines Ast.s_stmt ss)
+  | InsertExp (func, s, before, es, after) ->
+      F.fprintf fmt "\tInsertExp: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      F.fprintf fmt "Stmt:%s\n" (Ast.s_stmt s);
+      F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_exp before);
+      F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_exp after);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_exp es)
+  | DeleteExp (func, s, es) ->
+      F.fprintf fmt "\tDeleteExp: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      F.fprintf fmt "Stmt:%s\n" (Ast.s_stmt s);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "Deleted:%s\n" (lst2strlines Ast.s_exp es)
+  | UpdateExp (func, s, e1, e2) ->
+      F.fprintf fmt "\tUpdateExp: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      F.fprintf fmt "Stmt:%s\n" (Ast.s_stmt s);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "From:\t%s\n" (Ast.s_exp e1);
+      F.fprintf fmt "To:\t%s\n" (Ast.s_exp e2)
+  | InsertLval (func, s, lv) ->
+      F.fprintf fmt "\tInsertLval: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      F.fprintf fmt "Stmt:%s\n" (Ast.s_stmt s);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "Inserted: \n%s" (Ast.s_lv lv)
+  | DeleteLval (func, s, lv) ->
+      F.fprintf fmt "\tDeletLval: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      F.fprintf fmt "Stmt:%s\n" (Ast.s_stmt s);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "Inserted: \n%s" (Ast.s_lv lv)
+  | UpdateLval (func, s, l1, l2) ->
+      F.fprintf fmt "\tUpdateLval: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      F.fprintf fmt "Stmt:%s\n" (Ast.s_stmt s);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "From:\t%s\n" (Ast.s_lv l1);
+      F.fprintf fmt "To:\t%s\n" (Ast.s_lv l2)
+
+let pp_edit_script fmt es =
+  F.fprintf fmt "Edit Script Summary:\n";
+  F.fprintf fmt "Size: %d\n" (List.length es);
+  List.iteri
+    ~f:(fun i x ->
+      let diff, env = x in
+      F.fprintf fmt "============diff-%d============\n" i;
+      F.fprintf fmt "Meta Data:\n%a\n\n" pp_env env;
+      F.fprintf fmt "\n%a\n" pp_diff diff;
+      F.fprintf fmt "================================\n")
+    es
 
 let mk_diff_exp code func_name parent depth left_sibs right_sibs exp_lst =
   let prev_node = List.last left_sibs |> Ast.of_exp in
