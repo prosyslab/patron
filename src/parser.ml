@@ -272,12 +272,11 @@ let get_alarm work_dir =
   let alarm_exps, alarm_lvs =
     Array.fold
       ~f:(fun alarm_comps file ->
-        if String.equal file "AlarmTaint.facts" then alarm_comps
-        else
-          match Filename.concat work_dir file |> read_and_split with
-          | hd :: [] -> get_alarm_comps alarm hd file
-          | [] -> alarm_comps
-          | _ -> alarm_comps)
+        match (file, Filename.concat work_dir file |> read_and_split) with
+        | "AlarmTaint.facts", _ | "AlarmBufferOverrunLib.facts", _ ->
+            alarm_comps
+        | _, hd :: [] -> get_alarm_comps alarm hd file
+        | _ -> alarm_comps)
       ~init:(Chc.empty, Chc.empty) alarm_exp_files
   in
   (src, snk, alarm_exps, alarm_lvs)
