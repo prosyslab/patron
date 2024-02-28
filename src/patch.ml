@@ -7,38 +7,6 @@ module L = Logger
 
 let is_patched = ref false
 
-let replace_exp_in_stmt stmt from_exp to_exp =
-  match stmt.Cil.skind with
-  | Cil.Instr i ->
-      let new_instr =
-        List.fold_left
-          ~f:(fun acc x ->
-            match x with
-            | Cil.Call (lval, e, exp_list, loc) ->
-                if Ast.isom_exp e from_exp then
-                  Cil.Call (lval, to_exp, exp_list, loc) :: acc
-                else x :: acc
-            | Cil.Set (lval, e, loc) ->
-                if Ast.isom_exp e from_exp then
-                  Cil.Set (lval, to_exp, loc) :: acc
-                else x :: acc
-            | _ -> x :: acc)
-          ~init:[] i
-        |> List.rev
-      in
-      { stmt with skind = Cil.Instr new_instr }
-  | _ -> failwith "replace_exp_in_stmt: not implemented"
-
-let replace_exp_in_stmts stmts parent from_exp to_exp =
-  List.fold_left
-    ~f:(fun acc x ->
-      if String.equal (Ast.s_stmt x) (Ast.s_stmt parent) then
-        let new_stmt = replace_exp_in_stmt x from_exp to_exp in
-        new_stmt :: acc
-      else x :: acc)
-    ~init:[] stmts
-  |> List.rev
-
 let partition_using_before before stmts =
   let blst, _, alst =
     List.fold_left
@@ -82,7 +50,7 @@ let insert_ss_into_stmts before after patch stmts =
       let new_alst = insert_internal after patch (List.rev alst) in
       blst @ [ before ] @ new_alst
 
-class stmtInsertVisitorUnderStmt target_func before after ss =
+class insertStmtVisitorUnderStmt target_func before after ss =
   object
     inherit Cil.nopCilVisitor
 
@@ -128,7 +96,39 @@ class deleteStmtfromFuncVisitor target_func ss =
       else SkipChildren
   end
 
-class expUpdateVisitor target_func parent from_exp to_exp =
+let replace_exp_in_stmt stmt from_exp to_exp =
+  match stmt.Cil.skind with
+  | Cil.Instr i ->
+      let new_instr =
+        List.fold_left
+          ~f:(fun acc x ->
+            match x with
+            | Cil.Call (lval, e, exp_list, loc) ->
+                if Ast.isom_exp e from_exp then
+                  Cil.Call (lval, to_exp, exp_list, loc) :: acc
+                else x :: acc
+            | Cil.Set (lval, e, loc) ->
+                if Ast.isom_exp e from_exp then
+                  Cil.Set (lval, to_exp, loc) :: acc
+                else x :: acc
+            | _ -> x :: acc)
+          ~init:[] i
+        |> List.rev
+      in
+      { stmt with skind = Cil.Instr new_instr }
+  | _ -> failwith "replace_exp_in_stmt: not implemented"
+
+let replace_exp_in_stmts stmts parent from_exp to_exp =
+  List.fold_left
+    ~f:(fun acc x ->
+      if String.equal (Ast.s_stmt x) (Ast.s_stmt parent) then
+        let new_stmt = replace_exp_in_stmt x from_exp to_exp in
+        new_stmt :: acc
+      else x :: acc)
+    ~init:[] stmts
+  |> List.rev
+
+class updateExpVisitor target_func parent from_exp to_exp =
   object
     inherit Cil.nopCilVisitor
 
@@ -141,8 +141,6 @@ class expUpdateVisitor target_func parent from_exp to_exp =
       else DoChildren
   end
 
-let paths2stmts (path1, path2) = (Ast.path2stmts path1, Ast.path2stmts path2)
-
 let apply_insert_stmt func_name before after ss donee =
   Logger.info "Applying InsertStmt...";
   is_patched := false;
@@ -151,7 +149,7 @@ let apply_insert_stmt func_name before after ss donee =
   let very_before = List.last_exn before in
   let very_after = List.hd after in
   let vis =
-    new stmtInsertVisitorUnderStmt func_name very_before very_after ss
+    new insertStmtVisitorUnderStmt func_name very_before very_after ss
   in
   ignore (Cil.visitCilFile vis donee);
   if not !is_patched then Logger.warn "failed to apply InsertStmt"
@@ -165,10 +163,20 @@ let apply_delete_stmt func_name s donee =
   if not !is_patched then Logger.warn "failed to apply DeleteStmt"
   else Logger.info "Successfully applied DeleteStmt at %s" func_name
 
+let apply_update_exp func_name s e1 e2 donee =
+  Logger.info "Applying DeleteStmt...";
+  is_patched := false;
+  let vis = new updateExpVisitor func_name s e1 e2 in
+  ignore (Cil.visitCilFile vis donee);
+  if not !is_patched then Logger.warn "failed to apply UpdateExp"
+  else Logger.info "Successfully applied UpdateExp at %s" func_name
+
 let apply_action donee = function
   | D.InsertStmt (func_name, before, ss, after) ->
       apply_insert_stmt func_name before after ss donee
   | D.DeleteStmt (func_name, s) -> apply_delete_stmt func_name s donee
+  | D.UpdateExp (func_name, s, e1, e2) ->
+      apply_update_exp func_name s e1 e2 donee
   | _ -> failwith "apply_action:Not implemented"
 
 let write_out path ast =
