@@ -82,7 +82,7 @@ let mk_file_diff orig_path patch_path target_alarm out_dir =
 
 let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast out_dir
     diff =
-  let facts, (src, snk, _), target_maps =
+  let facts, (src, snk, _, _), target_maps =
     Parser.make_facts donee_dir target_alarm ast out_dir
   in
   let z3env = Z3env.get_env () in
@@ -136,7 +136,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff buggy_ast patch_ast in
-  let facts, (src, snk, alarm_comps), maps =
+  let facts, (src, snk, alarm_exps, alarm_lvs), maps =
     Parser.make_facts buggy_dir true_alarm buggy_ast out_dir
   in
   L.info "Making Facts in buggy done";
@@ -152,7 +152,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     L.info "Writing out the edit script...";
     DiffJson.dump abs_diff out_dir);
   let pattern_in_numeral, pattern =
-    AbsPat.run maps dug patch_comps alarm_comps src snk facts
+    AbsPat.run maps dug patch_comps alarm_exps alarm_lvs src snk
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;

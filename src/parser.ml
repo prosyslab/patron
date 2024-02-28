@@ -220,37 +220,39 @@ let rec mk_ast_map maps stmt =
       add_ast_map maps loc stmt
   | _ -> L.debug "mk_ast_map - not implemented stmt kind"
 
-let read_and_split file =
-  In_channel.read_lines file |> List.map ~f:(fun l -> String.split ~on:'\t' l)
-
-exception Not_impl_alarm_comps
-
 let get_alarm_comps alarm splited filename =
   (* TODO: add expression relation that have error e.g. DivExp --> Div relation *)
   match (Filename.basename filename |> Filename.chop_extension, splited) with
-  | "AlarmArrayExp", [ a; l; e ] when String.equal a alarm ->
-      Chc.of_list [ Chc.Elt.FDNumeral l; Chc.Elt.FDNumeral e ]
-  | "AlarmAllocSize", [ a; e ]
-  | "AlarmDerefExp", [ a; e ]
-  | "AlarmPrintf", [ a; e ]
-  | "AlarmDivExp", [ a; _; e ]
+  | "AlarmArrayExp", a :: l :: e :: lvs when String.equal a alarm ->
+      ( Chc.of_list [ Chc.Elt.FDNumeral l; Chc.Elt.FDNumeral e ],
+        List.map ~f:Chc.Elt.numer lvs |> Chc.of_list )
+  | "AlarmAllocSize", a :: e :: lvs
+  | "AlarmDerefExp", a :: e :: lvs
+  | "AlarmPrintf", a :: e :: lvs
+  | "AlarmDivExp", a :: _ :: e :: lvs
     when String.equal a alarm ->
-      Chc.singleton (Chc.Elt.FDNumeral e)
-  | "AlarmIOExp", [ a; e1; e2 ]
-  | "AlarmMemchr", [ a; e1; e2 ]
-  | "AlarmSprintf", [ a; e1; e2 ]
-  | "AlarmStrcat", [ a; e1; e2 ]
-  | "AlarmStrcpy", [ a; e1; e2 ]
+      ( Chc.singleton (Chc.Elt.FDNumeral e),
+        List.map ~f:Chc.Elt.numer lvs |> Chc.of_list )
+  | "AlarmIOExp", a :: e1 :: e2 :: lvs
+  | "AlarmMemchr", a :: e1 :: e2 :: lvs
+  | "AlarmSprintf", a :: e1 :: e2 :: lvs
+  | "AlarmStrcat", a :: e1 :: e2 :: lvs
+  | "AlarmStrcpy", a :: e1 :: e2 :: lvs
     when String.equal a alarm ->
-      Chc.of_list [ Chc.Elt.FDNumeral e1; Chc.Elt.FDNumeral e2 ]
-  | "AlarmMemcpy", [ a; e1; e2; e3 ]
-  | "AlarmMemmove", [ a; e1; e2; e3 ]
-  | "AlarmStrncmp", [ a; e1; e2; e3 ]
-  | "AlarmStrncpy", [ a; e1; e2; e3 ]
+      ( Chc.of_list [ Chc.Elt.FDNumeral e1; Chc.Elt.FDNumeral e2 ],
+        List.map ~f:Chc.Elt.numer lvs |> Chc.of_list )
+  | "AlarmMemcpy", a :: e1 :: e2 :: e3 :: lvs
+  | "AlarmMemmove", a :: e1 :: e2 :: e3 :: lvs
+  | "AlarmStrncmp", a :: e1 :: e2 :: e3 :: lvs
+  | "AlarmStrncpy", a :: e1 :: e2 :: e3 :: lvs
     when String.equal a alarm ->
-      Chc.of_list
-        [ Chc.Elt.FDNumeral e1; Chc.Elt.FDNumeral e2; Chc.Elt.FDNumeral e3 ]
+      ( Chc.of_list
+          [ Chc.Elt.FDNumeral e1; Chc.Elt.FDNumeral e2; Chc.Elt.FDNumeral e3 ],
+        List.map ~f:Chc.Elt.numer lvs |> Chc.of_list )
   | f, _ -> Logger.error "get_alarm_comps - not implemented: %s" f
+
+let read_and_split file =
+  In_channel.read_lines file |> List.map ~f:(fun l -> String.split ~on:'\t' l)
 
 let get_alarm work_dir =
   let src, snk, alarm =
@@ -267,16 +269,16 @@ let get_alarm work_dir =
            Filename.basename f
            |> String.is_substring_at ~pos:0 ~substring:"Alarm")
   in
-  let alarm_compss =
+  let alarm_exps, alarm_lvs =
     Array.fold
       ~f:(fun alarm_comps file ->
         match Filename.concat work_dir file |> read_and_split with
         | hd :: [] -> get_alarm_comps alarm hd file
         | [] -> alarm_comps
         | _ -> alarm_comps)
-      ~init:Chc.empty alarm_exp_files
+      ~init:(Chc.empty, Chc.empty) alarm_exp_files
   in
-  (src, snk, alarm_compss)
+  (src, snk, alarm_exps, alarm_lvs)
 
 let make_facts target_dir target_alarm ast out_dir =
   let maps = Maps.create_maps () in
