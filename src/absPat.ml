@@ -44,6 +44,8 @@ let find_rels_by_lv dug cmd_map snk lv =
     in
     NodeSet.fold collect_rels def_nodes Chc.empty
 
+let is_lv comp = String.split ~on:'-' comp |> List.hd_exn |> String.equal "Lval"
+
 let abs_by_comps dug patch_comps snk alarm_exps alarm_lvs cmd_map =
   L.info "patch_comps: %s" (String.concat ~sep:", " patch_comps);
   L.info "alarm_exps: %s"
@@ -53,10 +55,12 @@ let abs_by_comps dug patch_comps snk alarm_exps alarm_lvs cmd_map =
   (* TODO: use alarm_lvs and EvalLv for finding real DUPath from patch to sink *)
   let collected_by_patch_comps =
     List.fold_left
-      ~f:(fun rels lv ->
-        find_rels_by_lv dug cmd_map snk lv
-        |> Chc.union rels
-        |> Chc.add (Chc.Elt.real_lv lv))
+      ~f:(fun rels comp ->
+        if is_lv comp then
+          find_rels_by_lv dug cmd_map snk comp
+          |> Chc.union rels
+          |> Chc.add (Chc.Elt.real_lv comp)
+        else rels (* TODO: use dug node as patch comps *))
       ~init:Chc.empty patch_comps
   in
   let collected_by_alarm_comps = collect_ast_rels dug snk alarm_exps in
