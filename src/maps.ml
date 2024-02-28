@@ -3,11 +3,6 @@ module Hashtbl = Stdlib.Hashtbl
 module J = Yojson.Basic.Util
 module F = Format
 
-type translation_lookup_maps = {
-  exp_map : (string, string) Hashtbl.t;
-  lval_map : (string, string) Hashtbl.t;
-}
-
 type loc = { file : string; line : int }
 
 type t = {
