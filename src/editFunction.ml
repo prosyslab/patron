@@ -321,13 +321,8 @@ let translate_ids sol_map ids =
 
 let extract_func_name node_id = String.split ~on:'-' node_id |> List.hd_exn
 
-let collect_node_id =
-  List.fold_left
-    ~f:(fun ns abs_node -> abs_node.A.ids |> StrSet.union ns)
-    ~init:StrSet.empty
-
 let translate_func_name sol_map abs_node_lst =
-  collect_node_id abs_node_lst
+  A.collect_node_id abs_node_lst
   |> translate_ids sol_map |> StrSet.choose |> extract_func_name
 
 let ids2asts ast_map ids =
@@ -341,7 +336,7 @@ let ids2asts ast_map ids =
     ids AstSet.empty
 
 let translate_orig_stmts sol_map ast_map abs_node_lst =
-  let new_ids = collect_node_id abs_node_lst |> translate_ids sol_map in
+  let new_ids = A.collect_node_id abs_node_lst |> translate_ids sol_map in
   let new_asts = ids2asts ast_map new_ids in
   AstSet.fold (fun ast stmts -> Ast.to_stmt ast :: stmts) new_asts []
   |> List.rev

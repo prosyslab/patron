@@ -2,7 +2,6 @@ open Core
 module Hashtbl = Stdlib.Hashtbl
 module Map = Stdlib.Map
 module Set = Stdlib.Set
-module L = Logger
 module J = Yojson.Basic.Util
 module H = Utils
 module D = Diff
@@ -269,7 +268,6 @@ and pp_sunop fmt op =
   | SNeg -> Format.fprintf fmt "SNeg"
 
 let to_null = Null
-let compare = compare
 
 type t =
   (* same format with Diff.t excluding func name *)
@@ -437,29 +435,6 @@ let extract_fun_name g =
   | Cil.GFun (f, _) -> f.Cil.svar.Cil.vname
   | _ -> failwith "extract_fun_name: not a function"
 
-let mk_dummy_abs_node maps dug func_name = function
-  | Ast.Stmt s ->
-      let ids = match_stmt_id maps.Maps.loc_map s.Cil.skind in
-      let ast = AbsStmt (SSNull, s) in
-      let literal = Ast.s_stmt s in
-      { ids; ast; literal }
-  | Ast.Exp e ->
-      let ids = StrSet.empty in
-      let ast = AbsExp (SENULL, e) in
-      let literal = Ast.s_exp e in
-      { ids; ast; literal }
-  | Ast.Lval l ->
-      let ids = match_lval_id func_name dug l in
-      let ast = AbsLval (SLNull, l) in
-      let literal = Ast.s_lv l in
-      { ids; ast; literal }
-  | Ast.Global g ->
-      let ids = extract_fun_name g |> StrSet.singleton in
-      let ast = AbsGlob (SGNull, g) in
-      let literal = Ast.s_glob g in
-      { ids; ast; literal }
-  | _ -> failwith "ast2absnode: context failed to be read"
-
 let rec mk_abs_offset func_name dug loc_map = function
   | Cil.NoOffset -> SNoOffset
   | Cil.Field (f, o) ->
@@ -598,6 +573,11 @@ and mk_abs_stmts func_name dug loc_map (ss, patch_comps) =
       (abs_s :: abs_ss, pc'))
     ~init:([], patch_comps) ss
 
+let collect_node_id =
+  List.fold_left
+    ~f:(fun ns abs_node -> abs_node.ids |> StrSet.union ns)
+    ~init:StrSet.empty
+
 let mk_abs_action maps dug = function
   | D.InsertStmt (func_name, before, ss, after) ->
       let abs_before, _ =
@@ -614,18 +594,20 @@ let mk_abs_action maps dug = function
       let abs_stmts, patch_comps =
         mk_abs_stmts func_name dug maps.loc_map (ss, StrSet.empty)
       in
-      (SDeleteStmt abs_stmts, patch_comps)
+      let patch_nodes = collect_node_id abs_stmts in
+      (SDeleteStmt abs_stmts, StrSet.union patch_comps patch_nodes)
   | D.UpdateExp (func_name, s, e1, e2) ->
       let abs_stmt, _ =
         mk_abs_stmt func_name dug maps.loc_map (s, StrSet.empty)
       in
-      let abs_exp1, patch_comps1 =
+      let abs_exp1, _ =
         mk_abs_exp func_name dug maps.loc_map (e1, StrSet.empty)
       in
-      let abs_exp2, patch_comps2 =
-        mk_abs_exp func_name dug maps.loc_map (e2, patch_comps1)
+      let abs_exp2, patch_comps =
+        mk_abs_exp func_name dug maps.loc_map (e2, StrSet.empty)
       in
-      (SUpdateExp (abs_stmt, abs_exp1, abs_exp2), patch_comps2)
+      ( SUpdateExp (abs_stmt, abs_exp1, abs_exp2),
+        StrSet.union patch_comps abs_stmt.ids )
   | _ -> failwith "mk_sdiff: not implemented"
 
 let define_abs_diff maps ast dug diff =
