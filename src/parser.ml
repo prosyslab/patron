@@ -189,36 +189,72 @@ let parse_chc chc_file =
          try (Sexp.of_string rule |> sexp2chc) :: chc_list with _ -> chc_list)
   |> Chc.of_list
 
+let add_to_ast_map ast_map key of_cil cil_obj =
+  Hashtbl.add ast_map key (of_cil (Some cil_obj))
+
 let find_node_id loc_map loc =
   let file = String.split ~on:'/' loc.Cil.file |> List.last_exn in
   let line = loc.line in
   Hashtbl.find_opt loc_map { Maps.file; line }
 
-let add_ast_map maps loc stmt =
+let map_node_cil maps loc of_cil cil_obj =
   let dug_id_opt = find_node_id maps.Maps.loc_map loc in
   if Option.is_some dug_id_opt then
     let dug_id = Option.value_exn dug_id_opt in
-    Hashtbl.add maps.Maps.ast_map dug_id (Ast.of_stmt (Some stmt))
+    add_to_ast_map maps.Maps.ast_map dug_id of_cil cil_obj
 
-let rec mk_ast_map maps stmt =
-  match stmt.Cil.skind with
-  | Cil.Instr (Cil.Set (_, _, loc) :: _)
-  | Cil.Instr (Cil.Call (_, _, _, loc) :: _)
-  | Cil.Return (_, loc) ->
-      add_ast_map maps loc stmt
-  | Cil.If (_, tb, fb, loc) ->
-      List.iter ~f:(mk_ast_map maps) tb.bstmts;
-      List.iter ~f:(mk_ast_map maps) fb.bstmts;
-      add_ast_map maps loc stmt
-  | Cil.Block b -> List.iter ~f:(mk_ast_map maps) b.bstmts
-  | Cil.Loop (b, loc, _, _) ->
-      List.iter ~f:(mk_ast_map maps) b.bstmts;
-      add_ast_map maps loc stmt
-  | Cil.Switch (_, b, sl, loc) ->
-      List.iter ~f:(mk_ast_map maps) b.bstmts;
-      List.iter ~f:(mk_ast_map maps) sl;
-      add_ast_map maps loc stmt
-  | _ -> L.debug "mk_ast_map - not implemented stmt kind"
+class mkAstMap maps =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vglob g =
+      match g with
+      | Cil.GType (_, loc)
+      | Cil.GCompTag (_, loc)
+      | Cil.GCompTagDecl (_, loc)
+      | Cil.GEnumTag (_, loc)
+      | Cil.GEnumTagDecl (_, loc)
+      | Cil.GVar (_, _, loc)
+      | Cil.GVarDecl (_, loc)
+      | Cil.GFun (_, loc)
+      | Cil.GAsm (_, loc)
+      | Cil.GPragma (_, loc) ->
+          map_node_cil maps loc Ast.of_glob g;
+          DoChildren
+      | Cil.GText _ -> DoChildren
+
+    method! vstmt s =
+      match s.Cil.skind with
+      | Cil.Instr (Cil.Set (_, _, loc) :: _)
+      | Cil.Instr (Cil.Call (_, _, _, loc) :: _)
+      | Cil.Return (_, loc)
+      | Cil.Goto (_, loc)
+      | Cil.ComputedGoto (_, loc)
+      | Cil.Break loc
+      | Cil.Continue loc
+      | Cil.If (_, _, _, loc)
+      | Cil.Switch (_, _, _, loc)
+      | Cil.Loop (_, loc, _, _)
+      | Cil.TryFinally (_, _, loc)
+      | Cil.TryExcept (_, _, _, loc) ->
+          map_node_cil maps loc Ast.of_stmt s;
+          DoChildren
+      | _ -> DoChildren
+
+    method! vlval lv =
+      Ast.s_lv lv
+      |> Hashtbl.find_all maps.Maps.lval_rev_map
+      |> List.iter ~f:(fun id ->
+             add_to_ast_map maps.Maps.ast_map id Ast.of_lval lv);
+      DoChildren
+
+    method! vexpr e =
+      Ast.s_exp e
+      |> Hashtbl.find_all maps.Maps.exp_rev_map
+      |> List.iter ~f:(fun id ->
+             add_to_ast_map maps.Maps.ast_map id Ast.of_exp e);
+      DoChildren
+  end
 
 let get_alarm_comps alarm splited filename =
   match (Filename.basename filename |> Filename.chop_extension, splited) with
@@ -287,11 +323,12 @@ let make_facts target_dir target_alarm ast out_dir =
   let spo_dir = Filename.concat target_dir "sparrow-out" in
   let alarm_dir = Filename.concat spo_dir ("taint/datalog/" ^ target_alarm) in
   L.info "Making facts from %sth alarm" (Filename.basename alarm_dir);
-  Utils.parse_map alarm_dir "Exp.map" maps.Maps.exp_map;
-  Utils.parse_map alarm_dir "Lval.map" maps.Maps.lval_map;
+  Utils.parse_map ~rev_too:true alarm_dir "Exp.map" maps.Maps.exp_map
+    ~rev_map:(Some maps.Maps.exp_rev_map);
+  Utils.parse_map ~rev_too:true alarm_dir "Lval.map" maps.Maps.lval_map
+    ~rev_map:(Some maps.Maps.lval_rev_map);
   Utils.parse_node_json spo_dir maps.Maps.loc_map maps.Maps.cmd_map;
-  let ast_nodes = (Ast.extract_globs ast, Ast.extract_stmts ast) in
-  List.iter ~f:(mk_ast_map maps) (snd ast_nodes);
+  Cil.visitCilFile (new mkAstMap maps) ast;
   let du_facts = make_du_facts alarm_dir in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) du_facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) du_facts;

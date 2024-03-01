@@ -11,7 +11,9 @@ type t = {
   loc_map : (loc, string) Hashtbl.t; (* location -> node symbol *)
   cmd_map : (string, string) Hashtbl.t; (* node symbol -> cmd (skip, ...) *)
   exp_map : (string, string) Hashtbl.t; (* exp symbol -> exp literal *)
+  exp_rev_map : (string, string) Hashtbl.t; (* exp literal -> exp symbol *)
   lval_map : (string, string) Hashtbl.t; (* lval symbol -> lval literal *)
+  lval_rev_map : (string, string) Hashtbl.t; (* lval literal -> lval symbol *)
   ast_map : (string, Ast.t) Hashtbl.t; (* symbol -> ast id(num) *)
 }
 
@@ -22,7 +24,9 @@ let create_maps () =
     loc_map = Hashtbl.create 1000;
     cmd_map = Hashtbl.create 1000;
     exp_map = Hashtbl.create 1000;
+    exp_rev_map = Hashtbl.create 1000;
     lval_map = Hashtbl.create 1000;
+    lval_rev_map = Hashtbl.create 1000;
     ast_map = Hashtbl.create 1000;
   }
 
@@ -47,7 +51,9 @@ let reset_maps maps =
   Hashtbl.reset maps.loc_map;
   Hashtbl.reset maps.cmd_map;
   Hashtbl.reset maps.exp_map;
+  Hashtbl.reset maps.exp_rev_map;
   Hashtbl.reset maps.lval_map;
+  Hashtbl.reset maps.lval_rev_map;
   Hashtbl.reset maps.ast_map
 
 let dump_map a_to_string b_to_string map_name mode map out_dir =

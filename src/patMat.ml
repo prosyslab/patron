@@ -96,7 +96,7 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast out_dir
     Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
     L.info "Matching with %s is done" target_alarm;
     let target_diff =
-      EditFunction.translate ast diff out_dir target_alarm target_maps
+      EditFunction.translate target_maps.ast_map out_dir target_alarm diff
     in
     L.info "Applying patch on the target file ...";
     let out_file_orig =

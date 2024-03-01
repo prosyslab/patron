@@ -1,4 +1,5 @@
 open Cil
+module L = Logger
 
 type t =
   | Global of global
@@ -49,6 +50,9 @@ let to_stmt element =
   | Exp _ -> failwith "Exp"
   | Global _ -> failwith "glob"
   | _ -> failwith "Not a statement"
+
+let to_lval elememt =
+  match elememt with Lval l -> l | _ -> L.error "Not a lval"
 
 let path2stmts path = List.map to_stmt path
 let compare = compare

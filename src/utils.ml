@@ -112,14 +112,15 @@ let string_of_skind sk =
   | Cil.TryFinally _ -> "TryFinally"
   | Cil.Switch _ -> "Switch"
 
-let parse_map path file_name map =
+let parse_map ?(rev_too = false) ?(rev_map = None) path file_name map =
   let lines = Filename.concat path file_name |> In_channel.read_lines in
   List.iter
     ~f:(fun line ->
       let splited = Str.split (Str.regexp "\t") line in
       let key = List.hd_exn splited in
       let value = List.hd_exn (List.tl_exn splited) in
-      Hashtbl.add map key value)
+      Hashtbl.add map key value;
+      if rev_too then Hashtbl.add (Option.value_exn rev_map) value key)
     lines
 
 let parse_loc loc =
