@@ -1,6 +1,7 @@
 open Core
 module H = Utils
 module F = Format
+module L = Logger
 
 type action_type = Insertion | Deletion | Update
 type parent_branch = NoBranch | TrueBranch | FalseBranch
@@ -142,7 +143,7 @@ let mk_diff_exp code func_name parent depth left_sibs right_sibs exp_lst =
       [ (InsertExp (func_name, parent, left_sibs, exp_lst, right_sibs), env) ]
   | Deletion ->
       List.map ~f:(fun e -> (DeleteExp (func_name, parent, e), env)) exp_lst
-  | _ -> failwith "mk_diff_exp: unexpected code"
+  | _ -> L.error "mk_diff_exp - unexpected code"
 
 let rec find_continue_point_exp exp1 param =
   match param with
@@ -191,7 +192,7 @@ let get_followup_diff_exp code func_name parent depth exp1 exp2 expl1 expl2
 
 let rec fold_continue_point_param func_name parent depth h1 h2 tl1 tl2 es acc =
   match es with
-  | [] -> failwith "fold_continue_point_stmt: unexpected empty list"
+  | [] -> L.error "fold_continue_point_stmt - unexpected empty list"
   | (hd, env) :: _ -> (
       match hd with
       | InsertExp _ ->
@@ -297,11 +298,11 @@ let rec mk_diff_stmt code func_name prnt_brnch depth acc_left acc_right stmt_lst
       [ (InsertStmt (func_name, acc_left, stmt_lst, acc_right), env) ]
   | Deletion ->
       List.map ~f:(fun stmt -> (DeleteStmt (func_name, stmt), env)) stmt_lst
-  | _ -> failwith "mk_diff_stmt: unexpected code"
+  | _ -> L.error "mk_diff_stmt - unexpected code"
 
 and fold_continue_point_stmt func_name prnt_brnch depth h1 h2 tl1 tl2 es acc =
   match List.rev es with
-  | [] -> failwith "fold_continue_point_stmt: unexpected empty list"
+  | [] -> L.error "fold_continue_point_stmt - unexpected empty list"
   | (hd, env) :: _ -> (
       match hd with
       | InsertStmt _ ->
@@ -463,11 +464,11 @@ let rec mk_diff_glob code depth acc_left acc_right glob_lst =
   match code with
   | Insertion -> [ (InsertGlobal (acc_left, glob_lst, acc_right), env) ]
   | Deletion -> List.map ~f:(fun glob -> (DeleteGlobal glob, env)) glob_lst
-  | _ -> failwith "mk_diff_glob: unexpected code"
+  | _ -> L.error "mk_diff_glob - unexpected code"
 
 and fold_continue_point_glob depth glob1 glob2 es tl1 tl2 =
   match es with
-  | [] -> failwith "fold_continue_point_glob: unexpected empty list"
+  | [] -> L.error "fold_continue_point_glob - unexpected empty list"
   | (hd, _) :: _ -> (
       match hd with
       | InsertGlobal _ ->

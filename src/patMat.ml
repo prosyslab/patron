@@ -9,7 +9,7 @@ module Sys = Stdlib.Sys
 let sort_rule_optimize ref deps =
   let get_args = function
     | Chc.Elt.FuncApply (s, args) -> (s, args)
-    | _ -> failwith "not implemented"
+    | _ -> L.error "not implemented"
   in
   let hv_common_elt rel1 rel2 =
     let name1, args1 = get_args rel1 in

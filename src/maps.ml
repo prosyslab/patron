@@ -2,6 +2,7 @@ open Core
 module Hashtbl = Stdlib.Hashtbl
 module J = Yojson.Basic.Util
 module F = Format
+module L = Logger
 
 type loc = { file : string; line : int }
 
@@ -95,7 +96,7 @@ let dump_ast_stmt x =
 let dump_ast_glob x =
   match x with
   | Cil.GFun (f, l) -> "gfun:" ^ f.Cil.svar.vname ^ Ast.s_location l
-  | _ -> failwith "dump_ast_glob"
+  | _ -> L.error "dump_ast_glob"
 
 let dump mode maps out_dir =
   dump_sym_map mode maps.sym_map out_dir;

@@ -116,7 +116,7 @@ let replace_exp_in_stmt stmt from_exp to_exp =
         |> List.rev
       in
       { stmt with skind = Cil.Instr new_instr }
-  | _ -> failwith "replace_exp_in_stmt: not implemented"
+  | _ -> L.error "replace_exp_in_stmt - not implemented"
 
 let replace_exp_in_stmts stmts parent from_exp to_exp =
   List.fold_left
@@ -177,7 +177,7 @@ let apply_action donee = function
   | D.DeleteStmt (func_name, s) -> apply_delete_stmt func_name s donee
   | D.UpdateExp (func_name, s, e1, e2) ->
       apply_update_exp func_name s e1 e2 donee
-  | _ -> failwith "apply_action:Not implemented"
+  | _ -> L.error "apply_action - Not implemented"
 
 let write_out path ast =
   let out_chan_orig = Core.Out_channel.create path in

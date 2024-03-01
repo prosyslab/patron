@@ -87,14 +87,14 @@ let delete_last_edge dst edges =
   | [] -> []
   | h :: t ->
       let dst' = I.E.dst h in
-      if String.equal dst dst' then List.rev t else failwith "delete_last_edge"
+      if String.equal dst dst' then List.rev t else L.error "delete_last_edge"
 
 let delete_first_edge src edges =
   match edges with
   | [] -> []
   | h :: t ->
       let src' = I.E.src h in
-      if String.equal src src' then t else failwith "delete_first_edge"
+      if String.equal src src' then t else L.error "delete_first_edge"
 
 let shortest_path g src dst = Dijkstra.shortest_path g.graph src dst |> fst
 

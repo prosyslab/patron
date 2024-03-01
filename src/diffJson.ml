@@ -1,5 +1,6 @@
 open Core
 open AbsDiff
+module L = Logger
 module Set = Stdlib.Set
 module StrSet = Set.Make (String)
 
@@ -60,7 +61,7 @@ let rec styp_to_sym styp =
       let struct_json = ("struct", `Bool c.cstruct) in
       let comp_json = ("comp", `Assoc [ cname_json; struct_json ]) in
       `Assoc [ comp_json ]
-  | _ -> failwith "styp_to_sym: not implemented"
+  | _ -> L.error "styp_to_sym - not implemented"
 
 let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
 
@@ -81,7 +82,7 @@ let rec mk_json_obj saction =
           `Assoc [ ("before", sexp_to_json e1); ("after", sexp_to_json e2) ] )
       in
       `Assoc [ action_json; change_json ]
-  | _ -> failwith "mk_json_obj: not implemented"
+  | _ -> L.error "mk_json_obj - not implemented"
 
 and sexps_to_json lst =
   `List
@@ -98,7 +99,7 @@ and sstmt_to_json (sstmt : abs_node) =
   let stmt =
     match node with
     | AbsStmt (s, _) -> s
-    | _ -> failwith "sstmt_to_json: undefined AbsStmt"
+    | _ -> L.error "sstmt_to_json - undefined AbsStmt"
   in
   match stmt with
   | SIf (exp1, tb1, eb1) ->
@@ -182,7 +183,7 @@ and sexp_to_json sexp =
   let exp =
     match node with
     | AbsExp (e, _) -> e
-    | _ -> failwith "sexp_to_json: undefined AbsExp"
+    | _ -> L.error "sexp_to_json - undefined AbsExp"
   in
   match exp with
   | SConst const ->
@@ -230,14 +231,14 @@ and sexp_to_json sexp =
       `Assoc [ node_json; id_json; literal_json ]
   | _ ->
       pp_absExp Format.std_formatter exp;
-      failwith "sexp_to_json: undefined AbsExp"
+      L.error "sexp_to_json - undefined AbsExp"
 
 and slval_to_json slval =
   let node = slval.ast in
   let lval =
     match node with
     | AbsLval (l, _) -> l
-    | _ -> failwith "slval_to_json: undefined AbsLval"
+    | _ -> L.error "slval_to_json - undefined AbsLval"
   in
   match lval with
   | SLNull -> `Null

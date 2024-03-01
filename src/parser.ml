@@ -19,7 +19,7 @@ let extract_str = function
   | Chc.Elt.Const z -> Z.to_string z
   | Chc.Elt.Var s -> s
   | Chc.Elt.FDNumeral s -> s
-  | _ -> failwith "find_fact_opt - not implemented"
+  | _ -> L.error "find_fact_opt - not implemented"
 
 let find_in_fact key (fact : Chc.Elt.t list list) =
   List.fold_left
@@ -181,7 +181,7 @@ let rec sexp2chc = function
   | Sexp.List ((Sexp.List (Sexp.Atom _ :: _) as hd) :: tl) ->
       Implies (List.map ~f:sexp2chc tl, sexp2chc hd)
   | Sexp.Atom s -> mk_term s
-  | _ -> failwith "Unsupported Sexp"
+  | _ -> L.error "Unsupported Sexp"
 
 let parse_chc chc_file =
   In_channel.read_lines chc_file

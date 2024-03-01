@@ -45,11 +45,7 @@ let of_lval element =
   match element with None -> NotApplicable | Some x -> Lval x
 
 let to_stmt element =
-  match element with
-  | Stmt x -> x
-  | Exp _ -> failwith "Exp"
-  | Global _ -> failwith "glob"
-  | _ -> failwith "Not a statement"
+  match element with Stmt x -> x | _ -> L.error "Not a statement"
 
 let to_lval elememt =
   match elememt with Lval l -> l | _ -> L.error "Not a lval"
@@ -86,7 +82,7 @@ let get_global_loc glob =
   | Cil.GAsm (_, loc)
   | Cil.GPragma (_, loc) ->
       loc
-  | _ -> failwith "get_global_loc error"
+  | _ -> L.error "get_global_loc error"
 
 let s_location (loc : Cil.location) =
   get_loc_filename loc ^ ":" ^ string_of_int loc.line
@@ -330,6 +326,6 @@ let extract_globs file = file.Cil.globals
 let glob2func_name glob =
   match glob with
   | Cil.GFun (func_info, _) -> func_info.svar.vname
-  | _ -> failwith "Not a function"
+  | _ -> L.error "Not a function"
 
 let eq_exp_ref e1 e2 = String.equal e1 e2 || String.equal e1 ("&" ^ e2)

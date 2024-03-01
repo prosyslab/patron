@@ -5,6 +5,7 @@ module Set = Stdlib.Set
 module J = Yojson.Basic.Util
 module H = Utils
 module D = Diff
+module L = Logger
 module StrSet = Set.Make (String)
 
 type abs_ast =
@@ -104,17 +105,17 @@ and abs_node = { ast : abs_ast; ids : StrSet.t; literal : string }
 let get_original_exp node =
   match node.ast with
   | AbsExp (_, e) -> e
-  | _ -> failwith "get_original_exp: not an expression"
+  | _ -> L.error "get_original_exp - not an expression"
 
 let get_original_lv node =
   match node.ast with
   | AbsLval (_, l) -> l
-  | _ -> failwith "get_original_lv: not a lval"
+  | _ -> L.error "get_original_lv - not a lval"
 
 let get_original_stmt node =
   match node.ast with
   | AbsStmt (_, s) -> s
-  | _ -> failwith "get_original_stmt: not a statement"
+  | _ -> L.error "get_original_stmt - not a statement"
 
 let rec pp_node fmt e =
   match e.ast with
@@ -122,7 +123,7 @@ let rec pp_node fmt e =
   | AbsStmt (s, _) -> Format.fprintf fmt "AbsStmt(%a)" pp_absstmt s
   | AbsExp (e, _) -> Format.fprintf fmt "AbsExp(%a)" pp_absExp e
   | AbsLval (l, _) -> Format.fprintf fmt "AbsLval(%a)" pp_absLval l
-  | _ -> failwith "not implemented"
+  | _ -> L.error "not implemented"
 
 and pp_node_lst fmt lst =
   Format.fprintf fmt "[";
@@ -298,8 +299,8 @@ let rec to_styp t =
       in
       SFun (to_styp t, slist, b)
   | Cil.TComp (c, _) -> SComp (to_scompinfo c)
-  | Cil.TEnum _ -> failwith "TEnum: not implemented"
-  | Cil.TBuiltin_va_list _ -> failwith "not supported"
+  | Cil.TEnum _ -> L.error "to_styp - TEnum: not implemented"
+  | Cil.TBuiltin_va_list _ -> L.error "not supported"
 
 and to_scompinfo c = { cname = c.Cil.cname; cstruct = c.cstruct }
 
@@ -362,7 +363,7 @@ and to_sunop op =
   match op with
   | Cil.LNot -> SNot
   | Cil.Neg -> SNeg
-  | _ -> failwith "not supported"
+  | _ -> L.error "not supported"
 
 and to_sconst c =
   match c with
@@ -370,14 +371,14 @@ and to_sconst c =
   | Cil.CReal (f, _, _) -> SFloatConst f
   | Cil.CChr c -> SCharConst c
   | Cil.CStr s -> SStringConst s
-  | _ -> failwith "not supported"
+  | _ -> L.error "not supported"
 
 let get_parent_fun parent_lst =
   let check_fun g = match g with Cil.GFun _ -> true | _ -> false in
   let get_fun g =
     match g with
     | Cil.GFun _ -> g
-    | _ -> failwith "get_parent_fun: not a function"
+    | _ -> L.error "get_parent_fun - not a function"
   in
   let parent_fun_cand =
     List.fold_left
@@ -388,7 +389,7 @@ let get_parent_fun parent_lst =
       ~init:[] parent_lst
   in
   if List.is_empty parent_fun_cand then
-    failwith "get_parent_fun: diff source not found"
+    L.error "get_parent_fun - diff source not found"
   else List.hd_exn parent_fun_cand
 
 let global_vars = ref []
@@ -433,7 +434,7 @@ let match_lval_id func_name dug lv =
 let extract_fun_name g =
   match g with
   | Cil.GFun (f, _) -> f.Cil.svar.Cil.vname
-  | _ -> failwith "extract_fun_name: not a function"
+  | _ -> L.error "extract_fun_name - not a function"
 
 let rec mk_abs_offset func_name dug loc_map = function
   | Cil.NoOffset -> SNoOffset
@@ -500,7 +501,7 @@ and mk_abs_exp func_name dug loc_map (e, pc) =
     | Cil.StartOf l ->
         let abs_lv_node, pc1 = mk_abs_lv func_name dug loc_map (l, pc) in
         (SStartOf abs_lv_node, pc1)
-    | _ -> failwith "match_exp: not implemented"
+    | _ -> L.error "match_exp - not implemented"
   in
   let ast = AbsExp (abs_exp, e) in
   let literal = Ast.s_exp e in
@@ -528,7 +529,7 @@ and mk_abs_instr func_name dug loc_map (i, pc) =
       let abs_exp_node, pc1 = mk_abs_exp func_name dug loc_map (e, pc) in
       let abs_exp_nodes, pc2 = mk_abs_exps func_name dug loc_map (es, pc1) in
       (SCall (None, abs_exp_node, abs_exp_nodes), pc2)
-  | _ -> failwith "match_stmt: not supported"
+  | _ -> L.error "match_stmt - not supported"
 
 and mk_abs_stmt func_name dug loc_map (s, pc) =
   let ids = match_stmt_id loc_map s.Cil.skind in
@@ -560,7 +561,7 @@ and mk_abs_stmt func_name dug loc_map (s, pc) =
         (SGoto { ids; ast; literal }, pc)
     | Cil.Break _ -> (SBreak, pc)
     | Cil.Continue _ -> (SContinue, pc)
-    | _ -> failwith "mk_abs_stmt: not implemented"
+    | _ -> L.error "mk_abs_stmt - not implemented"
   in
   let ast = AbsStmt (abs_stmt, s) in
   let literal = Ast.s_stmt s in
@@ -609,7 +610,7 @@ let mk_abs_action maps dug = function
       in
       ( SUpdateExp (abs_stmt, abs_exp1, abs_exp2),
         StrSet.union patch_comps abs_stmt.ids )
-  | _ -> failwith "mk_sdiff: not implemented"
+  | _ -> L.error "mk_sdiff - not implemented"
 
 let define_abs_diff maps ast dug diff =
   get_gvars ast;

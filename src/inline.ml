@@ -3,6 +3,7 @@ module E = Errormsg
 module H = Hashtbl
 module IH = Inthash
 module A = Alpha
+module L = Logger
 
 let ( >>> ) f g x = g (f x)
 let flip f y x = f x y
@@ -231,7 +232,7 @@ module IntraCfg = struct
     if is_callnode n g then (
       assert (List.length (succ n g) = 1);
       List.hd (succ n g))
-    else failwith "IntraCfg.returnof: given node is not a call-node"
+    else L.error "IntraCfg.returnof - given node is not a call-node"
 
   let generate_assumes g =
     try
