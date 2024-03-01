@@ -151,7 +151,7 @@ let apply_insert_stmt func_name before after ss donee =
   let vis =
     new insertStmtVisitorUnderStmt func_name very_before very_after ss
   in
-  ignore (Cil.visitCilFile vis donee);
+  Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply InsertStmt"
   else Logger.info "Successfully applied InsertStmt at %s" func_name
 
@@ -159,7 +159,7 @@ let apply_delete_stmt func_name s donee =
   Logger.info "Applying DeleteStmt...";
   is_patched := false;
   let vis = new deleteStmtfromFuncVisitor func_name s in
-  ignore (Cil.visitCilFile vis donee);
+  Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply DeleteStmt"
   else Logger.info "Successfully applied DeleteStmt at %s" func_name
 
@@ -167,7 +167,7 @@ let apply_update_exp func_name s e1 e2 donee =
   Logger.info "Applying DeleteStmt...";
   is_patched := false;
   let vis = new updateExpVisitor func_name s e1 e2 in
-  ignore (Cil.visitCilFile vis donee);
+  Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply UpdateExp"
   else Logger.info "Successfully applied UpdateExp at %s" func_name
 

@@ -322,7 +322,7 @@ class copyStmtVisitor =
 let extract_stmts file =
   cil_stmts := [];
   let vis = new copyStmtVisitor in
-  ignore (Cil.visitCilFile vis file);
+  Cil.visitCilFile vis file;
   !cil_stmts
 
 let extract_globs file = file.Cil.globals

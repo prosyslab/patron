@@ -179,7 +179,7 @@ let extract_target_func_stmt_lst file target =
   stmt_lst := [];
   target_func := target;
   let vis = new functionVisitor in
-  ignore (Cil.visitCilFile vis file);
+  Cil.visitCilFile vis file;
   !stmt_lst
 
 let extract_target_func ast target =
