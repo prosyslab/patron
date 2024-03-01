@@ -295,13 +295,11 @@ let rec find_eq_stmt_in_tl depth stmt1 stmts acc =
       if Ast.eq_stmt stmt1.Cil.skind hd.Cil.skind then hd :: acc |> List.rev
       else find_eq_stmt_in_tl depth stmt1 tl (hd :: acc)
 
-let rec mk_diff_stmt code func_name prnt_brnch depth acc_left acc_right stmt_lst
-    =
-  let prev_node = List.last acc_left |> Ast.of_stmt in
+let rec mk_diff_stmt code func_name prnt_brnch depth before after stmt_lst =
+  let prev_node = List.last before |> Ast.of_stmt in
   let env = mk_diff_env depth prnt_brnch prev_node in
   match code with
-  | Insertion ->
-      [ (InsertStmt (func_name, acc_left, stmt_lst, acc_right), env) ]
+  | Insertion -> [ (InsertStmt (func_name, before, stmt_lst, after), env) ]
   | Deletion ->
       List.map ~f:(fun stmt -> (DeleteStmt (func_name, stmt), env)) stmt_lst
   | _ -> L.error "mk_diff_stmt - unexpected code"
@@ -328,9 +326,8 @@ and fold_continue_point_stmt func_name prnt_brnch depth h1 h2 tl1 tl2 es acc =
 and compute_right_siblings_stmt diffs rest =
   List.slice rest (List.length diffs) (List.length rest)
 
-and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs
-    =
-  let prev_node = List.last left_sibs |> Ast.of_stmt in
+and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
+  let prev_node = List.last before |> Ast.of_stmt in
   let inserted_stmts = find_eq_stmt_in_tl depth hd1 tl2 [] in
   if List.is_empty inserted_stmts then
     let deleted_stmts = find_eq_stmt_in_tl depth hd2 tl1 [] in
@@ -338,27 +335,26 @@ and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs
       let env = mk_diff_env depth prnt_brnch prev_node in
       [
         (DeleteStmt (func_name, hd1), env);
-        (InsertStmt (func_name, left_sibs, [ hd2 ], tl1), env);
+        (InsertStmt (func_name, before, [ hd2 ], tl1), env);
       ]
     else
       let deleted_stmts = hd1 :: List.drop_last_exn deleted_stmts in
       let right_siblings = compute_right_siblings_stmt deleted_stmts tl1 in
-      mk_diff_stmt Deletion func_name prnt_brnch depth left_sibs right_siblings
+      mk_diff_stmt Deletion func_name prnt_brnch depth before right_siblings
         deleted_stmts
   else
     (* prolly have to count the #of delete stmt for right sib *)
     hd2 :: List.drop_last_exn inserted_stmts
-    |> mk_diff_stmt Insertion func_name prnt_brnch depth left_sibs (hd1 :: tl1)
+    |> mk_diff_stmt Insertion func_name prnt_brnch depth before (hd1 :: tl1)
 
-and compute_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs =
+and compute_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
   match (hd1.Cil.skind, hd2.Cil.skind) with
   | Cil.Instr i1, Cil.Instr i2 ->
       if Ast.eq_instr i1 i2 then
         let instr1, instr2 = (List.hd_exn i1, List.hd_exn i2) in
         extract_instr func_name hd1 depth instr1 instr2
       else
-        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2
-          left_sibs
+        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before
   | Cil.If (c1, t_blck1, eblck1, _), Cil.If (c2, t_blck2, eblck2, _) ->
       let exp_diff =
         if Ast.eq_exp c1 c2 then []
@@ -367,76 +363,71 @@ and compute_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 left_sibs =
       if Ast.eq_stmt hd1.Cil.skind hd2.Cil.skind then
         exp_diff
         @ extract_block func_name (TrueBranch :: prnt_brnch) (depth + 1) t_blck1
-            t_blck2
+            t_blck2 before
         @ extract_block func_name
             (FalseBranch :: prnt_brnch)
-            (depth + 1) eblck1 eblck2
+            (depth + 1) eblck1 eblck2 before
       else
-        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2
-          left_sibs
+        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before
   | Cil.Loop (blk1, _, _, _), Cil.Loop (blk2, _, _, _) ->
       if Ast.eq_stmt hd1.Cil.skind hd2.Cil.skind then
-        extract_block func_name prnt_brnch (depth + 1) blk1 blk2
+        extract_block func_name prnt_brnch (depth + 1) blk1 blk2 before
       else
-        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2
-          left_sibs
+        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before
   | Cil.Return (Some e1, _), Cil.Return (Some e2, _) ->
       if Ast.eq_stmt hd1.skind hd2.skind then []
       else get_followup_diff_exp Update func_name hd1 0 e1 e2 [] [] []
   | Cil.Return (None, _), Cil.Return (None, _) -> []
   | Cil.Block b1, Cil.Block b2 ->
       if Ast.eq_stmt hd1.Cil.skind hd2.Cil.skind then
-        extract_block func_name prnt_brnch (depth + 1) b1 b2
+        extract_block func_name prnt_brnch (depth + 1) b1 b2 before
       else
-        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2
-          left_sibs
+        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before
   | Cil.Goto (dest1, _), Cil.Goto (dest2, _) ->
       if Ast.eq_stmt !dest1.Cil.skind !dest2.Cil.skind then []
       else
-        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2
-          left_sibs
+        get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before
   | Cil.TryExcept _, Cil.TryExcept _ | Cil.TryFinally _, Cil.TryFinally _ -> []
   | _ ->
-      get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2
-        left_sibs
+      get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before
 
 and decide_next_step_stmt func_name prnt_brnch depth diff hd1 hd2 tl1 tl2
-    new_l_sibs l_sibs =
+    new_before before =
   match diff with
-  | [] -> fold_stmts2 func_name prnt_brnch depth tl1 tl2 new_l_sibs
+  | [] -> fold_stmts2 func_name prnt_brnch depth tl1 tl2 new_before
   | (h, _) :: t -> (
       if List.is_empty t then
         diff
         @ fold_continue_point_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2
-            diff l_sibs
+            diff before
       else
         match (h, List.hd_exn t |> get_diff) with
         | InsertStmt _, DeleteStmt _ ->
-            diff @ fold_stmts2 func_name prnt_brnch depth tl1 tl2 l_sibs
+            diff @ fold_stmts2 func_name prnt_brnch depth tl1 tl2 before
         | _ ->
             diff
             @ fold_continue_point_stmt func_name prnt_brnch depth hd1 hd2 tl1
-                tl2 diff l_sibs)
+                tl2 diff before)
 
-and fold_stmts2 func_name prnt_brnch depth stmts1 stmts2 left_sibs =
-  let prev_node = List.last left_sibs |> Ast.of_stmt in
+and fold_stmts2 func_name prnt_brnch depth stmts1 stmts2 before =
+  let prev_node = List.last before |> Ast.of_stmt in
   match (stmts1, stmts2) with
   | [], [] -> []
   | s1 :: ss1, s2 :: ss2 ->
-      let updated_left_sibs = List.rev left_sibs |> List.cons s1 |> List.rev in
+      let updated_before = List.rev before |> List.cons s1 |> List.rev in
       let es =
-        compute_diff_stmt func_name prnt_brnch depth s1 s2 ss1 ss2 left_sibs
+        compute_diff_stmt func_name prnt_brnch depth s1 s2 ss1 ss2 before
       in
       decide_next_step_stmt func_name prnt_brnch depth es s1 s2 ss1 ss2
-        updated_left_sibs left_sibs
+        updated_before before
   | [], lst ->
       let env = mk_diff_env depth prnt_brnch prev_node in
-      [ (InsertStmt (func_name, left_sibs, lst, []), env) ]
+      [ (InsertStmt (func_name, before, lst, []), env) ]
   | lst, [] ->
       let env = mk_diff_env depth prnt_brnch prev_node in
       List.map ~f:(fun stmt -> (DeleteStmt (func_name, stmt), env)) lst
 
-and extract_block func_name prnt_brnch depth block1 block2 =
+and extract_block func_name prnt_brnch depth block1 block2 before =
   let remove_empty_instrs stmts =
     List.fold_left
       ~f:(fun acc x -> if Ast.is_empty_instr x then acc else x :: acc)
@@ -445,7 +436,7 @@ and extract_block func_name prnt_brnch depth block1 block2 =
   in
   let stmts1 = remove_empty_instrs block1.Cil.bstmts in
   let stmts2 = remove_empty_instrs block2.Cil.bstmts in
-  fold_stmts2 func_name prnt_brnch depth stmts1 stmts2 []
+  fold_stmts2 func_name prnt_brnch depth stmts1 stmts2 before
 
 let process_cil_glob_list lst =
   List.fold_left ~f:(fun acc glob -> Ast.Global glob :: acc) ~init:[] lst
@@ -516,7 +507,7 @@ and compute_diff_glob depth glob1 glob2 tl1 tl2 left_sbis =
       if Ast.eq_global glob1 glob2 then
         let depth = depth + 1 in
         extract_block func_info1.svar.vname [] depth func_info1.sbody
-          func_info2.sbody
+          func_info2.sbody []
       else get_followup_diff_glob depth glob1 glob2 tl1 tl2 left_sbis
   | Cil.GVarDecl _, Cil.GVarDecl _ ->
       if Ast.eq_global glob1 glob2 then []
