@@ -58,12 +58,14 @@ let pp_env fmt env =
 let lst2strlines to_string =
   List.fold_left ~f:(fun s a -> s ^ "\n" ^ to_string a) ~init:""
 
-let pp_diff fmt action =
+let pp_diff ~simple fmt action =
   match action with
   | InsertGlobal (before, gs, after) ->
       F.fprintf fmt "\tInsertGlobal: \n";
-      F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_glob before);
-      F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_glob after);
+      if not simple then
+        F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_glob before);
+      if not simple then
+        F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_glob after);
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_glob gs)
   | DeleteGlobal g ->
@@ -73,8 +75,10 @@ let pp_diff fmt action =
   | InsertStmt (func, before, ss, after) ->
       F.fprintf fmt "\tInsertStmt: \n";
       F.fprintf fmt "Function: %s\n" func;
-      F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_stmt before);
-      F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_stmt after);
+      if not simple then
+        F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_stmt before);
+      if not simple then
+        F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_stmt after);
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_stmt ss)
   | DeleteStmt (func, s) ->
@@ -86,8 +90,10 @@ let pp_diff fmt action =
       F.fprintf fmt "\tInsertExp: \n";
       F.fprintf fmt "Function: %s\n" func;
       F.fprintf fmt "Stmt:%s\n" (Ast.s_stmt s);
-      F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_exp before);
-      F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_exp after);
+      if not simple then
+        F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_exp before);
+      if not simple then
+        F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_exp after);
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_exp es)
   | DeleteExp (func, s, e) ->
@@ -131,7 +137,7 @@ let pp_edit_script fmt es =
       let diff, env = x in
       F.fprintf fmt "============diff-%d============\n" i;
       F.fprintf fmt "Meta Data:\n%a\n\n" pp_env env;
-      F.fprintf fmt "\n%a\n" pp_diff diff;
+      F.fprintf fmt "\n%a\n" (pp_diff ~simple:true) diff;
       F.fprintf fmt "================================\n")
     es
 
@@ -558,9 +564,13 @@ and fold_globals2 depth donor_gobals patch_globals left_sibs =
 
 let compare = compare
 
-let define_diff buggy_file patch_file =
+let define_diff out_dir buggy_file patch_file =
   let globs1, globs2 =
     ( H.remove_comments buggy_file.Cil.globals,
       H.remove_comments patch_file.Cil.globals )
   in
-  fold_globals2 0 globs1 globs2 []
+  let diff = fold_globals2 0 globs1 globs2 [] in
+  let oc = Out_channel.create (Filename.concat out_dir "diff.txt") in
+  let fmt = F.formatter_of_out_channel oc in
+  pp_edit_script fmt diff;
+  diff

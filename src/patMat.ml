@@ -135,7 +135,7 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     else Parser.parse_ast donee_dir inline_funcs
   in
   L.info "Constructing AST diff...";
-  let ast_diff = Diff.define_diff buggy_ast patch_ast in
+  let ast_diff = Diff.define_diff out_dir buggy_ast patch_ast in
   let facts, (src, snk, alarm_exps, alarm_lvs), maps =
     Parser.make_facts buggy_dir true_alarm buggy_ast out_dir
   in
