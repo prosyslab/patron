@@ -98,7 +98,7 @@ let delete_first_edge src edges =
 
 let shortest_path g src dst = Dijkstra.shortest_path g.graph src dst |> fst
 
-let edges2lst edge_lst =
+let path2lst edge_lst =
   List.fold_left
     ~f:(fun l edge ->
       let src, dst = (I.E.src edge, I.E.dst edge) in
@@ -117,11 +117,7 @@ let path2rels =
 
 let paths2rels =
   List.fold_left
-    ~f:(fun rels path ->
-      List.fold_left
-        ~f:(fun rels edge ->
-          Chc.add (Chc.Elt.duedge (I.E.src edge) (I.E.dst edge)) rels)
-        ~init:rels path)
+    ~f:(fun rels path -> path2rels path |> Chc.union rels)
     ~init:Chc.empty
 
 let mapping_func_lvmap lval_map v lvs g =
@@ -186,7 +182,12 @@ let of_facts lval_map cmd_map rels =
       let inter = Chc.inter src_info.defs dst_info.uses in
       let union = Chc.union src_info.defs dst_info.uses in
       (* NOTE: hack for skip node (ENTRY, EXIT, ReturnNode, ...) *)
-      let lvs = if Chc.is_empty inter then union else inter in
-      if is_skip_node cmd_map src then mk_dumap src g''.def_map lvs;
+      let lvs =
+        if
+          Chc.is_empty inter
+          && (is_skip_node cmd_map src || is_skip_node cmd_map dst)
+        then union
+        else inter
+      in
       add_edge_e (src, lvs, dst) g'')
     du_rels dug

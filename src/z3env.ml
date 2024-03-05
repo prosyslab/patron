@@ -32,10 +32,10 @@ type t = {
   salloc : Z3.FuncDecl.func_decl;
   assume : Z3.FuncDecl.func_decl;
   lval_exp : Z3.FuncDecl.func_decl;
-  real_lv : Z3.FuncDecl.func_decl;
   var : Z3.FuncDecl.func_decl;
   index : Z3.FuncDecl.func_decl;
   deref : Z3.FuncDecl.func_decl;
+  field : Z3.FuncDecl.func_decl;
   addrof : Z3.FuncDecl.func_decl;
   call : Z3.FuncDecl.func_decl;
   libcall : Z3.FuncDecl.func_decl;
@@ -96,10 +96,10 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.salloc;
   Z3.Fixedpoint.register_relation solver env.assume;
   Z3.Fixedpoint.register_relation solver env.lval_exp;
-  Z3.Fixedpoint.register_relation solver env.real_lv;
   Z3.Fixedpoint.register_relation solver env.var;
   Z3.Fixedpoint.register_relation solver env.index;
   Z3.Fixedpoint.register_relation solver env.deref;
+  Z3.Fixedpoint.register_relation solver env.field;
   Z3.Fixedpoint.register_relation solver env.addrof;
   Z3.Fixedpoint.register_relation solver env.call;
   Z3.Fixedpoint.register_relation solver env.libcall;
@@ -139,9 +139,9 @@ let fact_files =
     "DUPath.facts";
     "LibCallExp.facts";
     "LvalExp.facts";
-    "RealLv.facts";
     "Index.facts";
     "Mem.facts";
+    "Field.facts";
     "AddrOf.facts";
     "Return.facts";
     "Set.facts";
@@ -208,9 +208,6 @@ let mk_env () =
   let lval_exp =
     Z3.FuncDecl.mk_func_decl_s z3ctx "LvalExp" [ expr; lval ] boolean_sort
   in
-  let real_lv =
-    Z3.FuncDecl.mk_func_decl_s z3ctx "RealLv" [ lval ] boolean_sort
-  in
   let var =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Var" [ lval; identifier ] boolean_sort
   in
@@ -219,6 +216,9 @@ let mk_env () =
   in
   let deref =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Mem" [ lval; expr ] boolean_sort
+  in
+  let field =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Field" [ lval; lval ] boolean_sort
   in
   let addrof =
     Z3.FuncDecl.mk_func_decl_s z3ctx "AddrOf" [ expr; lval ] boolean_sort
@@ -340,10 +340,10 @@ let mk_env () =
       salloc;
       assume;
       lval_exp;
-      real_lv;
       var;
       index;
       deref;
+      field;
       addrof;
       call;
       libcall;

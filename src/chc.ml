@@ -43,6 +43,7 @@ module Elt = struct
     | Implies of t list * t
 
   let numer s = FDNumeral s
+  let to_sym = function FDNumeral s -> s | _ -> L.error "to_sym - wrong chc"
 
   let compare a b =
     match (a, b) with
@@ -182,7 +183,6 @@ module Elt = struct
     | Implies (cons, hd) -> Sexp.List (chc2sexp hd :: List.map ~f:chc2sexp cons)
 
   let duedge src dst = FuncApply ("DUEdge", [ numer src; numer dst ])
-  let real_lv lv = FuncApply ("RealLv", [ numer lv ])
   let is_rel = function FuncApply _ -> true | _ -> false
   let is_rule = function Implies _ -> true | _ -> false
   let is_duedge = function FuncApply ("DUEdge", _) -> true | _ -> false
@@ -465,10 +465,10 @@ let rels =
     ("DUEdge", [ node; node ]);
     ("Index", [ lval; lval; expr ]);
     ("Mem", [ lval; expr ]);
+    ("Field", [ lval; lval ]);
     ("AddrOf", [ expr; lval ]);
     ("LibCallExp", [ expr; expr; arg_list ]);
     ("LvalExp", [ expr; lval ]);
-    ("RealLv", [ lval ]);
     ("Return", [ node; expr ]);
     ("SAllocExp", [ expr; str_literal ]);
     ("Skip", [ node ]);
@@ -612,6 +612,9 @@ let from_node_to_ast ?(leaf = empty) terms = function
   | FuncApply ("Mem", [ lv; e ]) ->
       if (not (mem lv leaf)) && mem lv terms then (true, add e terms)
       else (false, terms)
+  | FuncApply ("Field", [ l1; l2 ]) ->
+      if (not (mem l1 leaf)) && mem l1 terms then (true, add l2 terms)
+      else (false, terms)
   | FuncApply ("CallExp", [ e; _; arg_list ])
   | FuncApply ("LibCallExp", [ e; _; arg_list ]) ->
       if (not (mem e leaf)) && mem e terms then (true, add arg_list terms)
@@ -621,6 +624,9 @@ let from_node_to_ast ?(leaf = empty) terms = function
       else (false, terms)
   | FuncApply ("SAllocExp", [ e; _ ]) ->
       if (not (mem e leaf)) && mem e terms then (true, terms) else (false, terms)
+  | FuncApply ("EvalLv", [ n; lv; _ ]) ->
+      if (not (mem lv leaf)) && mem n terms then (true, add lv terms)
+      else (false, terms)
   | _ -> (false, terms)
 
 let find_defs rels =
@@ -739,12 +745,31 @@ let from_ast_to_node terms = function
       else (false, terms)
   | FuncApply ("Mem", [ lv; e ]) ->
       if mem e terms then (true, add lv terms) else (false, terms)
+  | FuncApply ("Field", [ l1; l2 ]) ->
+      if mem l2 terms then (true, add l1 terms) else (false, terms)
   | FuncApply ("CallExp", [ e; _; arg_list ])
   | FuncApply ("LibCallExp", [ e; _; arg_list ]) ->
       if mem arg_list terms then (true, add e terms) else (false, terms)
   | FuncApply ("AllocExp", [ e; size_e ]) ->
       if mem size_e terms then (true, add e terms) else (false, terms)
+  | FuncApply ("EvalLv", [ n; lv; loc ]) ->
+      if mem loc terms then (true, add n terms |> add lv) else (false, terms)
   | _ -> (false, terms)
+
+let find_loc lv chc =
+  filter_map
+    (function
+      | Elt.FuncApply ("EvalLv", [ _; l; loc ]) when Elt.equal lv l -> Some loc
+      | _ -> None)
+    chc
+  |> choose
+
+let find_evallv_nodes loc chc =
+  filter_map
+    (function
+      | Elt.FuncApply ("EvalLv", [ n; _; l ]) when Elt.equal loc l -> Some n
+      | _ -> None)
+    chc
 
 let filter_by_node =
   List.filter ~f:(fun s ->

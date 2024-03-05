@@ -12,10 +12,10 @@ let match_func z3env f =
   | "AllocExp" -> z3env.alloc
   | "SAllocExp" -> z3env.salloc
   | "LvalExp" -> z3env.lval_exp
-  | "RealLv" -> z3env.real_lv
   | "Var" -> z3env.var
   | "Index" -> z3env.index
   | "Mem" -> z3env.deref
+  | "Field" -> z3env.field
   | "AddrOf" -> z3env.addrof
   | "CallExp" -> z3env.call
   | "LibCallExp" -> z3env.libcall

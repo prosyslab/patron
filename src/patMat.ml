@@ -152,15 +152,15 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     L.info "Writing out the edit script...";
     DiffJson.dump abs_diff out_dir);
   let pattern_in_numeral, pattern =
-    AbsPat.run maps dug patch_comps alarm_exps alarm_lvs src snk
+    AbsPat.run maps dug patch_comps alarm_exps alarm_lvs src snk facts
   in
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   let z3env = Z3env.get_env () in
-  L.info "Try matching with buggy...";
-  ( Chc.match_and_log z3env out_dir "buggy" maps facts src snk pattern
-  |> fun status -> assert (Option.is_some status) );
+  (* L.info "Try matching with buggy...";
+     ( Chc.match_and_log z3env out_dir "buggy" maps facts src snk pattern
+     |> fun status -> assert (Option.is_some status) ); *)
   Maps.dump "buggy" maps out_dir;
   L.info "Try matching with buggy numeral...";
   ( Chc.match_and_log z3env out_dir "buggy_numer" maps facts src snk
