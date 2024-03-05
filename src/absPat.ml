@@ -24,7 +24,6 @@ let def_from_skip_nodes dug lv_term snk def_skip_nodes =
   |> Chc.union ast_rels
 
 let find_rels_by_loc dug snk loc facts =
-  L.info "find_rels_by_loc - loc:\n%a" Chc.Elt.pp loc;
   let cand_nodes = Chc.find_evallv_nodes loc facts in
   let n_path n np =
     let path = Dug.shortest_path dug (Chc.Elt.to_sym n) snk in
@@ -37,22 +36,17 @@ let find_rels_by_loc dug snk loc facts =
   let locs = Chc.singleton loc in
   let node_sym = Chc.Elt.to_sym selected_node in
   let ast_rels = collect_ast_rels dug node_sym locs in
-  L.info "find_rels_by_loc - path: %s"
-    (Dug.path2lst selected_path |> String.concat ~sep:", ");
   (Dug.path2rels selected_path |> Chc.union ast_rels, node_sym)
 
 let def_from_normal_node dug lv_term loc used_node node rels_acc =
-  L.info "def_from_normal_node - lv: %s" (Chc.Elt.to_sym lv_term);
   let terms = Chc.singleton loc in
   let ast_rels = collect_ast_rels dug node terms in
   let find_path_rels succ path_rels =
-    if Hashtbl.find dug.label (node, succ) |> Chc.mem lv_term then (
+    if Hashtbl.find dug.label (node, succ) |> Chc.mem lv_term then
       let path = Dug.shortest_path dug succ used_node in
-      L.info "def_from_normal_node - path: %s"
-        (Dug.path2lst path |> List.cons node |> String.concat ~sep:", ");
       Dug.path2rels path
       |> Chc.add (Chc.Elt.duedge node succ)
-      |> Chc.union path_rels)
+      |> Chc.union path_rels
     else path_rels
   in
   Dug.fold_succ find_path_rels dug node rels_acc |> Chc.union ast_rels
@@ -79,20 +73,22 @@ let find_rels_by_lv dug cmd_map snk lv facts =
 
 let is_lv comp = String.split ~on:'-' comp |> List.hd_exn |> String.equal "Lval"
 
+let log_lv maps c =
+  if is_lv c then
+    Hashtbl.find maps.Maps.ast_map c
+    |> Ast.to_lval |> Ast.s_lv |> F.sprintf "%s (%s)" c
+  else F.sprintf "%s" c
+
+let patch_comps2str maps patch_comps =
+  List.map ~f:(log_lv maps) patch_comps |> String.concat ~sep:", "
+
+let terms2str terms =
+  terms |> Chc.to_list |> Chc.Elt.numers2strs |> String.concat ~sep:", "
+
 let abs_by_comps maps dug patch_comps snk alarm_exps alarm_lvs facts =
-  L.info "patch_comps: %s"
-    (List.map
-       ~f:(fun c ->
-         if is_lv c then
-           F.sprintf "%s (%s)" c
-             (Hashtbl.find maps.Maps.ast_map c |> Ast.to_lval |> Ast.s_lv)
-         else c)
-       patch_comps
-    |> String.concat ~sep:", ");
-  L.info "alarm_exps: %s"
-    (alarm_exps |> Chc.to_list |> Chc.Elt.numers2strs |> String.concat ~sep:", ");
-  L.info "alarm_lvs: %s"
-    (alarm_lvs |> Chc.to_list |> Chc.Elt.numers2strs |> String.concat ~sep:", ");
+  patch_comps2str maps patch_comps |> L.info "patch_comps: %s";
+  terms2str alarm_exps |> L.info "alarm_exps: %s";
+  terms2str alarm_lvs |> L.info "alarm_lvs: %s";
   (* TODO: use alarm_lvs and EvalLv for finding real DUPath from patch to sink *)
   let collected_by_patch_comps =
     List.fold_left
