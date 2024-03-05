@@ -62,10 +62,10 @@ let pp_diff ~simple fmt action =
   match action with
   | InsertGlobal (before, gs, after) ->
       F.fprintf fmt "\tInsertGlobal: \n";
-      if not simple then
-        F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_glob before);
-      if not simple then
-        F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_glob after);
+      if simple then F.fprintf fmt "# of Before:%i\n" (List.length before)
+      else F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_glob before);
+      if simple then F.fprintf fmt "# of After:%i\n" (List.length after)
+      else F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_glob after);
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_glob gs)
   | DeleteGlobal g ->
@@ -75,10 +75,10 @@ let pp_diff ~simple fmt action =
   | InsertStmt (func, before, ss, after) ->
       F.fprintf fmt "\tInsertStmt: \n";
       F.fprintf fmt "Function: %s\n" func;
-      if not simple then
-        F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_stmt before);
-      if not simple then
-        F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_stmt after);
+      if simple then F.fprintf fmt "# of Before:%i\n" (List.length before)
+      else F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_stmt before);
+      if simple then F.fprintf fmt "# of After:%i\n" (List.length after)
+      else F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_stmt after);
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_stmt ss)
   | DeleteStmt (func, s) ->
@@ -90,10 +90,10 @@ let pp_diff ~simple fmt action =
       F.fprintf fmt "\tInsertExp: \n";
       F.fprintf fmt "Function: %s\n" func;
       F.fprintf fmt "Stmt:%s\n" (Ast.s_stmt s);
-      if not simple then
-        F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_exp before);
-      if not simple then
-        F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_exp after);
+      if simple then F.fprintf fmt "# of Before:%i\n" (List.length before)
+      else F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_exp before);
+      if simple then F.fprintf fmt "# of After:%i\n" (List.length after)
+      else F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_exp after);
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_exp es)
   | DeleteExp (func, s, e) ->
@@ -564,4 +564,6 @@ let define_diff out_dir buggy_file patch_file =
   let oc = Out_channel.create (Filename.concat out_dir "diff.txt") in
   let fmt = F.formatter_of_out_channel oc in
   pp_edit_script fmt diff;
+  F.pp_print_flush fmt ();
+  Out_channel.close oc;
   diff

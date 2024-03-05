@@ -67,10 +67,16 @@ let sunop_to_sym op = match op with SNot -> "LNot" | SNeg -> "Neg"
 
 let rec mk_json_obj saction =
   match saction with
-  | SInsertStmt (_, ss, _) ->
+  | SInsertStmt (before, ss, after) ->
       let action_json = ("action", `String "insert_stmt") in
+      let bn_ids = AbsDiff.collect_node_id before in
+      let bn_id_lst = StrSet.fold (fun id l -> `String id :: l) bn_ids [] in
+      let before_json = ("before", `List bn_id_lst) in
+      let an_ids = AbsDiff.collect_node_id after in
+      let an_id_lst = StrSet.fold (fun id l -> `String id :: l) an_ids [] in
+      let after_json = ("after", `List an_id_lst) in
       let change_json = ("change", `List (List.map ~f:sstmt_to_json ss)) in
-      `Assoc [ action_json; change_json ]
+      `Assoc [ action_json; before_json; change_json; after_json ]
   | SDeleteStmt s ->
       let action_json = ("action", `String "delete_stmt") in
       let change_json = ("change", sstmt_to_json s) in
