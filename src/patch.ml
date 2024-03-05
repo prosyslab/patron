@@ -17,10 +17,10 @@ let partition_using_before before stmts =
         else (blst, found, stmt :: alst))
       ~init:([], false, []) stmts
   in
-  (List.rev blst, List.rev alst)
+  (List.rev blst, alst)
 
 let insert_internal after patch stmts =
-  if Option.is_none after then stmts @ patch
+  if Option.is_none after then patch @ stmts
   else
     let after = Option.value_exn after in
     let new_stmts, patched =
