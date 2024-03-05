@@ -5,12 +5,25 @@ module F = Format
 module L = Logger
 
 type loc = { file : string; line : int }
+type cmd = Set | Call | Return | Assume of bool | Skip | Etc
+
+let equal_cmd a b =
+  match (a, b) with
+  | Set, Set
+  | Call, Call
+  | Return, Return
+  | Assume _, Assume _
+  | Skip, Skip
+  | Etc, _
+  | _, Etc ->
+      true
+  | _ -> false
 
 type t = {
   sym_map : (string, Z3.Expr.expr) Hashtbl.t; (* symbol -> z3 expr *)
   numeral_map : (int, string) Hashtbl.t; (* z3 numeral -> symbol *)
   loc_map : (loc, string) Hashtbl.t; (* location -> node symbol *)
-  cmd_map : (string, string) Hashtbl.t; (* node symbol -> cmd (skip, ...) *)
+  cmd_map : (string, cmd) Hashtbl.t; (* node symbol -> cmd (skip, ...) *)
   exp_map : (string, string) Hashtbl.t; (* exp symbol -> exp literal *)
   exp_rev_map : (string, string) Hashtbl.t; (* exp literal -> exp symbol *)
   lval_map : (string, string) Hashtbl.t; (* lval symbol -> lval literal *)

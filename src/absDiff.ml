@@ -573,6 +573,7 @@ and mk_abs_stmts func_name dug loc_map (ss, patch_comps) =
       let abs_s, pc' = mk_abs_stmt func_name dug loc_map (s, pc) in
       (abs_s :: abs_ss, pc'))
     ~init:([], patch_comps) ss
+  |> fun (rss, pc) -> (List.rev rss, pc)
 
 let mk_dummy_abs_stmt loc_map stmt =
   let ids = match_stmt_id loc_map stmt.Cil.skind in

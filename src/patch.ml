@@ -43,23 +43,40 @@ let insert_ss_into_stmts before after patch stmts =
       blst @ [ { before with skind = new_stmt } ] @ alst
   | Cil.If (e, tb, fb, loc) ->
       (* TODO: check true branch false branch *)
-      let new_b_stmts = insert_internal after patch (List.rev tb.bstmts) in
-      let new_stmt = Cil.If (e, { tb with bstmts = new_b_stmts }, fb, loc) in
-      blst @ [ { before with skind = new_stmt } ] @ alst
+      if List.is_empty tb.bstmts then
+        let new_b_stmts = insert_internal after patch (List.rev tb.bstmts) in
+        let new_stmt = Cil.If (e, { tb with bstmts = new_b_stmts }, fb, loc) in
+        blst @ [ { before with skind = new_stmt } ] @ alst
+      else
+        let new_b_stmts = insert_internal after patch (List.rev fb.bstmts) in
+        let new_stmt = Cil.If (e, tb, { fb with bstmts = new_b_stmts }, loc) in
+        blst @ [ { before with skind = new_stmt } ] @ alst
   | _ ->
       let new_alst = insert_internal after patch (List.rev alst) in
       blst @ [ before ] @ new_alst
 
-class insertStmtVisitorUnderStmt target_func before after ss =
+let is_in_stmt s b = List.exists ~f:(fun stmt -> phys_equal s stmt) b.Cil.bstmts
+
+class insertStmtFuncVisitor before after ss =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vblock b =
+      if is_in_stmt before b then (
+        let new_stmts = insert_ss_into_stmts before after ss b.bstmts in
+        is_patched := true;
+        ChangeTo { b with bstmts = new_stmts })
+      else DoChildren
+  end
+
+class insertStmtVisitor target_func before after ss =
   object
     inherit Cil.nopCilVisitor
 
     method! vfunc (f : Cil.fundec) =
-      if String.equal f.svar.vname target_func then (
-        let stmts = f.sbody.bstmts in
-        let new_stmts = insert_ss_into_stmts before after ss stmts in
-        is_patched := true;
-        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } })
+      if String.equal f.svar.vname target_func then
+        ChangeTo
+          (Cil.visitCilFunction (new insertStmtFuncVisitor before after ss) f)
       else DoChildren
   end
 
@@ -142,34 +159,34 @@ class updateExpVisitor target_func parent from_exp to_exp =
   end
 
 let apply_insert_stmt func_name before after ss donee =
-  Logger.info "Applying InsertStmt...";
+  L.info "Applying InsertStmt...";
   is_patched := false;
+  List.iter ~f:(fun s -> L.info "before:\n%s" (Ast.s_stmt s)) before;
   if List.is_empty before then
     L.error "apply_insert_stmt - cannot be patched because before list is empty";
   let very_before = List.last_exn before in
+  L.info "very_before:\n%s" (Ast.s_stmt very_before);
   let very_after = List.hd after in
-  let vis =
-    new insertStmtVisitorUnderStmt func_name very_before very_after ss
-  in
+  let vis = new insertStmtVisitor func_name very_before very_after ss in
   Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply InsertStmt"
-  else Logger.info "Successfully applied InsertStmt at %s" func_name
+  else L.info "Successfully applied InsertStmt at %s" func_name
 
 let apply_delete_stmt func_name s donee =
-  Logger.info "Applying DeleteStmt...";
+  L.info "Applying DeleteStmt...";
   is_patched := false;
   let vis = new deleteStmtfromFuncVisitor func_name s in
   Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply DeleteStmt"
-  else Logger.info "Successfully applied DeleteStmt at %s" func_name
+  else L.info "Successfully applied DeleteStmt at %s" func_name
 
 let apply_update_exp func_name s e1 e2 donee =
-  Logger.info "Applying DeleteStmt...";
+  L.info "Applying DeleteStmt...";
   is_patched := false;
   let vis = new updateExpVisitor func_name s e1 e2 in
   Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply UpdateExp"
-  else Logger.info "Successfully applied UpdateExp at %s" func_name
+  else L.info "Successfully applied UpdateExp at %s" func_name
 
 let apply_action donee = function
   | D.InsertStmt (func_name, before, ss, after) ->

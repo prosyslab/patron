@@ -160,8 +160,9 @@ let process_vertex lval_map v r g =
     (info_of_v g'' v, g'')
 
 let is_skip_node cmd_map n =
-  let cmd = Hashtbl.find cmd_map n in
-  List.exists ~f:(String.equal cmd) [ "skip"; "assume" ]
+  match Hashtbl.find cmd_map n with
+  | Maps.Skip | Maps.Assume _ -> true
+  | _ -> false
 
 let of_facts lval_map cmd_map rels =
   let module NodeSet = Set.Make (String) in

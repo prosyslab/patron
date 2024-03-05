@@ -96,7 +96,7 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast out_dir
     Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
     L.info "Matching with %s is done" target_alarm;
     let target_diff =
-      EditFunction.translate target_maps.ast_map out_dir target_alarm diff
+      EditFunction.translate target_maps out_dir target_alarm diff
     in
     L.info "Applying patch on the target file ...";
     let out_file_orig =
@@ -158,9 +158,6 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
   let z3env = Z3env.get_env () in
-  (* L.info "Try matching with buggy...";
-     ( Chc.match_and_log z3env out_dir "buggy" maps facts src snk pattern
-     |> fun status -> assert (Option.is_some status) ); *)
   Maps.dump "buggy" maps out_dir;
   L.info "Try matching with buggy numeral...";
   ( Chc.match_and_log z3env out_dir "buggy_numer" maps facts src snk

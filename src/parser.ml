@@ -195,13 +195,13 @@ let add_to_ast_map ast_map key of_cil cil_obj =
 let find_node_id loc_map loc =
   let file = String.split ~on:'/' loc.Cil.file |> List.last_exn in
   let line = loc.line in
-  Hashtbl.find_opt loc_map { Maps.file; line }
+  Hashtbl.find_all loc_map { Maps.file; line }
 
-let map_node_cil maps loc of_cil cil_obj =
-  let dug_id_opt = find_node_id maps.Maps.loc_map loc in
-  if Option.is_some dug_id_opt then
-    let dug_id = Option.value_exn dug_id_opt in
-    add_to_ast_map maps.Maps.ast_map dug_id of_cil cil_obj
+let map_node_cil cmd maps loc of_cil cil_obj =
+  find_node_id maps.Maps.loc_map loc
+  |> List.iter ~f:(fun id ->
+         if Hashtbl.find maps.Maps.cmd_map id |> Maps.equal_cmd cmd then
+           add_to_ast_map maps.Maps.ast_map id of_cil cil_obj)
 
 class mkAstMap maps =
   object
@@ -219,25 +219,33 @@ class mkAstMap maps =
       | Cil.GFun (_, loc)
       | Cil.GAsm (_, loc)
       | Cil.GPragma (_, loc) ->
-          map_node_cil maps loc Ast.of_glob g;
+          map_node_cil Maps.Etc maps loc Ast.of_glob g;
           DoChildren
       | Cil.GText _ -> DoChildren
 
     method! vstmt s =
       match s.Cil.skind with
-      | Cil.Instr (Cil.Set (_, _, loc) :: _)
-      | Cil.Instr (Cil.Call (_, _, _, loc) :: _)
-      | Cil.Return (_, loc)
+      | Cil.Instr (Cil.Set (_, _, loc) :: _) ->
+          map_node_cil Maps.Set maps loc Ast.of_stmt s;
+          DoChildren
+      | Cil.Instr (Cil.Call (_, _, _, loc) :: _) ->
+          map_node_cil Maps.Call maps loc Ast.of_stmt s;
+          DoChildren
+      | Cil.Return (_, loc) ->
+          map_node_cil Maps.Return maps loc Ast.of_stmt s;
+          DoChildren
+      | Cil.If (_, _, _, loc) ->
+          map_node_cil (Maps.Assume true) maps loc Ast.of_stmt s;
+          DoChildren
       | Cil.Goto (_, loc)
       | Cil.ComputedGoto (_, loc)
       | Cil.Break loc
       | Cil.Continue loc
-      | Cil.If (_, _, _, loc)
       | Cil.Switch (_, _, _, loc)
       | Cil.Loop (_, loc, _, _)
       | Cil.TryFinally (_, _, loc)
       | Cil.TryExcept (_, _, _, loc) ->
-          map_node_cil maps loc Ast.of_stmt s;
+          map_node_cil Maps.Etc maps loc Ast.of_stmt s;
           DoChildren
       | _ -> DoChildren
 

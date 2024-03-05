@@ -134,15 +134,21 @@ let parse_loc loc =
       line = int_of_string (List.nth_exn parsed 1);
     }
 
+let parse_cmd = function
+  | `String "set" :: _ -> Maps.Set
+  | `String "call" :: _ -> Maps.Call
+  | `String "return" :: _ -> Maps.Return
+  | `String "skip" :: _ -> Maps.Skip
+  | `String "assume" :: `Bool b :: _ -> Maps.Assume b
+  | _ -> Maps.Etc
+
 let parse_node_json sparrow_dir loc_map cmd_map =
   let file = Yojson.Basic.from_file (sparrow_dir ^ "/node.json") in
   let nodes = J.member "nodes" file in
   J.to_assoc nodes
   |> List.iter ~f:(fun (key, node) ->
          let loc = J.member "loc" node |> J.to_string |> parse_loc in
-         let cmd =
-           J.member "cmd" node |> J.to_list |> List.hd_exn |> J.to_string
-         in
+         let cmd = J.member "cmd" node |> J.to_list |> parse_cmd in
          Hashtbl.add cmd_map key cmd;
          Hashtbl.add loc_map loc key)
 
