@@ -237,8 +237,6 @@ class mkAstMap maps =
       | Cil.If (_, _, _, loc) ->
           map_node_cil (Maps.Assume true) maps loc Ast.of_stmt s;
           DoChildren
-      | Cil.Goto (_, loc)
-      | Cil.ComputedGoto (_, loc)
       | Cil.Break loc
       | Cil.Continue loc
       | Cil.Switch (_, _, _, loc)

@@ -417,6 +417,11 @@ let match_stmt_id loc_map = function
   | Cil.Instr (Cil.Call (_, _, _, loc) :: _)
   | Cil.Return (_, loc)
   | Cil.If (_, _, _, loc)
+  | Cil.Break loc
+  | Cil.Continue loc
+  | Cil.Switch (_, _, _, loc)
+  | Cil.TryFinally (_, _, loc)
+  | Cil.TryExcept (_, _, _, loc)
   | Cil.Loop (_, loc, _, _) ->
       let file = String.split ~on:'/' loc.file |> List.last_exn in
       let line = loc.line in
