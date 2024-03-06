@@ -135,9 +135,12 @@ let parse_loc loc =
     }
 
 let parse_cmd = function
-  | `String "set" :: _ -> Maps.Set
-  | `String "call" :: _ -> Maps.Call
-  | `String "return" :: _ -> Maps.Return
+  | [ `String "set"; `String lv; `String exp ] -> Maps.Set (lv, exp)
+  | [ `String "call"; `String lv; `String f; `String exp ] ->
+      Maps.Call (Some lv, f, exp)
+  | [ `String "call"; `Null; `String f; `String exp ] -> Maps.Call (None, f, exp)
+  | [ `String "return"; `String e ] -> Maps.Return (Some e)
+  | [ `String "return"; `Null ] -> Maps.Return None
   | `String "skip" :: _ -> Maps.Skip
   | `String "assume" :: `Bool b :: _ -> Maps.Assume b
   | _ -> Maps.Etc

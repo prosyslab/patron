@@ -5,17 +5,25 @@ module F = Format
 module L = Logger
 
 type loc = { file : string; line : int }
-type cmd = Set | Call | Return | Assume of bool | Skip | Etc
+
+type cmd =
+  | Set of string * string
+  | Call of string option * string * string
+  | Return of string option
+  | Assume of bool
+  | Skip
+  | Etc
 
 let equal_cmd a b =
   match (a, b) with
-  | Set, Set
-  | Call, Call
-  | Return, Return
-  | Assume _, Assume _
-  | Skip, Skip
-  | Etc, _
-  | _, Etc ->
+  | Set (l1, e1), Set (l2, e2) -> String.equal l1 l2 && String.equal e1 e2
+  | Call (Some l1, f1, e1), Call (Some l2, f2, e2) ->
+      String.equal l1 l2 && String.equal f1 f2 && String.equal e1 e2
+  | Call (None, f1, e1), Call (None, f2, e2) ->
+      String.equal f1 f2 && String.equal e1 e2
+  | Return (Some e1), Return (Some e2) -> String.equal e1 e2
+  | Return None, Return None | Assume _, Assume _ | Skip, Skip | Etc, _ | _, Etc
+    ->
       true
   | _ -> false
 

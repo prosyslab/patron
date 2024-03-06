@@ -224,15 +224,19 @@ class mkAstMap maps =
       | Cil.GText _ -> DoChildren
 
     method! vstmt s =
+      let open Option in
       match s.Cil.skind with
-      | Cil.Instr (Cil.Set (_, _, loc) :: _) ->
-          map_node_cil Maps.Set maps loc Ast.of_stmt s;
+      | Cil.Instr (Cil.Set (lv, e, loc) :: _) ->
+          let cmd = Maps.Set (Ast.s_lv lv, Ast.s_exp e) in
+          map_node_cil cmd maps loc Ast.of_stmt s;
           DoChildren
-      | Cil.Instr (Cil.Call (_, _, _, loc) :: _) ->
-          map_node_cil Maps.Call maps loc Ast.of_stmt s;
+      | Cil.Instr (Cil.Call (lvo, f, e, loc) :: _) ->
+          let cmd = Maps.Call (lvo >>| Ast.s_lv, Ast.s_exp f, Ast.s_exps e) in
+          map_node_cil cmd maps loc Ast.of_stmt s;
           DoChildren
-      | Cil.Return (_, loc) ->
-          map_node_cil Maps.Return maps loc Ast.of_stmt s;
+      | Cil.Return (eo, loc) ->
+          let cmd = Maps.Return (eo >>| Ast.s_exp) in
+          map_node_cil cmd maps loc Ast.of_stmt s;
           DoChildren
       | Cil.If (_, _, _, loc) ->
           map_node_cil (Maps.Assume true) maps loc Ast.of_stmt s;
