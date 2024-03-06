@@ -189,6 +189,6 @@ let of_facts lval_map cmd_map rels =
         else inter
       in
       mk_dumap src g.def_map lvs;
-      mk_dumap src g.use_map lvs;
+      mk_dumap dst g.use_map lvs;
       add_edge_e (src, lvs, dst) g'')
     du_rels dug
