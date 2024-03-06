@@ -23,7 +23,7 @@ let fst_of_branch b s =
   | Cil.If (_, tb, fb, _) ->
       if b then List.hd tb.bstmts |> Option.value ~default:s
       else List.hd fb.bstmts |> Option.value ~default:s
-  | _ -> L.error "true_branch - wrong stmt"
+  | _ -> L.error "fst_of_branch - wrong stmt"
 
 let ids2asts maps ids =
   StrSet.fold
@@ -217,7 +217,8 @@ let translate_delete_stmt maps sol_map s =
 
 let translate_update_exp maps sol_map s e1 e2 =
   let target_func_name = translate_func_name sol_map [ s ] in
-  let new_s = translate_new_stmt maps sol_map s.A.ast in
+  (* NOTE: abs_stmt is exactly that one *)
+  let new_s = translate_orig_stmts maps sol_map [ s ] |> List.hd_exn in
   let new_e1 = translate_exp maps sol_map e1.A.ast in
   let new_e2 = translate_exp maps sol_map e2.A.ast in
   D.UpdateExp (target_func_name, new_s, new_e1, new_e2)

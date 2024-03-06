@@ -152,10 +152,10 @@ let mk_diff_exp code func_name parent depth left_sibs right_sibs exp_lst =
   | _ -> L.error "mk_diff_exp - unexpected code"
 
 let is_update_stmt diffs =
-  if List.length diffs <> 2 then false
+  if List.length diffs < 2 then false
   else
-    match (List.hd_exn diffs |> get_diff, List.last_exn diffs |> get_diff) with
-    | DeleteStmt _, InsertStmt _ -> true
+    match diffs with
+    | [ (DeleteStmt _, _); (InsertStmt _, _) ] -> true
     | _ -> false
 
 let rec find_continue_point_exp exp1 param =
