@@ -151,6 +151,13 @@ let mk_diff_exp code func_name parent depth left_sibs right_sibs exp_lst =
       List.map ~f:(fun e -> (DeleteExp (func_name, parent, e), env)) exp_lst
   | _ -> L.error "mk_diff_exp - unexpected code"
 
+let is_update_stmt diffs =
+  if List.length diffs <> 2 then false
+  else
+    match (List.hd_exn diffs |> get_diff, List.last_exn diffs |> get_diff) with
+    | DeleteStmt _, InsertStmt _ -> true
+    | _ -> false
+
 let rec find_continue_point_exp exp1 param =
   match param with
   | [] -> []
@@ -405,6 +412,7 @@ and decide_next_step_stmt func_name prnt_brnch depth diff hd1 hd2 tl1 tl2
         | InsertStmt _, DeleteStmt _ ->
             diff @ fold_stmts2 func_name prnt_brnch depth tl1 tl2 before
         | _ ->
+            pp_diff ~simple:false F.std_formatter h;
             diff
             @ fold_continue_point_stmt func_name prnt_brnch depth hd1 hd2 tl1
                 tl2 diff before)
@@ -418,8 +426,10 @@ and fold_stmts2 func_name prnt_brnch depth stmts1 stmts2 before =
       let es =
         compute_diff_stmt func_name prnt_brnch depth s1 s2 ss1 ss2 before
       in
-      decide_next_step_stmt func_name prnt_brnch depth es s1 s2 ss1 ss2
-        updated_before before
+      if is_update_stmt es then es
+      else
+        decide_next_step_stmt func_name prnt_brnch depth es s1 s2 ss1 ss2
+          updated_before before
   | [], lst ->
       let env = mk_diff_env depth prnt_brnch prev_node in
       [ (InsertStmt (func_name, before, lst, []), env) ]
