@@ -575,17 +575,29 @@ and mk_abs_stmts func_name dug loc_map (ss, patch_comps) =
     ~init:([], patch_comps) ss
   |> fun (rss, pc) -> (List.rev rss, pc)
 
-let mk_dummy_abs_stmt loc_map stmt =
-  let ids = match_stmt_id loc_map stmt.Cil.skind in
-  let ast = AbsStmt (SSNull, stmt) in
-  let literal = Ast.s_stmt stmt in
-  { ids; ast; literal }
+class findDummyAbsStmt loc_map abs_node_lst =
+  object
+    inherit Cil.nopCilVisitor
 
-let mk_dummy_abs_stmts loc_map = List.map ~f:(mk_dummy_abs_stmt loc_map)
+    method! vstmt s =
+      let ids = match_stmt_id loc_map s.Cil.skind in
+      let ast = AbsStmt (SSNull, s) in
+      let literal = Ast.s_stmt s in
+      abs_node_lst := { ids; ast; literal } :: !abs_node_lst;
+      DoChildren
+  end
+
+let mk_dummy_abs_stmt loc_map stmt =
+  let abs_node_lst = ref [] in
+  Cil.visitCilStmt (new findDummyAbsStmt loc_map abs_node_lst) stmt |> ignore;
+  !abs_node_lst
+
+let mk_dummy_abs_stmts loc_map =
+  List.fold_left ~f:(fun anl s -> mk_dummy_abs_stmt loc_map s @ anl) ~init:[]
 
 let collect_node_id =
   List.fold_left
-    ~f:(fun ns abs_node -> abs_node.ids |> StrSet.union ns)
+    ~f:(fun ns abs_node -> StrSet.union ns abs_node.ids)
     ~init:StrSet.empty
 
 let mk_abs_action maps dug = function
@@ -602,7 +614,8 @@ let mk_abs_action maps dug = function
       in
       (SDeleteStmt abs_stmt, StrSet.union patch_comps abs_stmt.ids)
   | D.UpdateExp (func_name, s, e1, e2) ->
-      let abs_stmt = mk_dummy_abs_stmt maps.loc_map s in
+      (* NOTE: abs_stmt is exactly that one *)
+      let abs_stmt = mk_dummy_abs_stmt maps.loc_map s |> List.hd_exn in
       let abs_exp1, _ =
         mk_abs_exp func_name dug maps.loc_map (e1, StrSet.empty)
       in
