@@ -412,7 +412,6 @@ and decide_next_step_stmt func_name prnt_brnch depth diff hd1 hd2 tl1 tl2
         | InsertStmt _, DeleteStmt _ ->
             diff @ fold_stmts2 func_name prnt_brnch depth tl1 tl2 before
         | _ ->
-            pp_diff ~simple:false F.std_formatter h;
             diff
             @ fold_continue_point_stmt func_name prnt_brnch depth hd1 hd2 tl1
                 tl2 diff before)
