@@ -36,7 +36,8 @@ type t = {
   exp_rev_map : (string, string) Hashtbl.t; (* exp literal -> exp symbol *)
   lval_map : (string, string) Hashtbl.t; (* lval symbol -> lval literal *)
   lval_rev_map : (string, string) Hashtbl.t; (* lval literal -> lval symbol *)
-  ast_map : (string, Ast.t) Hashtbl.t; (* symbol -> ast id(num) *)
+  ast_map : (string, Ast.t) Hashtbl.t; (* symbol -> ast *)
+  ast_rev_map : (Ast.t, string) Hashtbl.t; (* ast -> symbol *)
 }
 
 let create_maps () =
@@ -50,6 +51,7 @@ let create_maps () =
     lval_map = Hashtbl.create 1000;
     lval_rev_map = Hashtbl.create 1000;
     ast_map = Hashtbl.create 1000;
+    ast_rev_map = Hashtbl.create 1000;
   }
 
 let load_map cast1 cast2 ic map =
@@ -76,7 +78,8 @@ let reset_maps maps =
   Hashtbl.reset maps.exp_rev_map;
   Hashtbl.reset maps.lval_map;
   Hashtbl.reset maps.lval_rev_map;
-  Hashtbl.reset maps.ast_map
+  Hashtbl.reset maps.ast_map;
+  Hashtbl.reset maps.ast_rev_map
 
 let dump_map a_to_string b_to_string map_name mode map out_dir =
   let sym_map_file =

@@ -189,8 +189,10 @@ let parse_chc chc_file =
          try (Sexp.of_string rule |> sexp2chc) :: chc_list with _ -> chc_list)
   |> Chc.of_list
 
-let add_to_ast_map ast_map key of_cil cil_obj =
-  Hashtbl.add ast_map key (of_cil (Some cil_obj))
+let add_to_ast_map maps key of_cil cil_obj =
+  let ast = of_cil (Some cil_obj) in
+  Hashtbl.add maps.Maps.ast_map key ast;
+  Hashtbl.add maps.Maps.ast_rev_map ast key
 
 let find_node_id loc_map loc =
   let file = String.split ~on:'/' loc.Cil.file |> List.last_exn in
@@ -201,7 +203,7 @@ let map_node_cil cmd maps loc of_cil cil_obj =
   find_node_id maps.Maps.loc_map loc
   |> List.iter ~f:(fun id ->
          if Hashtbl.find maps.Maps.cmd_map id |> Maps.equal_cmd cmd then
-           add_to_ast_map maps.Maps.ast_map id of_cil cil_obj)
+           add_to_ast_map maps id of_cil cil_obj)
 
 class mkAstMap maps =
   object
@@ -254,15 +256,13 @@ class mkAstMap maps =
     method! vlval lv =
       Ast.s_lv lv
       |> Hashtbl.find_all maps.Maps.lval_rev_map
-      |> List.iter ~f:(fun id ->
-             add_to_ast_map maps.Maps.ast_map id Ast.of_lval lv);
+      |> List.iter ~f:(fun id -> add_to_ast_map maps id Ast.of_lval lv);
       DoChildren
 
     method! vexpr e =
       Ast.s_exp e
       |> Hashtbl.find_all maps.Maps.exp_rev_map
-      |> List.iter ~f:(fun id ->
-             add_to_ast_map maps.Maps.ast_map id Ast.of_exp e);
+      |> List.iter ~f:(fun id -> add_to_ast_map maps id Ast.of_exp e);
       DoChildren
   end
 
