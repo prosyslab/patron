@@ -275,6 +275,7 @@ type t =
   (* func name is not necessary *)
   | SInsertStmt of abs_node list * abs_node list * abs_node list
   | SDeleteStmt of abs_node
+  | SUpdateStmt of abs_node list * abs_node list * abs_node list
   | SInsertExp of abs_node * abs_node list * abs_node list * abs_node list
   | SDeleteExp of abs_node * abs_node
   | SUpdateExp of abs_node * abs_node * abs_node
@@ -618,6 +619,13 @@ let mk_abs_action maps dug = function
         mk_abs_stmt func_name dug maps.loc_map (s, StrSet.empty)
       in
       (SDeleteStmt abs_stmt, StrSet.union patch_comps abs_stmt.ids)
+  | D.UpdateStmt (func_name, before, ss, after) ->
+      let abs_before = mk_dummy_abs_stmts maps.Maps.loc_map before in
+      let abs_stmts, patch_comps =
+        mk_abs_stmts func_name dug maps.loc_map (ss, StrSet.empty)
+      in
+      let abs_after = mk_dummy_abs_stmts maps.loc_map after in
+      (SUpdateStmt (abs_before, abs_stmts, abs_after), patch_comps)
   | D.UpdateExp (func_name, s, e1, e2) ->
       (* NOTE: abs_stmt is exactly that one *)
       let abs_stmt = mk_dummy_abs_stmt maps.loc_map s |> List.hd_exn in

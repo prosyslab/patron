@@ -156,10 +156,12 @@ and translate_instr maps sol_map abs_instr i =
         |> List.rev
       in
       Cil.mkStmt (Cil.Instr [ Cil.Call (None, fun_exp, args, Cil.locUnknown) ])
-  | _, i ->
+  | a, i ->
       L.error
-        "translate_stmt - translation target is not an instruction type:\n%s"
-        (Ast.s_instr i)
+        "translate_stmt - translation target is not an instruction type:\n\
+         %a\n\
+         %s"
+        AbsDiff.pp_absstmt a (Ast.s_instr i)
 
 and translate_new_stmt maps sol_map = function
   | A.AbsStmt (sym, cil) -> (
@@ -187,17 +189,7 @@ let translate_func_name sol_map abs_node_lst =
 
 let translate_orig_stmts maps sol_map abs_node_lst =
   let new_asts =
-    A.collect_node_id abs_node_lst
-    |> (fun ids ->
-         L.info "translate_orig_stmts - old ids: %s"
-           (StrSet.fold (fun id s -> s ^ id ^ ", ") ids "");
-         ids)
-    |> translate_ids sol_map
-    |> (fun ids ->
-         L.info "translate_orig_stmts - new ids: %s"
-           (StrSet.fold (fun id s -> s ^ id ^ ", ") ids "");
-         ids)
-    |> ids2asts maps
+    A.collect_node_id abs_node_lst |> translate_ids sol_map |> ids2asts maps
   in
   AstSet.fold (fun ast stmts -> Ast.to_stmt ast :: stmts) new_asts []
   |> List.rev
@@ -214,6 +206,14 @@ let translate_delete_stmt maps sol_map s =
   let target_func_name = translate_func_name sol_map [ s ] in
   let new_s = translate_new_stmt maps sol_map s.A.ast in
   D.DeleteStmt (target_func_name, new_s)
+
+let translate_update_stmt maps sol_map before after ss =
+  let target_func_name = translate_func_name sol_map before in
+  let target_before = translate_orig_stmts maps sol_map before in
+  L.info "num of before: %i" (List.length target_before);
+  let new_ss = translate_new_stmts maps sol_map ss in
+  let target_after = translate_orig_stmts maps sol_map after in
+  D.UpdateStmt (target_func_name, target_before, new_ss, target_after)
 
 let translate_update_exp maps sol_map s e1 e2 =
   let target_func_name = translate_func_name sol_map [ s ] in
@@ -234,6 +234,8 @@ let translate maps out_dir target_alarm abs_diff =
       | A.SInsertStmt (before, ss, after) ->
           translate_insert_stmt maps sol_map before after ss
       | A.SDeleteStmt s -> translate_delete_stmt maps sol_map s
+      | A.SUpdateStmt (before, ss, after) ->
+          translate_update_stmt maps sol_map before after ss
       | A.SUpdateExp (s, e1, e2) -> translate_update_exp maps sol_map s e1 e2
       | _ -> L.error "translate - not implemented")
     abs_diff

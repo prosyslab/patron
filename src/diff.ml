@@ -38,6 +38,9 @@ type t =
   | InsertStmt of string * Cil.stmt list * Cil.stmt list * Cil.stmt list
   (* func name * deleted stmts *)
   | DeleteStmt of string * Cil.stmt
+  (* Only use update stmt when goto is deleted and new stmt is inserted *)
+  (* func name * orig before stmts (until goto) * new stmts * orig after stmts *)
+  | UpdateStmt of string * Cil.stmt list * Cil.stmt list * Cil.stmt list
   (* func name * target stmt (may be call exp) * orig before exps * new exps * orig after exps *)
   | InsertExp of string * Cil.stmt * Cil.exp list * Cil.exp list * Cil.exp list
   (* func name * target stmt * deleted exps *)
@@ -86,6 +89,15 @@ let pp_diff ~simple fmt action =
       F.fprintf fmt "Function: %s\n" func;
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Deleted:%s\n" (Ast.s_stmt s)
+  | UpdateStmt (func, before, ss, after) ->
+      F.fprintf fmt "\tUpdateStmt: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      if simple then F.fprintf fmt "# of Before:%i\n" (List.length before)
+      else F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_stmt before);
+      if simple then F.fprintf fmt "# of After:%i\n" (List.length after)
+      else F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_stmt after);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "Inserted:%s\n" (lst2strlines Ast.s_stmt ss)
   | InsertExp (func, s, before, es, after) ->
       F.fprintf fmt "\tInsertExp: \n";
       F.fprintf fmt "Function: %s\n" func;
@@ -340,10 +352,13 @@ and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
     let deleted_stmts = find_eq_stmt_in_tl depth hd2 tl1 [] in
     if List.is_empty deleted_stmts then
       let env = mk_diff_env depth prnt_brnch prev_node in
-      [
-        (DeleteStmt (func_name, hd1), env);
-        (InsertStmt (func_name, before, [ hd2 ], tl1), env);
-      ]
+      if Ast.is_cil_goto hd1.skind then
+        [ (UpdateStmt (func_name, before, [ hd2 ], tl1), env) ]
+      else
+        [
+          (DeleteStmt (func_name, hd1), env);
+          (InsertStmt (func_name, before, [ hd2 ], tl1), env);
+        ]
     else
       let deleted_stmts = hd1 :: List.drop_last_exn deleted_stmts in
       let right_siblings = compute_right_siblings_stmt deleted_stmts tl1 in
