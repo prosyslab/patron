@@ -152,8 +152,6 @@ let process_vertex lval_map v r g =
     let reach = Chc.fixedpoint Chc.from_node_to_ast r terms Chc.empty |> fst in
     let defs = Chc.find_defs reach in
     let uses = Chc.find_uses reach in
-    mk_dumap v g.def_map defs;
-    mk_dumap v g.use_map uses;
     let g' = add_vertex (v, reach, defs, uses) g in
     let lvs = Chc.union defs uses |> Chc.to_list |> Chc.Elt.numers2strs in
     let g'' = mapping_func_lvmap lval_map v lvs g' in
@@ -190,5 +188,7 @@ let of_facts lval_map cmd_map rels =
         then union
         else inter
       in
+      mk_dumap src g.def_map lvs;
+      mk_dumap src g.use_map lvs;
       add_edge_e (src, lvs, dst) g'')
     du_rels dug
