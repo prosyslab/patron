@@ -23,13 +23,14 @@ let insert_internal after patch stmts =
   if Option.is_none after then patch @ stmts
   else
     let after = Option.value_exn after in
-    let new_stmts, patched =
+    let new_stmts_rev, patched =
       List.fold_left
         ~f:(fun (new_stmts, patched) stmt ->
           if phys_equal stmt after then (patch @ (after :: new_stmts), true)
           else (stmt :: new_stmts, patched))
         ~init:([], false) stmts
     in
+    let new_stmts = List.rev new_stmts_rev in
     if patched then new_stmts else new_stmts @ patch
 
 let insert_ss_into_stmts before after patch stmts =
