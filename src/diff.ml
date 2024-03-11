@@ -170,6 +170,13 @@ let is_update_stmt diffs =
     | [ (DeleteStmt _, _); (InsertStmt _, _) ] -> true
     | _ -> false
 
+let is_update_glob diffs =
+  if List.length diffs < 2 then false
+  else
+    match diffs with
+    | [ (DeleteGlobal _, _); (InsertGlobal _, _) ] -> true
+    | _ -> false
+
 let rec find_continue_point_exp exp1 param =
   match param with
   | [] -> []
@@ -343,7 +350,7 @@ and fold_continue_point_stmt func_name prnt_brnch depth h1 h2 tl1 tl2 es acc =
       | _ -> fold_stmts2 func_name prnt_brnch depth tl1 tl2 acc)
 
 and compute_right_siblings_stmt diffs rest =
-  List.slice rest (List.length diffs) (List.length rest)
+  List.slice rest (List.length diffs - 1) (List.length rest)
 
 and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
   let prev_node = List.last before |> Ast.of_stmt in
@@ -365,9 +372,10 @@ and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
       mk_diff_stmt Deletion func_name prnt_brnch depth before right_siblings
         deleted_stmts
   else
-    (* prolly have to count the #of delete stmt for right sib *)
-    hd2 :: List.drop_last_exn inserted_stmts
-    |> mk_diff_stmt Insertion func_name prnt_brnch depth before (hd1 :: tl1)
+    let inserted_stmts = hd2 :: List.drop_last_exn inserted_stmts in
+    let right_siblings = compute_right_siblings_stmt inserted_stmts tl2 in
+    mk_diff_stmt Insertion func_name prnt_brnch depth before right_siblings
+      inserted_stmts
 
 and compute_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
   match (hd1.Cil.skind, hd2.Cil.skind) with
@@ -440,7 +448,8 @@ and fold_stmts2 func_name prnt_brnch depth stmts1 stmts2 before =
       let es =
         compute_diff_stmt func_name prnt_brnch depth s1 s2 ss1 ss2 before
       in
-      if is_update_stmt es then es
+      if is_update_stmt es then
+        es @ fold_stmts2 func_name prnt_brnch depth ss1 ss2 updated_before
       else
         decide_next_step_stmt func_name prnt_brnch depth es s1 s2 ss1 ss2
           updated_before before
@@ -477,7 +486,8 @@ let rec find_continue_point_glob glob1 globals =
   match globals with
   | [] -> []
   | hd :: tl ->
-      if Ast.eq_global glob1 hd then tl else find_continue_point_glob glob1 tl
+      if Ast.eq_global glob1 hd then globals
+      else find_continue_point_glob glob1 tl
 
 let rec mk_diff_glob code depth acc_left acc_right glob_lst =
   let prev_node = List.last acc_left |> Ast.of_glob in
@@ -494,16 +504,14 @@ and fold_continue_point_glob depth glob1 glob2 es tl1 tl2 =
       match hd with
       | InsertGlobal _ ->
           let continue_point = find_continue_point_glob glob1 tl2 in
-          fold_globals2 depth tl1 continue_point
+          fold_globals2 depth (glob1 :: tl1) continue_point
       | DeleteGlobal _ ->
           let continue_point = find_continue_point_glob glob2 tl1 in
-          fold_globals2 depth continue_point tl2
+          fold_globals2 depth continue_point (glob2 :: tl2)
       | _ -> fold_globals2 depth tl1 tl2)
 
 and compute_right_siblings_glob diffs rest =
-  match List.hd diffs with
-  | Some next -> next :: find_continue_point_glob next rest
-  | None -> []
+  List.slice rest (List.length diffs - 1) (List.length rest)
 
 and get_followup_diff_glob depth glob1 glob2 tl1 tl2 left_sibs =
   let prev_node = List.last left_sibs |> Ast.of_glob in
@@ -522,7 +530,7 @@ and get_followup_diff_glob depth glob1 glob2 tl1 tl2 left_sibs =
       mk_diff_glob Deletion depth left_sibs right_siblings deleted_globs
   else
     let inserted_globs = glob2 :: List.drop_last_exn inserted_globs in
-    let right_siblings = compute_right_siblings_glob inserted_globs tl1 in
+    let right_siblings = compute_right_siblings_glob inserted_globs tl2 in
     mk_diff_glob Insertion depth left_sibs right_siblings inserted_globs
 
 and compute_diff_glob depth glob1 glob2 tl1 tl2 left_sbis =
@@ -568,8 +576,11 @@ and fold_globals2 depth donor_gobals patch_globals left_sibs =
   | hd1 :: tl1, hd2 :: tl2 ->
       let updated_left_sibs = List.rev left_sibs |> List.cons hd1 |> List.rev in
       let diff = compute_diff_glob depth hd1 hd2 tl1 tl2 left_sibs in
-      decide_next_step_glob depth diff hd1 hd2 tl1 tl2 updated_left_sibs
-        left_sibs
+      if is_update_glob diff then
+        diff @ fold_globals2 depth tl1 tl2 updated_left_sibs
+      else
+        decide_next_step_glob depth diff hd1 hd2 tl1 tl2 updated_left_sibs
+          left_sibs
   | [], lst ->
       let env = mk_diff_env depth [] prev_node in
       [ (InsertGlobal (left_sibs, lst, []), env) ]

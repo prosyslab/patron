@@ -316,8 +316,7 @@ let rec eq_stmt skind1 skind2 =
 let eq_global glob1 glob2 =
   match (glob1, glob2) with
   | Cil.GFun (func_info1, _), Cil.GFun (func_info2, _) ->
-      eq_typ func_info1.svar.vtype func_info2.svar.vtype
-      && String.equal func_info1.svar.vname func_info2.svar.vname
+      String.equal func_info1.svar.vname func_info2.svar.vname
   | Cil.GType (typinfo1, _), Cil.GType (typinfo2, _) ->
       String.equal typinfo1.tname typinfo2.tname
       && eq_typ typinfo1.ttype typinfo2.ttype
