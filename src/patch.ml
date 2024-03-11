@@ -123,49 +123,37 @@ class deleteStmtfromFuncVisitor target_func ss =
       else SkipChildren
   end
 
-let replace_exp_in_stmt stmt from_exp to_exp =
-  match stmt.Cil.skind with
-  | Cil.Instr i ->
-      let new_instr =
-        List.fold_left
-          ~f:(fun acc x ->
-            match x with
-            | Cil.Call (lval, e, exp_list, loc) ->
-                if Ast.isom_exp e from_exp then
-                  Cil.Call (lval, to_exp, exp_list, loc) :: acc
-                else x :: acc
-            | Cil.Set (lval, e, loc) ->
-                if Ast.isom_exp e from_exp then
-                  Cil.Set (lval, to_exp, loc) :: acc
-                else x :: acc
-            | _ -> x :: acc)
-          ~init:[] i
-        |> List.rev
-      in
-      { stmt with skind = Cil.Instr new_instr }
-  | _ -> L.error "replace_exp_in_stmt - not implemented"
+class replaceExpVisitor from_exp to_exp =
+  object
+    inherit Cil.nopCilVisitor
 
-let replace_exp_in_stmts stmts parent from_exp to_exp =
-  List.fold_left
-    ~f:(fun acc x ->
-      if String.equal (Ast.s_stmt x) (Ast.s_stmt parent) then
-        let new_stmt = replace_exp_in_stmt x from_exp to_exp in
-        new_stmt :: acc
-      else x :: acc)
-    ~init:[] stmts
-  |> List.rev
+    method! vexpr e =
+      if Ast.eq_exp from_exp e then (
+        is_patched := true;
+        ChangeTo to_exp)
+      else DoChildren
+  end
+
+class replaceExpinStmt parent from_exp to_exp =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vstmt s =
+      if phys_equal parent s then
+        let vis = new replaceExpVisitor from_exp to_exp in
+        ChangeTo (Cil.visitCilStmt vis s)
+      else DoChildren
+  end
 
 class updateExpVisitor target_func parent from_exp to_exp =
   object
     inherit Cil.nopCilVisitor
 
     method! vfunc (f : Cil.fundec) =
-      if String.equal f.svar.vname target_func then (
-        let stmts = f.sbody.bstmts in
-        let new_stmts = replace_exp_in_stmts stmts parent from_exp to_exp in
-        is_patched := true;
-        ChangeTo { f with sbody = { f.sbody with bstmts = new_stmts } })
-      else DoChildren
+      if String.equal f.svar.vname target_func then
+        let vis = new replaceExpinStmt parent from_exp to_exp in
+        ChangeTo (Cil.visitCilFunction vis f)
+      else SkipChildren
   end
 
 let apply_insert_stmt ?(update = false) func_name before after ss donee =
@@ -192,7 +180,7 @@ let apply_delete_stmt func_name s donee =
   else L.info "Successfully applied DeleteStmt at %s" func_name
 
 let apply_update_exp func_name s e1 e2 donee =
-  L.info "Applying DeleteStmt...";
+  L.info "Applying UpdateExp...";
   is_patched := false;
   let vis = new updateExpVisitor func_name s e1 e2 in
   Cil.visitCilFile vis donee;
