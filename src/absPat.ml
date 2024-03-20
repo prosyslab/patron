@@ -89,17 +89,27 @@ let abs_by_comps maps dug patch_comps snk alarm_exps alarm_lvs facts =
   patch_comps2str maps patch_comps |> L.info "patch_comps: %s";
   terms2str alarm_exps |> L.info "alarm_exps: %s";
   terms2str alarm_lvs |> L.info "alarm_lvs: %s";
-  (* TODO: use alarm_lvs and EvalLv for finding real DUPath from patch to sink *)
-  let collected_by_patch_comps =
+  let patch_lvs =
     List.fold_left
-      ~f:(fun rels comp ->
-        if is_lv comp then
-          find_rels_by_lv dug maps.Maps.cmd_map snk comp facts |> Chc.union rels
-        else rels (* TODO: use dug node as patch comps *))
+      ~f:(fun lvs comp ->
+        if is_lv comp then Chc.add (Chc.Elt.numer comp) lvs else lvs)
       ~init:Chc.empty patch_comps
   in
-  let collected_by_alarm_comps = collect_ast_rels dug snk alarm_exps in
-  Chc.union collected_by_patch_comps collected_by_alarm_comps |> Chc.to_list
+  if Chc.equal patch_lvs alarm_lvs then
+    collect_ast_rels dug snk alarm_lvs |> Chc.to_list
+  else
+    (* TODO: use alarm_lvs and EvalLv for finding real DUPath from patch to sink *)
+    let collected_by_patch_comps =
+      List.fold_left
+        ~f:(fun rels comp ->
+          if is_lv comp then
+            find_rels_by_lv dug maps.Maps.cmd_map snk comp facts
+            |> Chc.union rels
+          else rels (* TODO: use dug node as patch comps *))
+        ~init:Chc.empty patch_comps
+    in
+    let collected_by_alarm_comps = collect_ast_rels dug snk alarm_exps in
+    Chc.union collected_by_patch_comps collected_by_alarm_comps |> Chc.to_list
 
 let run maps dug patch_comps alarm_exps alarm_lvs src snk facts =
   let abs_facts =

@@ -195,11 +195,13 @@ let translate_orig_stmts maps sol_map abs_node_lst =
   |> List.rev
 
 let translate_insert_stmt maps sol_map before after ss =
-  let target_func_name = translate_func_name sol_map before in
   let target_before = translate_orig_stmts maps sol_map before in
-  L.info "num of before: %i" (List.length target_before);
-  let new_ss = translate_new_stmts maps sol_map ss in
   let target_after = translate_orig_stmts maps sol_map after in
+  let target_func_name =
+    translate_func_name sol_map
+      (if List.is_empty target_before then after else before)
+  in
+  let new_ss = translate_new_stmts maps sol_map ss in
   D.InsertStmt (target_func_name, target_before, new_ss, target_after)
 
 let translate_delete_stmt maps sol_map s =
@@ -208,11 +210,13 @@ let translate_delete_stmt maps sol_map s =
   D.DeleteStmt (target_func_name, new_s)
 
 let translate_update_stmt maps sol_map before after ss =
-  let target_func_name = translate_func_name sol_map before in
   let target_before = translate_orig_stmts maps sol_map before in
-  L.info "num of before: %i" (List.length target_before);
-  let new_ss = translate_new_stmts maps sol_map ss in
   let target_after = translate_orig_stmts maps sol_map after in
+  let target_func_name =
+    translate_func_name sol_map
+      (if List.is_empty target_before then after else before)
+  in
+  let new_ss = translate_new_stmts maps sol_map ss in
   D.UpdateStmt (target_func_name, target_before, new_ss, target_after)
 
 let translate_update_exp maps sol_map s e1 e2 =

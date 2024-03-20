@@ -224,7 +224,7 @@ let get_followup_diff_exp code func_name parent depth exp1 exp2 expl1 expl2
 
 let rec fold_continue_point_param func_name parent depth h1 h2 tl1 tl2 es acc =
   match es with
-  | [] -> L.error "fold_continue_point_stmt - unexpected empty list"
+  | [] -> L.error "fold_continue_point_param - unexpected empty list"
   | (hd, env) :: _ -> (
       match hd with
       | InsertExp _ ->
@@ -330,24 +330,19 @@ let rec mk_diff_stmt code func_name prnt_brnch depth before after stmt_lst =
       List.map ~f:(fun stmt -> (DeleteStmt (func_name, stmt), env)) stmt_lst
   | _ -> L.error "mk_diff_stmt - unexpected code"
 
-and fold_continue_point_stmt func_name prnt_brnch depth h1 h2 tl1 tl2 es acc =
-  match List.rev es with
-  | [] -> L.error "fold_continue_point_stmt - unexpected empty list"
-  | (hd, env) :: _ -> (
-      match hd with
-      | InsertStmt _ ->
-          if env.patch_depth = depth then
-            let continue_point = find_continue_point_stmt h1 tl2 in
-            fold_stmts2 func_name prnt_brnch depth (h1 :: tl1) continue_point
-              acc
-          else []
-      | DeleteStmt _ ->
-          if env.patch_depth = depth then
-            let continue_point = find_continue_point_stmt h2 tl1 in
-            fold_stmts2 func_name prnt_brnch depth continue_point (h2 :: tl2)
-              acc
-          else []
-      | _ -> fold_stmts2 func_name prnt_brnch depth tl1 tl2 acc)
+and fold_continue_point_stmt func_name prnt_brnch depth h1 h2 tl1 tl2 before =
+  function
+  | InsertStmt _, env ->
+      if env.patch_depth = depth then
+        let continue_point = find_continue_point_stmt h1 tl2 in
+        fold_stmts2 func_name prnt_brnch depth (h1 :: tl1) continue_point before
+      else []
+  | DeleteStmt _, env ->
+      if env.patch_depth = depth then
+        let continue_point = find_continue_point_stmt h2 tl1 in
+        fold_stmts2 func_name prnt_brnch depth continue_point (h2 :: tl2) before
+      else []
+  | _ -> fold_stmts2 func_name prnt_brnch depth tl1 tl2 before
 
 and compute_right_siblings_stmt diffs rest =
   List.slice rest (List.length diffs - 1) (List.length rest)
@@ -373,8 +368,8 @@ and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
         deleted_stmts
   else
     let inserted_stmts = hd2 :: List.drop_last_exn inserted_stmts in
-    let right_siblings = compute_right_siblings_stmt inserted_stmts tl2 in
-    mk_diff_stmt Insertion func_name prnt_brnch depth before right_siblings
+    let after = hd1 :: tl1 in
+    mk_diff_stmt Insertion func_name prnt_brnch depth before after
       inserted_stmts
 
 and compute_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
@@ -425,19 +420,15 @@ and decide_next_step_stmt func_name prnt_brnch depth diff hd1 hd2 tl1 tl2
     new_before before =
   match diff with
   | [] -> fold_stmts2 func_name prnt_brnch depth tl1 tl2 new_before
-  | (h, _) :: t -> (
-      if List.is_empty t then
-        diff
-        @ fold_continue_point_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2
-            diff before
-      else
-        match (h, List.hd_exn t |> get_diff) with
-        | InsertStmt _, DeleteStmt _ ->
-            diff @ fold_stmts2 func_name prnt_brnch depth tl1 tl2 before
-        | _ ->
-            diff
-            @ fold_continue_point_stmt func_name prnt_brnch depth hd1 hd2 tl1
-                tl2 diff before)
+  | (InsertStmt _, _) :: (DeleteStmt _, _) :: _ ->
+      diff @ fold_stmts2 func_name prnt_brnch depth tl1 tl2 before
+  | _ ->
+      let continue_diff =
+        List.last_exn diff
+        |> fold_continue_point_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2
+             before
+      in
+      diff @ continue_diff
 
 and fold_stmts2 func_name prnt_brnch depth stmts1 stmts2 before =
   let prev_node = List.last before |> Ast.of_stmt in
