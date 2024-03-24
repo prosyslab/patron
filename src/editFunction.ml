@@ -184,13 +184,10 @@ let translate_new_stmts maps sol_map =
 let extract_func_name node_id = String.split ~on:'-' node_id |> List.hd_exn
 
 let translate_func_name sol_map abs_node_lst =
-  A.collect_node_id abs_node_lst
-  |> translate_ids sol_map |> StrSet.choose |> extract_func_name
+  abs_node_lst |> translate_ids sol_map |> StrSet.choose |> extract_func_name
 
-let translate_orig_stmts maps sol_map abs_node_lst =
-  let new_asts =
-    A.collect_node_id abs_node_lst |> translate_ids sol_map |> ids2asts maps
-  in
+let translate_orig_stmts maps sol_map abs_nodes =
+  let new_asts = abs_nodes |> translate_ids sol_map |> ids2asts maps in
   AstSet.fold (fun ast stmts -> Ast.to_stmt ast :: stmts) new_asts []
   |> List.rev
 
@@ -205,7 +202,7 @@ let translate_insert_stmt maps sol_map before after ss =
   D.InsertStmt (target_func_name, target_before, new_ss, target_after)
 
 let translate_delete_stmt maps sol_map s =
-  let target_func_name = translate_func_name sol_map [ s ] in
+  let target_func_name = translate_func_name sol_map s.A.ids in
   let new_s = translate_new_stmt maps sol_map s.A.ast in
   D.DeleteStmt (target_func_name, new_s)
 
@@ -220,9 +217,11 @@ let translate_update_stmt maps sol_map before after ss =
   D.UpdateStmt (target_func_name, target_before, new_ss, target_after)
 
 let translate_update_exp maps sol_map s e1 e2 =
-  let target_func_name = translate_func_name sol_map [ s ] in
+  let target_func_name = translate_func_name sol_map (StrSet.singleton s) in
   (* NOTE: abs_stmt is exactly that one *)
-  let new_s = translate_orig_stmts maps sol_map [ s ] |> List.hd_exn in
+  let new_s =
+    translate_orig_stmts maps sol_map (StrSet.singleton s) |> List.hd_exn
+  in
   let new_e1 = translate_exp maps sol_map e1.A.ast in
   let new_e2 = translate_exp maps sol_map e2.A.ast in
   D.UpdateExp (target_func_name, new_s, new_e1, new_e2)

@@ -273,12 +273,12 @@ let to_null = Null
 type t =
   (* same format with Diff.t excluding func name *)
   (* func name is not necessary *)
-  | SInsertStmt of abs_node list * abs_node list * abs_node list
+  | SInsertStmt of StrSet.t * abs_node list * StrSet.t
   | SDeleteStmt of abs_node
-  | SUpdateStmt of abs_node list * abs_node list * abs_node list
+  | SUpdateStmt of StrSet.t * abs_node list * StrSet.t
   | SInsertExp of abs_node * abs_node list * abs_node list * abs_node list
   | SDeleteExp of abs_node * abs_node
-  | SUpdateExp of abs_node * abs_node * abs_node
+  | SUpdateExp of string * abs_node * abs_node
   | SInsertLval of abs_node * abs_node
   | SDeleteLval of abs_node * abs_node
   | SUpdateLval of abs_node * abs_node * abs_node
@@ -564,25 +564,24 @@ and mk_abs_stmts func_name maps dug (ss, patch_comps) =
     ~init:([], patch_comps) ss
   |> fun (rss, pc) -> (List.rev rss, pc)
 
-class findDummyAbsStmt maps abs_node_lst =
+class findDummyAbsStmt maps abs_nodes =
   object
     inherit Cil.nopCilVisitor
 
     method! vstmt s =
-      let ids = match_stmt_id maps s in
-      let ast = AbsStmt (SSNull, s) in
-      let literal = Ast.s_stmt s in
-      abs_node_lst := { ids; ast; literal } :: !abs_node_lst;
+      abs_nodes := match_stmt_id maps s |> StrSet.union !abs_nodes;
       DoChildren
   end
 
 let mk_dummy_abs_stmt maps stmt =
-  let abs_node_lst = ref [] in
-  Cil.visitCilStmt (new findDummyAbsStmt maps abs_node_lst) stmt |> ignore;
-  !abs_node_lst
+  let abs_nodes = ref StrSet.empty in
+  Cil.visitCilStmt (new findDummyAbsStmt maps abs_nodes) stmt |> ignore;
+  !abs_nodes
 
 let mk_dummy_abs_stmts maps =
-  List.fold_left ~f:(fun anl s -> mk_dummy_abs_stmt maps s @ anl) ~init:[]
+  List.fold_left
+    ~f:(fun anl s -> mk_dummy_abs_stmt maps s |> StrSet.union anl)
+    ~init:StrSet.empty
 
 let collect_node_id =
   List.fold_left
@@ -611,13 +610,12 @@ let mk_abs_action maps dug = function
       (SUpdateStmt (abs_before, abs_stmts, abs_after), patch_comps)
   | D.UpdateExp (func_name, s, e1, e2) ->
       (* NOTE: abs_stmt is exactly that one *)
-      let abs_stmt = mk_dummy_abs_stmt maps s |> List.hd_exn in
+      let abs_stmt = mk_dummy_abs_stmt maps s |> StrSet.choose in
       let abs_exp1, _ = mk_abs_exp func_name maps dug (e1, StrSet.empty) in
       let abs_exp2, patch_comps =
         mk_abs_exp func_name maps dug (e2, StrSet.empty)
       in
-      ( SUpdateExp (abs_stmt, abs_exp1, abs_exp2),
-        StrSet.union patch_comps abs_stmt.ids )
+      (SUpdateExp (abs_stmt, abs_exp1, abs_exp2), patch_comps)
   | _ -> L.error "mk_sdiff - not implemented"
 
 let define_abs_diff maps ast dug diff =
