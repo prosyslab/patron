@@ -181,10 +181,9 @@ and translate_new_stmt maps sol_map = function
 let translate_new_stmts maps sol_map =
   List.map ~f:(fun abs_node -> translate_new_stmt maps sol_map abs_node.A.ast)
 
-let extract_func_name node_id = String.split ~on:'-' node_id |> List.hd_exn
-
 let translate_func_name sol_map abs_node_lst =
-  abs_node_lst |> translate_ids sol_map |> StrSet.choose |> extract_func_name
+  abs_node_lst |> translate_ids sol_map |> StrSet.choose
+  |> Utils.get_func_name_from_node
 
 let translate_orig_stmts maps sol_map abs_nodes =
   let new_asts = abs_nodes |> translate_ids sol_map |> ids2asts maps in
@@ -202,8 +201,10 @@ let translate_insert_stmt maps sol_map before after ss =
   D.InsertStmt (target_func_name, target_before, new_ss, target_after)
 
 let translate_delete_stmt maps sol_map s =
-  let target_func_name = translate_func_name sol_map s.A.ids in
-  let new_s = translate_new_stmt maps sol_map s.A.ast in
+  let target_func_name = translate_func_name sol_map (StrSet.singleton s) in
+  let new_s =
+    translate_orig_stmts maps sol_map (StrSet.singleton s) |> List.hd_exn
+  in
   D.DeleteStmt (target_func_name, new_s)
 
 let translate_update_stmt maps sol_map before after ss =

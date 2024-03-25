@@ -126,7 +126,7 @@ let mapping_func_lvmap lval_map v lvs g =
       ~f:(fun lvm lv -> LvalMap.add (Hashtbl.find lval_map lv) lv lvm)
       ~init:LvalMap.empty lvs
   in
-  let func_name = String.split ~on:'-' v |> List.hd_exn in
+  let func_name = Utils.get_func_name_from_node v in
   if Hashtbl.mem g.lvmap_per_func func_name then
     let orig_lvmap = Hashtbl.find g.lvmap_per_func func_name in
     LvalMap.union

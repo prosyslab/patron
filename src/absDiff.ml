@@ -268,20 +268,61 @@ and pp_sunop fmt op =
   | SNot -> Format.fprintf fmt "SNot"
   | SNeg -> Format.fprintf fmt "SNeg"
 
+let subst_ids o_lv n_lv =
+  StrSet.map (fun id -> if String.equal id o_lv then n_lv else id)
+
+let rec subst_abs_stmt o_lv n_lv astmt =
+  let subst = subst_abs_node o_lv n_lv in
+  match astmt with
+  | SSNull | SBreak | SContinue -> astmt
+  | SIf (e, s1, s2) -> SIf (subst e, List.map ~f:subst s1, List.map ~f:subst s2)
+  | SSet (l, e) -> SSet (subst l, subst e)
+  | SCall (l, e, es) ->
+      SCall (Option.(l >>| subst), subst e, List.map ~f:subst es)
+  | SReturn e -> SReturn Option.(e >>| subst)
+  | SBlock b -> SBlock (List.map ~f:subst b)
+  | SGoto s -> SGoto (subst s)
+
+and subst_abs_exp o_lv n_lv ae =
+  let subst = subst_abs_node o_lv n_lv in
+  match ae with
+  | SENULL | SConst _ | SSizeOf _ | SSizeOfStr _ -> ae
+  | SELval l -> SELval (subst l)
+  | SSizeOfE e -> SSizeOfE (subst e)
+  | SBinOp (op, e1, e2, t) -> SBinOp (op, subst e1, subst e2, t)
+  | SUnOp (op, e, t) -> SUnOp (op, subst e, t)
+  | SQuestion (e1, e2, e3, t) -> SQuestion (subst e1, subst e2, subst e3, t)
+  | SCastE (t, e) -> SCastE (t, subst e)
+  | SAddrOf e -> SAddrOf (subst e)
+  | SStartOf e -> SStartOf (subst e)
+  | SAddrOfLabel e -> SAddrOfLabel (subst e)
+
+and subst_abs_ast o_lv n_lv = function
+  | (Null | AbsGlob _ | AbsLval _) as aast -> aast
+  | AbsStmt (astmt, s) -> AbsStmt (subst_abs_stmt o_lv n_lv astmt, s)
+  | AbsExp (ae, e) -> AbsExp (subst_abs_exp o_lv n_lv ae, e)
+
+and subst_abs_node o_lv n_lv anode =
+  {
+    anode with
+    ast = subst_abs_ast o_lv n_lv anode.ast;
+    ids = subst_ids o_lv n_lv anode.ids;
+  }
+
 let to_null = Null
 
 type t =
   (* same format with Diff.t excluding func name *)
   (* func name is not necessary *)
   | SInsertStmt of StrSet.t * abs_node list * StrSet.t
-  | SDeleteStmt of abs_node
+  | SDeleteStmt of string
   | SUpdateStmt of StrSet.t * abs_node list * StrSet.t
-  | SInsertExp of abs_node * abs_node list * abs_node list * abs_node list
-  | SDeleteExp of abs_node * abs_node
+  | SInsertExp of string * abs_node list * abs_node list * abs_node list
+  | SDeleteExp of string * abs_node
   | SUpdateExp of string * abs_node * abs_node
-  | SInsertLval of abs_node * abs_node
-  | SDeleteLval of abs_node * abs_node
-  | SUpdateLval of abs_node * abs_node * abs_node
+  | SInsertLval of string * abs_node
+  | SDeleteLval of string * abs_node
+  | SUpdateLval of string * abs_node * abs_node
 
 let rec to_styp t =
   match t with
@@ -374,25 +415,49 @@ and to_sconst c =
   | Cil.CStr s -> SStringConst s
   | _ -> L.error "not supported"
 
-let get_parent_fun parent_lst =
-  let check_fun g = match g with Cil.GFun _ -> true | _ -> false in
-  let get_fun g =
-    match g with
-    | Cil.GFun _ -> g
-    | _ -> L.error "get_parent_fun - not a function"
-  in
-  let parent_fun_cand =
-    List.fold_left
-      ~f:(fun acc e ->
-        match e with
-        | Ast.Global g -> if check_fun g then get_fun g :: acc else acc
-        | _ -> acc)
-      ~init:[] parent_lst
-  in
-  if List.is_empty parent_fun_cand then
-    L.error "get_parent_fun - diff source not found"
-  else List.hd_exn parent_fun_cand
+let subst_single_abs_diff o_lv n_lv adiff =
+  let subst = subst_abs_node o_lv n_lv in
+  match adiff with
+  | SInsertStmt (b, ss, a) -> SInsertStmt (b, List.map ~f:subst ss, a)
+  | SDeleteStmt _ -> adiff
+  | SUpdateStmt (b, ss, a) -> SUpdateStmt (b, List.map ~f:subst ss, a)
+  | SInsertExp (s, b, es, a) ->
+      SInsertExp
+        (s, List.map ~f:subst b, List.map ~f:subst es, List.map ~f:subst a)
+  | SDeleteExp (s, e) -> SDeleteExp (s, subst e)
+  | SUpdateExp (s, e1, e2) -> SUpdateExp (s, subst e1, subst e2)
+  | SInsertLval (s, l) -> SInsertLval (s, subst l)
+  | SDeleteLval (s, l) -> SDeleteLval (s, subst l)
+  | SUpdateLval (s, l1, l2) -> SUpdateLval (s, subst l1, subst l2)
 
+let subst_abs_diff o_lv n_lv = List.map ~f:(subst_single_abs_diff o_lv n_lv)
+
+let change_def_single nodes = function
+  | SInsertStmt (_, ss, a) -> SInsertStmt (nodes, ss, a)
+  | SUpdateStmt (_, ss, a) -> SUpdateStmt (nodes, ss, a)
+  | _ as ad -> ad
+
+let change_def nodes = List.map ~f:(change_def_single nodes)
+
+let change_use_single nodes = function
+  | SInsertStmt (b, ss, _) -> SInsertStmt (b, ss, nodes)
+  | SUpdateStmt (b, ss, _) -> SUpdateStmt (b, ss, nodes)
+  (* NOTE: Only InsertStmt is handled correctly *)
+  | _ as ad -> ad
+
+let change_use nodes = List.map ~f:(change_use_single nodes)
+
+let change_exact_single node = function
+  | SDeleteStmt _ -> SDeleteStmt node
+  | SInsertExp (_, b, es, a) -> SInsertExp (node, b, es, a)
+  | SDeleteExp (_, e) -> SDeleteExp (node, e)
+  | SUpdateExp (_, e1, e2) -> SUpdateExp (node, e1, e2)
+  | SInsertLval (_, l) -> SInsertLval (node, l)
+  | SDeleteLval (_, l) -> SDeleteLval (node, l)
+  | SUpdateLval (_, l1, l2) -> SUpdateLval (node, l1, l2)
+  | _ as ad -> ad
+
+let change_exact node = List.map ~f:(change_exact_single node)
 let global_vars = ref []
 
 class globVisitor =
@@ -600,7 +665,8 @@ let mk_abs_action maps dug = function
       let abs_stmt, patch_comps =
         mk_abs_stmt func_name maps dug (s, StrSet.empty)
       in
-      (SDeleteStmt abs_stmt, StrSet.union patch_comps abs_stmt.ids)
+      ( SDeleteStmt (abs_stmt.ids |> StrSet.choose),
+        StrSet.union patch_comps abs_stmt.ids )
   | D.UpdateStmt (func_name, before, ss, after) ->
       let abs_before = mk_dummy_abs_stmts maps before in
       let abs_stmts, patch_comps =
@@ -628,4 +694,8 @@ let define_abs_diff maps ast dug diff =
   |> fun (actions, patch_comps) ->
   ( List.rev actions,
     let pc = StrSet.remove "None" patch_comps in
-    StrSet.fold (fun pc l -> pc :: l) pc [] )
+    StrSet.fold
+      (fun c lvs ->
+        let lv = Chc.Elt.numer c in
+        Chc.add lv lvs)
+      pc Chc.empty )

@@ -84,6 +84,7 @@ let file2func = function
   | "AllocExp.facts" -> "AllocExp"
   | "Arg.facts" -> "Arg"
   | "Set.facts" -> "Set"
+  | "Copy.facts" -> "Copy"
   | "BinOpExp.facts" -> "BinOpExp"
   | "UnOpExp.facts" -> "UnOpExp"
   | "CallExp.facts" -> "CallExp"

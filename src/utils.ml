@@ -213,3 +213,5 @@ let reverse_hashtbl tbl =
   let rev_tbl_init = Hashtbl.create 1000 in
   Hashtbl.iter (fun k v -> Hashtbl.add rev_tbl_init v k) tbl;
   rev_tbl_init
+
+let get_func_name_from_node n = String.split ~on:'-' n |> List.hd_exn

@@ -459,6 +459,7 @@ let rels =
     ("AllocExp", [ expr; expr ]);
     ("Arg", [ arg_list; pos; expr ]);
     ("Set", [ node; lval; expr ]);
+    ("Copy", [ node; lval; lval ]);
     ("BinOpExp", [ expr; binop; expr; expr ]);
     ("UnOpExp", [ expr; unop; expr ]);
     ("CallExp", [ expr; expr; arg_list ]);
@@ -764,12 +765,31 @@ let find_loc lv chc =
     chc
   |> choose
 
-let find_evallv_nodes loc chc =
-  filter_map
-    (function
-      | Elt.FuncApply ("EvalLv", [ n; _; l ]) when Elt.equal loc l -> Some n
-      | _ -> None)
-    chc
+module FunLvMap = Map.Make (String)
+
+let find_f_lv loc chc =
+  fold
+    (fun rel fl ->
+      match rel with
+      | Elt.FuncApply ("EvalLv", [ Elt.FDNumeral n; lv; l ])
+        when Elt.equal loc l ->
+          let func_name = Utils.get_func_name_from_node n in
+          FunLvMap.update func_name
+            (function
+              | Some lvs -> Some (add lv lvs) | None -> Some (singleton lv))
+            fl
+      | _ -> fl)
+    chc FunLvMap.empty
+
+let find_copy_lvs lv =
+  filter_map (function
+    | Elt.FuncApply ("Copy", [ _; l1; l2 ]) when Elt.equal l2 lv -> Some l1
+    | _ -> None)
+
+let find_evallv_nodes loc =
+  filter_map (function
+    | Elt.FuncApply ("EvalLv", [ n; _; l ]) when Elt.equal loc l -> Some n
+    | _ -> None)
 
 let filter_by_node =
   List.filter ~f:(fun s ->

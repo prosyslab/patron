@@ -9,6 +9,7 @@ let match_func z3env f =
   | "Snk" -> z3env.snk
   | "Skip" -> z3env.skip
   | "Set" -> z3env.set
+  | "Copy" -> z3env.copy
   | "AllocExp" -> z3env.alloc
   | "SAllocExp" -> z3env.salloc
   | "LvalExp" -> z3env.lval_exp

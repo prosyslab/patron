@@ -28,6 +28,7 @@ type t = {
   snk : Z3.FuncDecl.func_decl;
   skip : Z3.FuncDecl.func_decl;
   set : Z3.FuncDecl.func_decl;
+  copy : Z3.FuncDecl.func_decl;
   alloc : Z3.FuncDecl.func_decl;
   salloc : Z3.FuncDecl.func_decl;
   assume : Z3.FuncDecl.func_decl;
@@ -92,6 +93,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.snk;
   Z3.Fixedpoint.register_relation solver env.skip;
   Z3.Fixedpoint.register_relation solver env.set;
+  Z3.Fixedpoint.register_relation solver env.copy;
   Z3.Fixedpoint.register_relation solver env.alloc;
   Z3.Fixedpoint.register_relation solver env.salloc;
   Z3.Fixedpoint.register_relation solver env.assume;
@@ -145,6 +147,7 @@ let fact_files =
     "AddrOf.facts";
     "Return.facts";
     "Set.facts";
+    "Copy.facts";
     "Skip.facts";
     "UnOpExp.facts";
     "Assume.facts";
@@ -194,6 +197,9 @@ let mk_env () =
   let skip = Z3.FuncDecl.mk_func_decl_s z3ctx "Skip" [ node ] boolean_sort in
   let set =
     Z3.FuncDecl.mk_func_decl_s z3ctx "Set" [ node; lval; expr ] boolean_sort
+  in
+  let copy =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "Copy" [ node; lval; lval ] boolean_sort
   in
   let alloc =
     Z3.FuncDecl.mk_func_decl_s z3ctx "AllocExp" [ expr; expr ] boolean_sort
@@ -336,6 +342,7 @@ let mk_env () =
       snk;
       skip;
       set;
+      copy;
       alloc;
       salloc;
       assume;

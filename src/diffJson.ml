@@ -77,7 +77,7 @@ let rec mk_json_obj saction =
       `Assoc [ action_json; before_json; change_json; after_json ]
   | SDeleteStmt s ->
       let action_json = ("action", `String "delete_stmt") in
-      let change_json = ("change", sstmt_to_json s) in
+      let change_json = ("change", `String s) in
       `Assoc [ action_json; change_json ]
   | SUpdateStmt (before, ss, after) ->
       let action_json = ("action", `String "update_stmt") in

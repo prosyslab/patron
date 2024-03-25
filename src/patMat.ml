@@ -80,8 +80,8 @@ let mk_file_diff orig_path patch_path target_alarm out_dir =
        ])
   |> ignore
 
-let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast out_dir
-    diff =
+let match_bug_for_one_prj i_str pattern buggy_maps donee_dir target_alarm ast
+    out_dir diff =
   let facts, (src, snk, _, _), target_maps =
     Parser.make_facts donee_dir target_alarm ast out_dir
   in
@@ -93,19 +93,19 @@ let match_bug_for_one_prj pattern buggy_maps donee_dir target_alarm ast out_dir
   in
   Maps.dump target_alarm target_maps out_dir;
   if Option.is_some status then (
-    Modeling.match_ans buggy_maps target_maps target_alarm out_dir;
+    Modeling.match_ans buggy_maps target_maps target_alarm i_str out_dir;
     L.info "Matching with %s is done" target_alarm;
     let target_diff =
       EditFunction.translate target_maps out_dir target_alarm diff
     in
     L.info "Applying patch on the target file ...";
     let out_file_orig =
-      String.concat [ out_dir; "/orig_"; target_alarm; ".c" ]
+      String.concat [ out_dir; "/orig_"; target_alarm; "_"; i_str; ".c" ]
     in
     Patch.write_out out_file_orig ast;
     let patch_file = Patch.apply ast target_diff in
     let out_file_patch =
-      String.concat [ out_dir; "/patch_"; target_alarm; ".c" ]
+      String.concat [ out_dir; "/patch_"; target_alarm; "_"; i_str; ".c" ]
     in
     Patch.write_out out_file_patch patch_file;
     L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
@@ -119,21 +119,38 @@ let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
        (Filename.concat donee_dir ("sparrow-out/taint/datalog/" ^ target_alarm))
 
 let match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps buggy_ast
-    pattern out_dir diff =
+    i_str pattern out_dir diff =
   Sys.readdir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
          if is_new_alarm buggy_dir true_alarm donee_dir ta then
-           match_bug_for_one_prj pattern buggy_maps donee_dir ta buggy_ast
+           match_bug_for_one_prj i_str pattern buggy_maps donee_dir ta buggy_ast
              out_dir diff)
+
+let match_each_pattern inline_funcs true_alarm buggy_dir donee_dir out_dir
+    patch_ast maps facts src snk i (pattern_in_numeral, pattern, abs_diff) =
+  let i_str = string_of_int i in
+  let donee_ast =
+    if String.equal (buggy_dir ^ "/bug") donee_dir then patch_ast
+    else Parser.parse_ast donee_dir inline_funcs
+  in
+  L.info "Make Bug Pattern done";
+  Chc.pretty_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
+  Chc.sexp_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
+  let z3env = Z3env.get_env () in
+  Maps.dump "buggy" maps out_dir;
+  L.info "Try matching with buggy numeral...";
+  ( Chc.match_and_log z3env out_dir ("buggy_numer_" ^ i_str) maps facts src snk
+      pattern_in_numeral
+  |> fun status -> assert (Option.is_some status) );
+  Maps.dump ("buggy_numer_" ^ i_str) maps out_dir;
+  match_with_new_alarms buggy_dir true_alarm donee_dir maps donee_ast i_str
+    pattern out_dir abs_diff;
+  L.info "Done."
 
 let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     out_dir =
   let buggy_ast = Parser.parse_ast buggy_dir inline_funcs in
   let patch_ast = Parser.parse_ast patch_dir inline_funcs in
-  let donee_ast =
-    if String.equal (buggy_dir ^ "/bug") donee_dir then patch_ast
-    else Parser.parse_ast donee_dir inline_funcs
-  in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff out_dir buggy_ast patch_ast in
   let facts, (src, snk, alarm_exps, alarm_lvs), maps =
@@ -151,19 +168,12 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   if write_out then (
     L.info "Writing out the edit script...";
     DiffJson.dump abs_diff out_dir);
-  let pattern_in_numeral, pattern =
-    AbsPat.run maps dug patch_comps alarm_exps alarm_lvs src snk facts
+  let patterns =
+    AbsPat.run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff
   in
-  L.info "Make Bug Pattern done";
-  Chc.pretty_dump (Filename.concat out_dir "pattern") pattern;
-  Chc.sexp_dump (Filename.concat out_dir "pattern") pattern;
-  let z3env = Z3env.get_env () in
-  Maps.dump "buggy" maps out_dir;
-  L.info "Try matching with buggy numeral...";
-  ( Chc.match_and_log z3env out_dir "buggy_numer" maps facts src snk
-      pattern_in_numeral
-  |> fun status -> assert (Option.is_some status) );
-  Maps.dump "buggy_numer" maps out_dir;
-  match_with_new_alarms buggy_dir true_alarm donee_dir maps donee_ast pattern
-    out_dir abs_diff;
-  L.info "Done."
+  (* NOTE: always try matching alt_pat for testing *)
+  List.iteri
+    ~f:
+      (match_each_pattern inline_funcs true_alarm buggy_dir donee_dir out_dir
+         patch_ast maps facts src snk)
+    patterns
