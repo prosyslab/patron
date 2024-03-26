@@ -11,16 +11,10 @@ let collect_ast_rels dug node leaf =
   let node_info = Dug.info_of_v dug node in
   Chc.fixedpoint Chc.from_ast_to_node node_info.Dug.rels leaf Chc.empty |> fst
 
-let def_from_skip_nodes dug lv_term snk def_skip_nodes =
+let def_from_skip_nodes dug snk def_skip_nodes =
   let node = NodeSet.choose def_skip_nodes in
-  let succ =
-    Hashtbl.find dug.Dug.use_map lv_term
-    |> NodeSet.find_first (fun s -> Dug.mem_edge dug node s)
-  in
   (* TEMP: for more simple pattern *)
-  Dug.shortest_path dug succ snk
-  |> Dug.path2rels
-  |> Chc.add (Chc.Elt.duedge node succ)
+  Dug.shortest_path dug node snk |> Dug.path2rels
 
 let find_rels_by_loc dug snk loc facts =
   let cand_nodes = Chc.find_evallv_nodes loc facts in
@@ -37,11 +31,14 @@ let find_rels_by_loc dug snk loc facts =
   let ast_rels = collect_ast_rels dug node_sym locs in
   (Dug.path2rels selected_path |> Chc.union ast_rels, node_sym)
 
-let def_from_normal_node dug lv_term loc used_node node rels_acc =
+let def_from_normal_node dug cmd_map lv_term loc used_node node rels_acc =
   let terms = Chc.singleton loc in
   let ast_rels = collect_ast_rels dug node terms in
   let find_path_rels succ path_rels =
-    if Hashtbl.find dug.label (node, succ) |> Chc.mem lv_term then
+    if
+      (not (Dug.is_skip_node cmd_map succ))
+      && Hashtbl.find dug.label (node, succ) |> Chc.mem lv_term
+    then
       let path = Dug.shortest_path dug succ used_node in
       Dug.path2rels path
       |> Chc.add (Chc.Elt.duedge node succ)
@@ -50,9 +47,9 @@ let def_from_normal_node dug lv_term loc used_node node rels_acc =
   in
   Dug.fold_succ find_path_rels dug node rels_acc |> Chc.union ast_rels
 
-let def_from_normal_nodes dug lv_term loc used_node def_nodes =
+let def_from_normal_nodes dug cmd_map lv_term loc used_node def_nodes =
   NodeSet.fold
-    (def_from_normal_node dug lv_term loc used_node)
+    (def_from_normal_node dug cmd_map lv_term loc used_node)
     def_nodes Chc.empty
 
 let find_rels_by_lv dug cmd_map snk lv facts =
@@ -62,11 +59,12 @@ let find_rels_by_lv dug cmd_map snk lv facts =
   in
   (* NOTE: hack for skip node (ENTRY, EXIT, ReturnNode, ...) *)
   if NodeSet.is_empty def_nodes then
-    (def_from_skip_nodes dug lv snk def_skip_nodes, def_skip_nodes)
+    (def_from_skip_nodes dug snk def_skip_nodes, def_skip_nodes)
   else
     let loc = Chc.find_loc lv facts in
     let loc_rels, used_node = find_rels_by_loc dug snk loc facts in
-    ( def_from_normal_nodes dug lv loc used_node def_nodes |> Chc.union loc_rels,
+    ( def_from_normal_nodes dug cmd_map lv loc used_node def_nodes
+      |> Chc.union loc_rels,
       def_nodes )
 
 let log_lv maps lv =
