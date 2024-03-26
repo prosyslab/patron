@@ -75,10 +75,7 @@ let mk_term s =
     try Chc.Elt.Const (Z.of_string s)
     with _ ->
       let splitted = String.split ~on:'-' s in
-      if List.length splitted = 1 then Chc.Elt.Var s
-      else (
-        incr Z3env.sort_size;
-        Chc.Elt.FDNumeral s)
+      if List.length splitted = 1 then Chc.Elt.Var s else Chc.Elt.FDNumeral s
 
 let file2func = function
   | "AllocExp.facts" -> "AllocExp"

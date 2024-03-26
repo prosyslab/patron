@@ -85,10 +85,9 @@ let match_bug_for_one_prj i_str pattern buggy_maps donee_dir target_alarm ast
   let facts, (src, snk, _, _), target_maps =
     Parser.make_facts donee_dir target_alarm ast out_dir
   in
-  let z3env = Z3env.get_env () in
   L.info "Try matching with %s..." target_alarm;
   let status =
-    Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
+    Chc.match_and_log Z3env.z3env out_dir target_alarm target_maps facts src snk
       pattern
   in
   Maps.dump target_alarm target_maps out_dir;
@@ -136,11 +135,10 @@ let match_each_pattern inline_funcs true_alarm buggy_dir donee_dir out_dir
   L.info "Make Bug Pattern done";
   Chc.pretty_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
-  let z3env = Z3env.get_env () in
   Maps.dump "buggy" maps out_dir;
   L.info "Try matching with buggy numeral...";
-  ( Chc.match_and_log z3env out_dir ("buggy_numer_" ^ i_str) maps facts src snk
-      pattern_in_numeral
+  ( Chc.match_and_log Z3env.z3env out_dir ("buggy_numer_" ^ i_str) maps facts
+      src snk pattern_in_numeral
   |> fun status -> assert (Option.is_some status) );
   Maps.dump ("buggy_numer_" ^ i_str) maps out_dir;
   match_with_new_alarms buggy_dir true_alarm donee_dir maps donee_ast i_str
