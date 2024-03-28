@@ -440,109 +440,6 @@ end
 include Set.Make (Elt)
 
 let to_list s = fold (fun c l -> c :: l) s []
-let node = "node"
-let lval = "lval"
-let expr = "expr"
-let binop = "binop"
-let unop = "unop"
-let arg_list = "arg_list"
-let pos = "pos"
-let loc = "loc"
-let const = "const"
-let str_literal = "str_literal"
-
-let types =
-  [ node; lval; expr; binop; unop; arg_list; pos; loc; const; str_literal ]
-
-let rels =
-  [
-    ("AllocExp", [ expr; expr ]);
-    ("Arg", [ arg_list; pos; expr ]);
-    ("Set", [ node; lval; expr ]);
-    ("Copy", [ node; lval; lval ]);
-    ("BinOpExp", [ expr; binop; expr; expr ]);
-    ("UnOpExp", [ expr; unop; expr ]);
-    ("CallExp", [ expr; expr; arg_list ]);
-    ("DUEdge", [ node; node ]);
-    ("Index", [ lval; lval; expr ]);
-    ("Mem", [ lval; expr ]);
-    ("Field", [ lval; lval ]);
-    ("AddrOf", [ expr; lval ]);
-    ("LibCallExp", [ expr; expr; arg_list ]);
-    ("LvalExp", [ expr; lval ]);
-    ("Return", [ node; expr ]);
-    ("SAllocExp", [ expr; str_literal ]);
-    ("Skip", [ node ]);
-    ("EvalLv", [ node; lval; loc ]);
-    ("Assume", [ node; expr ]);
-    ("ErrTrace", [ node; node ]);
-  ]
-
-let pp_types fmt =
-  List.iter ~f:(fun t -> F.fprintf fmt ".type %s <: symbol\n" t) types;
-  F.fprintf fmt "\n"
-
-let argdecls2str args =
-  args
-  |> List.mapi ~f:(fun i arg -> F.sprintf "v%d: %s" i arg)
-  |> String.concat ~sep:", "
-
-let pp_decls fmt =
-  List.iter
-    ~f:(fun (hd, args) -> F.fprintf fmt ".decl %s(%s)\n" hd (argdecls2str args))
-    rels;
-  F.fprintf fmt "\n"
-
-let pp_ios fmt =
-  List.iter
-    ~f:(fun (hd, _) ->
-      if String.equal hd "ErrTrace" then F.fprintf fmt ".output %s\n" hd
-      else F.fprintf fmt ".input %s\n" hd)
-    rels;
-  F.fprintf fmt "\n"
-
-module VarMap = Map.Make (String)
-
-let quote s = "\"" ^ s ^ "\""
-let comma_concat s ss = if String.is_empty s then ss else s ^ ", " ^ ss
-
-let args2str (var_map, s) = function
-  | Elt.FDNumeral n -> (var_map, quote n |> comma_concat s)
-  | Elt.Var v ->
-      if VarMap.mem v var_map then
-        (var_map, VarMap.find v var_map |> comma_concat s)
-      else
-        let new_v = "v" ^ (VarMap.cardinal var_map |> string_of_int) in
-        (VarMap.add v new_v var_map, comma_concat s new_v)
-  | _ -> L.error "args2str: invalid term"
-
-let rels2strlst (vm, rs) = function
-  | Elt.FuncApply (f, args) ->
-      let vm', args_str = List.fold_left ~f:args2str ~init:(vm, "") args in
-      (vm', F.sprintf "%s(%s)" f args_str :: rs)
-  | _ -> L.error "DUMMY"
-
-let pp_rels fmt var_map rels =
-  List.fold_left ~f:rels2strlst ~init:(var_map, []) rels
-  |> snd
-  |> String.concat ~sep:",\n    "
-  |> F.fprintf fmt "    %s."
-
-let pp_datalog fmt pattern =
-  pp_types fmt;
-  pp_decls fmt;
-  pp_ios fmt;
-  iter
-    (function
-      | Elt.Implies (rels, Elt.FuncApply (f, args)) ->
-          let var_map, args_str =
-            List.fold_left ~f:args2str ~init:(VarMap.empty, "") args
-          in
-          F.fprintf fmt "%s(%s) :-\n" f args_str;
-          pp_rels fmt var_map rels
-      | _ -> L.error "Chc.pp: invalid rule format")
-    pattern
-
 let pp fmt = iter (fun chc -> F.fprintf fmt "%a\n" Elt.pp chc)
 
 let pp_smt fmt =
@@ -804,29 +701,6 @@ let filter_by_node =
       else false)
 
 let subst_pattern_for_target src snk = map (Elt.subst src snk)
-
-let run_souffle work_dir out_dir pattern =
-  let project_home =
-    Sys.executable_name |> Filename.dirname |> Filename.dirname
-    |> Filename.dirname |> Filename.dirname
-  in
-  let souffle_bin =
-    Filename.concat project_home "souffle"
-    |> Fun.flip Filename.concat "build"
-    |> Fun.flip Filename.concat "src"
-    |> Fun.flip Filename.concat "souffle"
-  in
-  let datalog_file = Filename.concat out_dir "BugPattern.dl" in
-  let oc = Out_channel.create datalog_file in
-  let fmt = F.formatter_of_out_channel oc in
-  pp_datalog fmt pattern;
-  Out_channel.close oc;
-  let process_info =
-    Core_unix.create_process ~prog:souffle_bin
-      ~args:[ souffle_bin; "-F"; work_dir; "-D"; out_dir; datalog_file ]
-  in
-  let pid = process_info.pid in
-  match Core_unix.waitpid pid with Ok () -> () | _ -> assert false
 
 let pattern_match z3env out_dir ver_name maps facts src snk pattern =
   let solver = Z3env.mk_fixedpoint z3env.Z3env.z3ctx in

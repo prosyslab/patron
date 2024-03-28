@@ -1,4 +1,5 @@
 open Core
+open Continue_or_stop
 module F = Format
 module L = Logger
 module Hashtbl = Stdlib.Hashtbl
@@ -80,8 +81,8 @@ let mk_file_diff orig_path patch_path target_alarm out_dir =
        ])
   |> ignore
 
-let match_bug_for_one_prj i_str pattern buggy_maps donee_dir target_alarm ast
-    out_dir diff =
+let match_once buggy_maps donee_dir target_alarm ast out_dir diff i pattern =
+  let i_str = string_of_int i in
   let facts, (src, snk, _, _), target_maps =
     Parser.make_facts donee_dir target_alarm ast out_dir
   in
@@ -108,8 +109,18 @@ let match_bug_for_one_prj i_str pattern buggy_maps donee_dir target_alarm ast
     in
     Patch.write_out out_file_patch patch_file;
     L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
-    mk_file_diff out_file_orig out_file_patch target_alarm out_dir)
-  else L.info "%s is Not Matched" target_alarm
+    mk_file_diff out_file_orig out_file_patch target_alarm out_dir;
+    Stop ())
+  else (
+    L.info "%s is Not Matched" target_alarm;
+    Continue (i + 1))
+
+let match_patterns buggy_maps donee_dir target_alarm ast out_dir =
+  List.fold_until ~init:0
+    ~f:(fun i (_, pattern, abs_diff) ->
+      match_once buggy_maps donee_dir target_alarm ast out_dir abs_diff i
+        pattern)
+    ~finish:ignore
 
 let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
   (not
@@ -118,37 +129,31 @@ let is_new_alarm buggy_dir true_alarm donee_dir target_alarm =
        (Filename.concat donee_dir ("sparrow-out/taint/datalog/" ^ target_alarm))
 
 let match_with_new_alarms buggy_dir true_alarm donee_dir buggy_maps buggy_ast
-    i_str pattern out_dir diff =
+    patterns out_dir =
   Sys.readdir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> Array.iter ~f:(fun ta ->
          if is_new_alarm buggy_dir true_alarm donee_dir ta then
-           match_bug_for_one_prj i_str pattern buggy_maps donee_dir ta buggy_ast
-             out_dir diff)
+           match_patterns buggy_maps donee_dir ta buggy_ast out_dir patterns)
 
-let match_each_pattern inline_funcs true_alarm buggy_dir donee_dir out_dir
-    patch_ast maps facts src snk i (pattern_in_numeral, pattern, abs_diff) =
+let preproc_using_pattern maps src snk facts out_dir i
+    (pattern_in_numeral, pattern, _) =
   let i_str = string_of_int i in
-  let donee_ast =
-    if String.equal (buggy_dir ^ "/bug") donee_dir then patch_ast
-    else Parser.parse_ast donee_dir inline_funcs
-  in
-  L.info "Make Bug Pattern done";
-  Chc.pretty_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
   Chc.sexp_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
   Maps.dump "buggy" maps out_dir;
   L.info "Try matching with buggy numeral...";
   ( Chc.match_and_log Z3env.z3env out_dir ("buggy_numer_" ^ i_str) maps facts
       src snk pattern_in_numeral
   |> fun status -> assert (Option.is_some status) );
-  Maps.dump ("buggy_numer_" ^ i_str) maps out_dir;
-  match_with_new_alarms buggy_dir true_alarm donee_dir maps donee_ast i_str
-    pattern out_dir abs_diff;
-  L.info "Done."
+  Maps.dump ("buggy_numer_" ^ i_str) maps out_dir
 
 let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
     out_dir =
   let buggy_ast = Parser.parse_ast buggy_dir inline_funcs in
   let patch_ast = Parser.parse_ast patch_dir inline_funcs in
+  let donee_ast =
+    if String.equal (buggy_dir ^ "/bug") donee_dir then patch_ast
+    else Parser.parse_ast donee_dir inline_funcs
+  in
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff out_dir buggy_ast patch_ast in
   let facts, (src, snk, alarm_exps, alarm_lvs), maps =
@@ -169,9 +174,9 @@ let run (inline_funcs, write_out) true_alarm buggy_dir patch_dir donee_dir
   let patterns =
     AbsPat.run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff
   in
+  L.info "Making Bug Pattern is done";
+  List.iteri ~f:(preproc_using_pattern maps src snk facts out_dir) patterns;
+  L.info "Preprocessing with pattern is done.";
   (* NOTE: always try matching alt_pat for testing *)
-  List.iteri
-    ~f:
-      (match_each_pattern inline_funcs true_alarm buggy_dir donee_dir out_dir
-         patch_ast maps facts src snk)
-    patterns
+  match_with_new_alarms buggy_dir true_alarm donee_dir maps donee_ast patterns
+    out_dir
