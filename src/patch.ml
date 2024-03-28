@@ -17,14 +17,14 @@ let partition mid stmts =
         else (blst, found, stmt :: alst))
       ~init:([], false, []) stmts
   in
-  (List.rev blst, alst)
+  (List.rev blst, List.rev alst)
 
 type insert_mode = Before | After
 
 let insert_internal ?(using = Before) ?(update = false) assist_opt patch stmts =
   if Option.is_none assist_opt then
     let stmts = List.rev stmts in
-    match using with Before -> stmts @ patch | After -> patch @ stmts
+    match using with Before -> patch @ stmts | After -> stmts @ patch
   else
     let assist = Option.value_exn assist_opt in
     let rev_or_not = match using with Before -> Fun.id | After -> List.rev in
