@@ -665,8 +665,7 @@ let mk_abs_action maps dug = function
       let abs_stmt, patch_comps =
         mk_abs_stmt func_name maps dug (s, StrSet.empty)
       in
-      ( SDeleteStmt (abs_stmt.ids |> StrSet.choose),
-        StrSet.union patch_comps abs_stmt.ids )
+      (SDeleteStmt (abs_stmt.ids |> StrSet.choose), patch_comps)
   | D.UpdateStmt (func_name, before, ss, after) ->
       let abs_before = mk_dummy_abs_stmts maps before in
       let abs_stmts, patch_comps =
