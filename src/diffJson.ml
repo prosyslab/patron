@@ -94,6 +94,12 @@ let rec mk_json_obj saction =
           `Assoc [ ("before", sexp_to_json e1); ("after", sexp_to_json e2) ] )
       in
       `Assoc [ action_json; change_json ]
+  | SUpdateCallExp (s, s2) ->
+      let action_json = ("action", `String "update_callexp") in
+      let change_json =
+        ("change", `Assoc [ ("before", `String s); ("after", sstmt_to_json s2) ])
+      in
+      `Assoc [ action_json; change_json ]
   | _ -> L.error "mk_json_obj - not implemented"
 
 and sexps_to_json lst =
@@ -238,6 +244,13 @@ and sexp_to_json sexp =
       let e_json = ("e", sexp_to_json e1_1) in
       let unop_json = ("unop", `Assoc [ op_json; typ_json; e_json ]) in
       let node_json = ("node", `Assoc [ unop_json ]) in
+      let id_json = ("id", `String (string_of_ids sexp.ids)) in
+      let literal_json = ("literal", `String sexp.literal) in
+      `Assoc [ node_json; id_json; literal_json ]
+  | SSizeOf typ ->
+      let typ_json = ("typ", styp_to_sym typ) in
+      let sizeof_json = ("sizeof", `Assoc [ typ_json ]) in
+      let node_json = ("node", `Assoc [ sizeof_json ]) in
       let id_json = ("id", `String (string_of_ids sexp.ids)) in
       let literal_json = ("literal", `String sexp.literal) in
       `Assoc [ node_json; id_json; literal_json ]

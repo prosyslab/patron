@@ -320,6 +320,7 @@ type t =
   | SInsertExp of string * abs_node list * abs_node list * abs_node list
   | SDeleteExp of string * abs_node
   | SUpdateExp of string * abs_node * abs_node
+  | SUpdateCallExp of string * abs_node
   | SInsertLval of string * abs_node
   | SDeleteLval of string * abs_node
   | SUpdateLval of string * abs_node * abs_node
@@ -426,6 +427,7 @@ let subst_single_abs_diff o_lv n_lv adiff =
         (s, List.map ~f:subst b, List.map ~f:subst es, List.map ~f:subst a)
   | SDeleteExp (s, e) -> SDeleteExp (s, subst e)
   | SUpdateExp (s, e1, e2) -> SUpdateExp (s, subst e1, subst e2)
+  | SUpdateCallExp (s, s2) -> SUpdateCallExp (s, subst s2)
   | SInsertLval (s, l) -> SInsertLval (s, subst l)
   | SDeleteLval (s, l) -> SDeleteLval (s, subst l)
   | SUpdateLval (s, l1, l2) -> SUpdateLval (s, subst l1, subst l2)
@@ -452,6 +454,7 @@ let change_exact_single node = function
   | SInsertExp (_, b, es, a) -> SInsertExp (node, b, es, a)
   | SDeleteExp (_, e) -> SDeleteExp (node, e)
   | SUpdateExp (_, e1, e2) -> SUpdateExp (node, e1, e2)
+  | SUpdateCallExp (_, s) -> SUpdateCallExp (node, s)
   | SInsertLval (_, l) -> SInsertLval (node, l)
   | SDeleteLval (_, l) -> SDeleteLval (node, l)
   | SUpdateLval (_, l1, l2) -> SUpdateLval (node, l1, l2)
@@ -571,14 +574,14 @@ and mk_abs_exps func_name maps dug (es, pc) =
 and mk_abs_instr func_name maps dug (i, pc) =
   match i with
   | Cil.Set (l, e, _) ->
-      let abs_lv_node, pc1 = mk_abs_lv func_name maps dug (l, pc) in
-      let abs_exp_node, pc2 = mk_abs_exp func_name maps dug (e, pc1) in
-      (SSet (abs_lv_node, abs_exp_node), pc2)
+      let abs_lv_node, _ = mk_abs_lv func_name maps dug (l, pc) in
+      let abs_exp_node, pc1 = mk_abs_exp func_name maps dug (e, pc) in
+      (SSet (abs_lv_node, abs_exp_node), pc1)
   | Cil.Call (Some l, e, es, _) ->
-      let abs_lv_node, pc1 = mk_abs_lv func_name maps dug (l, pc) in
-      let abs_exp_node, pc2 = mk_abs_exp func_name maps dug (e, pc1) in
-      let abs_exp_nodes, pc3 = mk_abs_exps func_name maps dug (es, pc2) in
-      (SCall (Some abs_lv_node, abs_exp_node, abs_exp_nodes), pc3)
+      let abs_lv_node, _ = mk_abs_lv func_name maps dug (l, pc) in
+      let abs_exp_node, pc1 = mk_abs_exp func_name maps dug (e, pc) in
+      let abs_exp_nodes, pc2 = mk_abs_exps func_name maps dug (es, pc1) in
+      (SCall (Some abs_lv_node, abs_exp_node, abs_exp_nodes), pc2)
   | Cil.Call (None, e, es, _) ->
       let abs_exp_node, pc1 = mk_abs_exp func_name maps dug (e, pc) in
       let abs_exp_nodes, pc2 = mk_abs_exps func_name maps dug (es, pc1) in
@@ -681,7 +684,13 @@ let mk_abs_action maps dug = function
         mk_abs_exp func_name maps dug (e2, StrSet.empty)
       in
       (SUpdateExp (abs_stmt, abs_exp1, abs_exp2), patch_comps)
-  | _ -> L.error "mk_sdiff - not implemented"
+  | D.UpdateCallExp (func_name, s1, s2) ->
+      let abs_s1 = mk_dummy_abs_stmt maps s1 |> StrSet.choose in
+      let abs_s2, patch_comps =
+        mk_abs_stmt func_name maps dug (s2, StrSet.empty)
+      in
+      (SUpdateCallExp (abs_s1, abs_s2), patch_comps)
+  | _ -> L.error "mk_abs_action - not implemented"
 
 let define_abs_diff maps ast dug diff =
   get_gvars ast;

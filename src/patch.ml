@@ -190,6 +190,25 @@ class updateExpVisitor target_func parent from_exp to_exp =
       else SkipChildren
   end
 
+class replaceStmt from_stmt to_stmt =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vstmt s =
+      if phys_equal s from_stmt then ChangeTo to_stmt else DoChildren
+  end
+
+class updateCallExpVisitor target_func from_stmt to_stmt =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vfunc (f : Cil.fundec) =
+      if String.equal f.svar.vname target_func then
+        let vis = new replaceStmt from_stmt to_stmt in
+        ChangeTo (Cil.visitCilFunction vis f)
+      else SkipChildren
+  end
+
 let apply_insert_stmt ?(update = false) func_name before after ss donee =
   if update then L.info "Applying UpdateStmt..."
   else L.info "Applying InsertStmt...";
@@ -220,6 +239,14 @@ let apply_update_exp func_name s e1 e2 donee =
   if not !is_patched then Logger.warn "failed to apply UpdateExp"
   else L.info "Successfully applied UpdateExp at %s" func_name
 
+let apply_update_callexp func_name s s2 donee =
+  L.info "Applying UpdateCallExp...";
+  is_patched := false;
+  let vis = new updateCallExpVisitor func_name s s2 in
+  Cil.visitCilFile vis donee;
+  if not !is_patched then Logger.warn "failed to apply UpdateCallExp"
+  else L.info "Successfully applied UpdateCalExp at %s" func_name
+
 let apply_action donee = function
   | D.InsertStmt (func_name, before, ss, after) ->
       apply_insert_stmt func_name before after ss donee
@@ -228,6 +255,8 @@ let apply_action donee = function
       apply_insert_stmt ~update:true func_name before after ss donee
   | D.UpdateExp (func_name, s, e1, e2) ->
       apply_update_exp func_name s e1 e2 donee
+  | D.UpdateCallExp (func_name, s, s2) ->
+      apply_update_callexp func_name s s2 donee
   | _ -> L.error "apply_action - Not implemented"
 
 let write_out path ast =

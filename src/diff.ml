@@ -47,6 +47,8 @@ type t =
   | DeleteExp of string * Cil.stmt * Cil.exp
   (* func name * target stmt * orig exp * new exp *)
   | UpdateExp of string * Cil.stmt * Cil.exp * Cil.exp
+  (* func name * target(orig) stmt * new stmt, but lval must be same *)
+  | UpdateCallExp of string * Cil.stmt * Cil.stmt
   (* func name * target stmt (may be call instr) * new lval *)
   | InsertLval of string * Cil.stmt * Cil.lval
   (* func name * target stmt (may be call instr) * deleted lval *)
@@ -121,6 +123,12 @@ let pp_diff ~simple fmt action =
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "From:\t%s\n" (Ast.s_exp e1);
       F.fprintf fmt "To:\t%s\n" (Ast.s_exp e2)
+  | UpdateCallExp (func, s1, s2) ->
+      F.fprintf fmt "\tUpdateCallExp: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "From:%s\n" (Ast.s_stmt s1);
+      F.fprintf fmt "To:\t%s\n" (Ast.s_stmt s2)
   | InsertLval (func, s, lv) ->
       F.fprintf fmt "\tInsertLval: \n";
       F.fprintf fmt "Function: %s\n" func;
@@ -267,7 +275,7 @@ and fold_param2 func_name parent depth el1 el2 left_sibs =
       let env = mk_diff_env depth [] prev_node in
       List.map ~f:(fun e -> (DeleteExp (func_name, parent, e), env)) lst
 
-let extract_call func_name parent depth lv1 e1 el1 lv2 e2 el2 =
+let extract_call func_name parent depth s1 lv1 f1 el1 s2 lv2 f2 el2 =
   let env = mk_diff_env depth [] Ast.NotApplicable in
   let lval_diff =
     match (lv1, lv2) with
@@ -278,12 +286,12 @@ let extract_call func_name parent depth lv1 e1 el1 lv2 e2 el2 =
         else [ (UpdateLval (func_name, parent, l1, l2), env) ]
     | _ -> []
   in
-  let exp_diff =
-    if Ast.isom_exp e1 e2 then []
-    else [ (UpdateExp (func_name, parent, e1, e2), env) ]
-  in
-  let param_diff = fold_param2 func_name parent 0 el1 el2 [] in
-  lval_diff @ exp_diff @ param_diff
+  if Ast.isom_exp f1 f2 then
+    let param_diff = fold_param2 func_name parent 0 el1 el2 [] in
+    lval_diff @ param_diff
+  else if List.is_empty lval_diff then
+    [ (UpdateCallExp (func_name, s1, s2), env) ]
+  else [ (* NOTE: may be handled as DeleteStmt; InsertStmt *) ]
 
 let extract_set func_name parent depth lv1 e1 lv2 e2 =
   let env = mk_diff_env depth [] Ast.NotApplicable in
@@ -299,12 +307,12 @@ let extract_set func_name parent depth lv1 e1 lv2 e2 =
 
 (* This is where stmt/instr ends *)
 
-let extract_instr func_name parent depth instr1 instr2 =
+let extract_instr func_name parent depth stmt1 instr1 stmt2 instr2 =
   match (instr1, instr2) with
   | Cil.Set (lv1, e1, _), Cil.Set (lv2, e2, _) ->
       extract_set func_name parent depth lv1 e1 lv2 e2
-  | Cil.Call (lv1, e1, el1, _), Cil.Call (lv2, e2, el2, _) ->
-      extract_call func_name parent depth lv1 e1 el1 lv2 e2 el2
+  | Cil.Call (lv1, f1, el1, _), Cil.Call (lv2, f2, el2, _) ->
+      extract_call func_name parent depth stmt1 lv1 f1 el1 stmt2 lv2 f2 el2
   | _ -> []
 
 let rec find_continue_point_stmt stmt1 stmts =
@@ -377,7 +385,7 @@ and compute_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
   | Cil.Instr i1, Cil.Instr i2 ->
       if Ast.eq_instr i1 i2 then
         let instr1, instr2 = (List.hd_exn i1, List.hd_exn i2) in
-        extract_instr func_name hd1 depth instr1 instr2
+        extract_instr func_name hd1 depth hd1 instr1 hd2 instr2
       else
         get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before
   | Cil.If (c1, t_blck1, eblck1, _), Cil.If (c2, t_blck2, eblck2, _) ->

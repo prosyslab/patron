@@ -107,7 +107,8 @@ and translate_exp maps sol_map = function
           let b_exp = translate_exp maps sol_map b.A.ast in
           let c_exp = translate_exp maps sol_map c.A.ast in
           Cil.Question (cond, b_exp, c_exp, t)
-      | A.SSizeOf _, Cil.SizeOf _ | A.SSizeOfStr _, Cil.SizeOfStr _ | _ ->
+      | A.SSizeOf _, e -> e
+      | A.SSizeOfStr _, Cil.SizeOfStr _ | _ ->
           Utils.print_ekind cil;
           L.error "translate_exp - not implemented")
   | _ -> L.error "translate_exp - translation target is not an expression"
@@ -231,6 +232,14 @@ let translate_update_exp maps sol_map s e1 e2 =
   let new_e2 = translate_exp maps sol_map e2.A.ast in
   D.UpdateExp (target_func_name, new_s, new_e1, new_e2)
 
+let translate_update_callexp maps sol_map s s2 =
+  let target_func_name = translate_func_name sol_map (StrSet.singleton s) in
+  let new_s =
+    translate_orig_stmts maps sol_map (StrSet.singleton s) |> List.hd_exn
+  in
+  let new_s2 = translate_new_stmt maps sol_map s2.A.ast in
+  D.UpdateCallExp (target_func_name, new_s, new_s2)
+
 let translate maps out_dir target_alarm abs_diff =
   Logger.info "Translating patch...";
   let sol_map = Hashtbl.create 1000 in
@@ -245,5 +254,6 @@ let translate maps out_dir target_alarm abs_diff =
       | A.SUpdateStmt (before, ss, after) ->
           translate_update_stmt maps sol_map before after ss
       | A.SUpdateExp (s, e1, e2) -> translate_update_exp maps sol_map s e1 e2
+      | A.SUpdateCallExp (s, s2) -> translate_update_callexp maps sol_map s s2
       | _ -> L.error "translate - not implemented")
     abs_diff
