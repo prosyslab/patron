@@ -293,16 +293,17 @@ let extract_call func_name parent depth s1 lv1 f1 el1 s2 lv2 f2 el2 =
     [ (UpdateCallExp (func_name, s1, s2), env) ]
   else [ (* NOTE: may be handled as DeleteStmt; InsertStmt *) ]
 
+let extract_exp func_name parent env e1 e2 =
+  let diffs = Ast.diff_exp e1 e2 in
+  List.map ~f:(fun (a, b) -> (UpdateExp (func_name, parent, a, b), env)) diffs
+
 let extract_set func_name parent depth lv1 e1 lv2 e2 =
   let env = mk_diff_env depth [] Ast.NotApplicable in
   let lval_diff =
     if Ast.eq_lval lv1 lv2 then []
     else [ (UpdateLval (func_name, parent, lv1, lv2), env) ]
   in
-  let exp_diff =
-    if Ast.eq_exp e1 e2 then []
-    else [ (UpdateExp (func_name, parent, e1, e2), env) ]
-  in
+  let exp_diff = extract_exp func_name parent env e1 e2 in
   lval_diff @ exp_diff
 
 (* This is where stmt/instr ends *)

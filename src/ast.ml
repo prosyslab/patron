@@ -280,6 +280,34 @@ let rec eq_exp (a : Cil.exp) (b : Cil.exp) =
       eq_exp a d && eq_exp b e && eq_exp c f
   | _ -> isom_exp a b
 
+let rec diff_exp a b =
+  match (a, b) with
+  | Cil.Lval (Var a', NoOffset), Cil.Lval (Var b', NoOffset) ->
+      if eq_var a'.vname b'.vname then [] else [ (a, b) ]
+  | Lval (Mem a', NoOffset), Lval (Mem b', NoOffset) -> diff_exp a' b'
+  | BinOp (a', b', c', _), BinOp (d', e', f', _) ->
+      if eq_bop a' d' then diff_exp b' e' @ diff_exp c' f' else [ (a, b) ]
+  | UnOp (a', b', _), UnOp (c', d', _) ->
+      if eq_uop a' c' then diff_exp b' d' else [ (a, b) ]
+  | CastE (a', b'), CastE (c', d') ->
+      if eq_typ a' c' && eq_exp b' d' then [] else [ (a, b) ]
+  | AddrOf (Var a', NoOffset), AddrOf (Var b', NoOffset) ->
+      if eq_var a'.vname b'.vname then [] else [ (a, b) ]
+  | AddrOf (Mem a', NoOffset), AddrOf (Mem b', NoOffset) ->
+      if eq_exp a' b' then [] else diff_exp a' b'
+  | StartOf (Var a', NoOffset), StartOf (Var b', NoOffset) ->
+      if eq_var a'.vname b'.vname then [] else [ (a, b) ]
+  | StartOf (Mem a', NoOffset), StartOf (Mem b', NoOffset) -> diff_exp a' b'
+  | Cil.SizeOfE a', Cil.SizeOfE b' -> diff_exp a' b'
+  | Const a', Const b' ->
+      if String.equal (s_const a') (s_const b') then [] else [ (a, b) ]
+  | Lval (Var a', NoOffset), StartOf (Var b', NoOffset)
+  | StartOf (Var a', NoOffset), Lval (Var b', NoOffset) ->
+      if eq_var a'.vname b'.vname then [] else [ (a, b) ]
+  | Question (a', b', c', _), Question (d', e', f', _) ->
+      diff_exp a' d' @ diff_exp b' e' @ diff_exp c' f'
+  | _ -> if isom_exp a b then [] else [ (a, b) ]
+
 let eq_lval (l1 : Cil.lval) (l2 : Cil.lval) =
   match (l1, l2) with
   | (host1, _), (host2, _) -> (

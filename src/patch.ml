@@ -162,7 +162,7 @@ class replaceExpVisitor from_exp to_exp =
     inherit Cil.nopCilVisitor
 
     method! vexpr e =
-      if Ast.eq_exp from_exp e then (
+      if Ast.isom_exp from_exp e then (
         is_patched := true;
         ChangeTo to_exp)
       else DoChildren
@@ -175,7 +175,14 @@ class replaceExpinStmt parent from_exp to_exp =
     method! vstmt s =
       if phys_equal parent s then
         let vis = new replaceExpVisitor from_exp to_exp in
-        ChangeTo (Cil.visitCilStmt vis s)
+        let new_stmt = Cil.visitCilStmt vis s in
+        if !is_patched then ChangeTo new_stmt
+        else
+          let from_exp =
+            match from_exp with Cil.CastE (_, e) -> e | _ -> from_exp
+          in
+          let vis = new replaceExpVisitor from_exp to_exp in
+          ChangeTo (Cil.visitCilStmt vis s)
       else DoChildren
   end
 
