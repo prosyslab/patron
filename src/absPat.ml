@@ -52,11 +52,7 @@ let def_from_normal_nodes dug cmd_map lv_term loc used_node def_nodes =
     (def_from_normal_node dug cmd_map lv_term loc used_node)
     def_nodes Chc.empty
 
-let find_rels_by_lv dug cmd_map snk lv facts =
-  let def_skip_nodes, def_nodes =
-    Hashtbl.find dug.Dug.def_map lv
-    |> NodeSet.partition (Dug.is_skip_node cmd_map)
-  in
+let find_rels_using_defs cmd_map dug snk facts lv (def_skip_nodes, def_nodes) =
   (* NOTE: hack for skip node (ENTRY, EXIT, ReturnNode, ...) *)
   if NodeSet.is_empty def_nodes then
     (def_from_skip_nodes dug snk def_skip_nodes, def_skip_nodes)
@@ -66,6 +62,12 @@ let find_rels_by_lv dug cmd_map snk lv facts =
     ( def_from_normal_nodes dug cmd_map lv loc used_node def_nodes
       |> Chc.union loc_rels,
       def_nodes )
+
+let find_rels_by_lv dug cmd_map snk lv facts =
+  let open Option in
+  Hashtbl.find_opt dug.Dug.def_map lv
+  >>| NodeSet.partition (Dug.is_skip_node cmd_map)
+  >>| find_rels_using_defs cmd_map dug snk facts lv
 
 let log_lv maps lv =
   Hashtbl.find maps.Maps.ast_map lv
@@ -143,10 +145,11 @@ let abs_by_comps ?(new_ad = false) maps dug patch_comps snk alarm_exps alarm_lvs
     let collected_by_patch_comps, defs =
       Chc.fold
         (fun lv (rels, defs) ->
-          let path_rels, new_defs =
-            find_rels_by_lv dug maps.Maps.cmd_map snk lv facts
-          in
-          (Chc.union path_rels rels, NodeSet.union defs new_defs))
+          let r_opt = find_rels_by_lv dug maps.Maps.cmd_map snk lv facts in
+          if Option.is_none r_opt then (rels, defs)
+          else
+            let path_rels, new_defs = Option.value_exn r_opt in
+            (Chc.union path_rels rels, NodeSet.union defs new_defs))
         patch_comps (Chc.empty, NodeSet.empty)
     in
     let collected_by_alarm_comps = collect_ast_rels dug snk alarm_exps in
