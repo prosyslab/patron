@@ -158,6 +158,14 @@ let s_node cil =
   | Fun f -> "function:" ^ f
   | NotApplicable -> "NotApplicable"
 
+let repr = function
+  | Global g -> "Global (" ^ s_glob g ^ ")"
+  | Stmt s -> "Stmt (" ^ s_stmt s ^ ")"
+  | Exp e -> "Exp (" ^ s_exp e ^ ")"
+  | Lval l -> "Lval (" ^ s_lv l ^ ")"
+  | Fun f -> "Function (" ^ f ^ ")"
+  | NotApplicable -> "NotApplicable"
+
 let pp_path fmt path =
   List.iter ~f:(fun node -> Format.fprintf fmt "%s\n -->\n" (s_node node)) path
 

@@ -187,7 +187,11 @@ let translate_func_name sol_map abs_node_lst =
 
 let translate_orig_stmts maps sol_map abs_nodes =
   let new_asts = abs_nodes |> translate_ids sol_map |> ids2asts maps in
-  AstSet.fold (fun ast stmts -> Ast.to_stmt ast :: stmts) new_asts []
+  AstSet.fold
+    (fun ast stmts ->
+      (* NOTE: function entry is not used for now *)
+      if Ast.is_stmt ast then Ast.to_stmt ast :: stmts else stmts)
+    new_asts []
   |> List.rev
 
 let translate_insert_stmt maps sol_map before after ss =
