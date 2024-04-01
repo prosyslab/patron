@@ -160,16 +160,21 @@ let abs_by_comps ?(new_ad = false) maps dug patch_comps snk alarm_exps alarm_lvs
     ( Chc.union collected_by_patch_comps collected_by_alarm_comps,
       if new_ad then abs_diff' else abs_diff )
 
+let num_of_rels rels =
+  F.asprintf "#Rels: %d, #DUEdges: %d" (Chc.cardinal rels)
+    (Chc.filter Chc.Elt.is_duedge rels |> Chc.cardinal)
+
 let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff =
-  let abs_facts, abs_diff' =
-    abs_by_comps maps dug patch_comps snk alarm_exps alarm_lvs facts abs_diff
-  in
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
+  let abs_facts, abs_diff' =
+    abs_by_comps maps dug patch_comps snk alarm_exps alarm_lvs facts abs_diff
+  in
+  L.info "Original Pattern - %s" (num_of_rels abs_facts);
   let pattern_in_numeral =
     Chc.Elt.Implies (abs_facts |> Chc.to_list, errtrace)
   in
@@ -182,6 +187,7 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff =
         abs_by_comps ~new_ad:true maps dug alt_pc snk alarm_exps alarm_lvs facts
           alt_diff
       in
+      L.info "Alternative Pattern - %s" (num_of_rels alt_facts);
       let alt_pattern_in_numeral =
         Chc.Elt.Implies (alt_facts |> Chc.to_list, errtrace)
       in
