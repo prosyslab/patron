@@ -18,6 +18,7 @@ type t = {
   debug : bool;
   z3_mem_limit : bool;
   memtrace : bool;
+  sort_size : int;
 }
 
 let mkdir dirname =
@@ -28,7 +29,7 @@ let mkdir dirname =
   else Unix.mkdir dirname 0o755
 
 let init donor_dir donee_dir true_alarm out_dir debug inline memtrace write_out
-    z3_mem_limit =
+    z3_mem_limit sort_size =
   if debug then L.set_level L.DEBUG else L.set_level L.INFO;
   mkdir out_dir;
   Filename.concat out_dir "log.txt" |> L.from_file;
@@ -42,6 +43,7 @@ let init donor_dir donee_dir true_alarm out_dir debug inline memtrace write_out
     debug;
     z3_mem_limit;
     memtrace;
+    sort_size;
   }
 
 let main_cmd =
@@ -108,10 +110,16 @@ let main_cmd =
   let z3_mem_limit =
     Arg.(value & flag & info [ "m"; "mem_limit" ] ~doc:"Memory limit for Z3")
   in
+  let sort_size =
+    Arg.(
+      value & opt int 1000000
+      & info [ "s"; "sort_size" ] ~docs ~docv:"SORT_SIZE"
+          ~doc:"Size of finite domain in Z3 context")
+  in
   Cmd.v info
     Term.(
       const init $ donor_dir $ donee_dir $ true_alarm $ out_dir $ debug
-      $ inline_opt $ memtrace $ write_out $ z3_mem_limit)
+      $ inline_opt $ memtrace $ write_out $ z3_mem_limit $ sort_size)
 
 let parse () =
   match Cmd.eval_value main_cmd with
