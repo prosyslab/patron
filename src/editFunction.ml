@@ -116,16 +116,10 @@ and translate_exp maps sol_map = function
 let rec translate_if_stmt maps sol_map scond sthen_block selse_block =
   let cond = translate_exp maps sol_map scond.A.ast in
   let then_block =
-    List.fold_left
-      ~f:(fun acc ss -> translate_new_stmt maps sol_map ss.A.ast :: acc)
-      ~init:[] sthen_block
-    |> List.rev
+    List.map ~f:(fun ss -> translate_new_stmt maps sol_map ss.A.ast) sthen_block
   in
   let else_block =
-    List.fold_left
-      ~f:(fun acc ss -> translate_new_stmt maps sol_map ss.A.ast :: acc)
-      ~init:[] selse_block
-    |> List.rev
+    List.map ~f:(fun ss -> translate_new_stmt maps sol_map ss.A.ast) selse_block
   in
   Cil.mkStmt
     (Cil.If
@@ -164,11 +158,18 @@ and translate_instr maps sol_map abs_instr i =
          %s"
         AbsDiff.pp_absstmt a (Ast.s_instr i)
 
+and translate_loop maps sol_map sb =
+  let block =
+    List.map ~f:(fun ss -> translate_new_stmt maps sol_map ss.A.ast) sb
+  in
+  Cil.mkStmt (Cil.Loop (Cil.mkBlock block, Cil.locUnknown, None, None))
+
 and translate_new_stmt maps sol_map = function
   | A.AbsStmt (sym, cil) -> (
       match (sym, cil.Cil.skind) with
       | A.SIf (scond, sthen_block, selse_block), Cil.If _ ->
           translate_if_stmt maps sol_map scond sthen_block selse_block
+      | A.SLoop sb, Cil.Loop _ -> translate_loop maps sol_map sb
       | A.SReturn (Some sym), Cil.Return _ ->
           let exp = translate_exp maps sol_map sym.A.ast in
           Cil.mkStmt (Cil.Return (Some exp, Cil.locUnknown))

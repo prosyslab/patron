@@ -91,6 +91,7 @@ and abs_lval = SLNull | Lval of abs_lhost * abs_offset
 and abs_stmt =
   | SSNull
   | SIf of abs_node * abs_node list * abs_node list
+  | SLoop of abs_node list
   | SSet of abs_node * abs_node
   | SCall of abs_node option * abs_node * abs_node list
   | SReturn of abs_node option
@@ -139,6 +140,7 @@ and pp_absstmt fmt s =
   | SIf (e, s1, s2) ->
       Format.fprintf fmt "SIf(%a, %a, %a)" pp_node e pp_node_lst s1 pp_node_lst
         s2
+  | SLoop ss -> Format.fprintf fmt "SLoop(%a)" pp_node_lst ss
   | SSet (l, e) -> Format.fprintf fmt "SSet(%a, %a)" pp_node l pp_node e
   | SCall (l, e, es) ->
       Format.fprintf fmt "SCall(%a, %a, %a)" pp_soptlval l pp_node e pp_node_lst
@@ -276,6 +278,7 @@ let rec subst_abs_stmt o_lv n_lv astmt =
   match astmt with
   | SSNull | SBreak | SContinue -> astmt
   | SIf (e, s1, s2) -> SIf (subst e, List.map ~f:subst s1, List.map ~f:subst s2)
+  | SLoop ss -> SLoop (List.map ~f:subst ss)
   | SSet (l, e) -> SSet (subst l, subst e)
   | SCall (l, e, es) ->
       SCall (Option.(l >>| subst), subst e, List.map ~f:subst es)
@@ -601,6 +604,11 @@ and mk_abs_stmt func_name maps dug (s, pc) =
           mk_abs_stmts func_name maps dug (s2.Cil.bstmts, pc2)
         in
         (SIf (abs_exp_node, abs_stmt_node1, abs_stmt_node2), pc3)
+    | Cil.Loop (b, _, _, _) ->
+        let abs_stmts_node, pc1 =
+          mk_abs_stmts func_name maps dug (b.bstmts, pc)
+        in
+        (SLoop abs_stmts_node, pc1)
     | Cil.Instr il -> mk_abs_instr func_name maps dug (List.hd_exn il, pc)
     | Cil.Block b ->
         let abs_stmts_node, pc1 =
@@ -618,7 +626,7 @@ and mk_abs_stmt func_name maps dug (s, pc) =
         (SGoto { ids; ast; literal }, pc)
     | Cil.Break _ -> (SBreak, pc)
     | Cil.Continue _ -> (SContinue, pc)
-    | _ -> L.error "mk_abs_stmt - not implemented"
+    | _ -> L.error "mk_abs_stmt - not implemented: %s" (Ast.s_stmt s)
   in
   let ast = AbsStmt (abs_stmt, s) in
   let literal = Ast.s_stmt s in
