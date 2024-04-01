@@ -154,7 +154,7 @@ let fact_files =
     "EvalLv.facts";
   ]
 
-let sort_size = 500000 (* NOTE: hard coded *)
+let sort_size = 1000000 (* NOTE: hard coded *)
 
 let z3ctx =
   Z3.mk_context [ ("model", "true"); ("proof", "true"); ("unsat_core", "true") ]
