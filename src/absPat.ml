@@ -138,7 +138,7 @@ let abs_by_comps ?(new_ad = false) maps dug patch_comps snk alarm_exps alarm_lvs
   terms2str alarm_exps |> L.info "alarm_exps: %s";
   terms2str alarm_lvs |> L.info "alarm_lvs: %s";
   if Chc.subset patch_comps alarm_lvs then
-    ( collect_ast_rels dug snk alarm_lvs,
+    ( collect_ast_rels dug snk patch_comps,
       if new_ad then AbsDiff.change_use (StrSet.singleton snk) abs_diff
       else abs_diff )
   else
