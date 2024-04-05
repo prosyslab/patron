@@ -30,7 +30,3 @@ opam install -j $NCPU dune cil z3 core core_unix yojson logger ocamlgraph batter
 opam install -j $NCPU ocamlformat.0.24.1 merlin ocp-index ocp-indent ocaml-lsp-server  # for development
 make
 
-# build souffle
-cd souffle
-cmake -S . -B build -DCMAKE_CXX_FLAGS="-w"
-cmake --build build -j
