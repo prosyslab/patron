@@ -223,9 +223,12 @@ let find_alarm_file alarm_dir f =
   && Filename.concat alarm_dir f
      |> In_channel.read_lines |> List.is_empty |> not
 
+let hotfix_for_io = String.substr_replace_first ~pattern:"IO" ~with_:""
+
 let find_bug_type dir alarm =
   let alarm_dir = Filename.concat dir ("sparrow-out/taint/datalog/" ^ alarm) in
   Sys.readdir alarm_dir
   |> Array.find_exn ~f:(find_alarm_file alarm_dir)
   |> Filename.chop_extension
   |> String.chop_prefix_exn ~prefix:"Alarm"
+  |> hotfix_for_io
