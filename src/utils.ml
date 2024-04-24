@@ -215,3 +215,17 @@ let reverse_hashtbl tbl =
   rev_tbl_init
 
 let get_func_name_from_node n = String.split ~on:'-' n |> List.hd_exn
+
+let find_alarm_file alarm_dir f =
+  String.is_substring_at ~pos:0 ~substring:"Alarm" f
+  && String.is_substring_at ~pos:0 ~substring:"AlarmTaint" f |> not
+  && String.is_substring_at ~pos:0 ~substring:"AlarmBufferOver" f |> not
+  && Filename.concat alarm_dir f
+     |> In_channel.read_lines |> List.is_empty |> not
+
+let find_bug_type dir alarm =
+  let alarm_dir = Filename.concat dir ("sparrow-out/taint/datalog/" ^ alarm) in
+  Sys.readdir alarm_dir
+  |> Array.find_exn ~f:(find_alarm_file alarm_dir)
+  |> Filename.chop_extension
+  |> String.chop_prefix_exn ~prefix:"Alarm"

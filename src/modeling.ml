@@ -26,9 +26,10 @@ let match_facts =
       | _ -> L.error "match_facts - invalid format")
     ~init:PairSet.empty
 
-let dump_sol_map target_alarm buggy_maps target_maps out_dir pairs =
+let dump_sol_map target_alarm buggy_maps target_maps cand_donor out_dir pairs =
   let oc =
-    Out_channel.create (Filename.concat out_dir (target_alarm ^ "_sol.map"))
+    F.asprintf "%s_%s_sol.map" cand_donor target_alarm
+    |> Filename.concat out_dir |> Out_channel.create
   in
   let fmt = F.formatter_of_out_channel oc in
   PairSet.iter
@@ -69,10 +70,11 @@ let parse_ans ans =
        ~f:(fun fs rel -> if is_dl_fact rel then parse_dl_fact rel :: fs else fs)
        ~init:[]
 
-let match_ans buggy_maps target_maps target_alarm i_str out_dir =
+let match_ans buggy_maps target_maps target_alarm i cand_donor donor_dir out_dir
+    =
   let buggy_ans =
-    Filename.concat out_dir ("buggy_numer_" ^ i_str ^ "_ans.smt2")
-    |> In_channel.read_all
+    F.asprintf "buggy_numer_%d_ans.smt2" i
+    |> Filename.concat donor_dir |> In_channel.read_all
   in
   let target_ans =
     Filename.concat out_dir (target_alarm ^ "_ans.smt2") |> In_channel.read_all
@@ -80,4 +82,4 @@ let match_ans buggy_maps target_maps target_alarm i_str out_dir =
   let buggy_facts = parse_ans buggy_ans in
   let target_facts = parse_ans target_ans in
   let pairs = match_facts buggy_facts target_facts in
-  dump_sol_map target_alarm buggy_maps target_maps out_dir pairs
+  dump_sol_map target_alarm buggy_maps target_maps cand_donor out_dir pairs

@@ -1,17 +1,14 @@
-(library
- (name patronlib)
- (modules options)
- (wrapped false)
- (libraries cmdliner logger memtrace))
-
 (executable
  (name main)
- (modules :standard \ options)
+ (modules :standard)
  (libraries
-  patronlib
+  cmdliner
+  logger
+  memtrace
   yojson
   core
   core_unix
+  core_unix.filename_unix
   z3
   cil
   cil.all-features

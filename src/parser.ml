@@ -273,11 +273,15 @@ let get_alarm_comps alarm splited filename =
   | "AlarmDerefExp", a :: e :: lvs
   | "AlarmPrintf", a :: e :: lvs
   | "AlarmDivExp", a :: _ :: e :: lvs
+  | "AlarmCastExp", a :: e :: lvs
   | "AlarmFread", a :: _ :: e :: lvs
     when String.equal a alarm ->
       ( Chc.singleton (Chc.Elt.FDNumeral e),
         List.map ~f:Chc.Elt.numer lvs |> Chc.of_list )
-  | "AlarmIOExp", a :: e1 :: e2 :: lvs
+  | "AlarmPlusExp", a :: e1 :: e2 :: lvs
+  | "AlarmMinusExp", a :: e1 :: e2 :: lvs
+  | "AlarmMultExp", a :: e1 :: e2 :: lvs
+  | "AlarmShiftExp", a :: e1 :: e2 :: lvs
   | "AlarmMemchr", a :: e1 :: e2 :: lvs
   | "AlarmSprintf", a :: e1 :: e2 :: lvs
   | "AlarmStrcat", a :: e1 :: e2 :: lvs
