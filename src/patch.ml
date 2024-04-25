@@ -98,4 +98,9 @@ let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir =
   let donee_ast = Parser.parse_ast donee_dir inline_funcs in
   Sys.readdir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> Array.iter
-       ~f:(match_one_alarm ~db z3env donee_dir donee_ast out_dir db_dir)
+       ~f:
+         (try match_one_alarm ~db z3env donee_dir donee_ast out_dir db_dir
+          with e ->
+            fun _ ->
+              L.warn "%s" (Exn.to_string e);
+              ())
