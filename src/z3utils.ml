@@ -1,4 +1,5 @@
 open Core
+module F = Format
 module L = Logger
 module Hashtbl = Stdlib.Hashtbl
 
@@ -44,7 +45,7 @@ let match_func z3env f =
   | "DZError" -> z3env.dzerror
   | "ErrTrace" -> z3env.errtrace
   | "Bug" -> z3env.bug
-  | s -> L.error "match_func: invalid function - %s" s
+  | s -> F.sprintf "match_func: invalid function - %s" s |> failwith
 
 let is_binop = function
   | "PlusA" | "PlusPI" | "IndexPI" | "MinusA" | "MinusPI" | "MinusPP" | "Mult"
@@ -76,7 +77,7 @@ let int_of_binop = function
   | "bvor" -> 19
   | "and" -> 20
   | "or" -> 21
-  | _ -> L.error "int_of_binop: invalid symbol"
+  | _ -> failwith "int_of_binop: invalid symbol"
 
 let binop_of_int = function
   | 0 -> "PlusA"
@@ -101,7 +102,7 @@ let binop_of_int = function
   | 19 -> "bvor"
   | 20 -> "and"
   | 21 -> "or"
-  | _ -> L.error "binop_of_int: invalid int"
+  | _ -> failwith "binop_of_int: invalid int"
 
 let is_unop = function "BNot" | "LNot" | "Neg" -> true | _ -> false
 
@@ -109,13 +110,13 @@ let int_of_unop = function
   | "BNot" -> 22
   | "LNot" -> 23
   | "Neg" -> 24
-  | _ -> L.error "int_of_unop: invalid symbol"
+  | _ -> failwith "int_of_unop: invalid symbol"
 
 let unop_of_int = function
   | 22 -> "BNot"
   | 23 -> "LNot"
   | 24 -> "Neg"
-  | _ -> L.error "unop_of_int: invalid symbol"
+  | _ -> failwith "unop_of_int: invalid symbol"
 
 let match_sort z3env s =
   let sort_id = String.split ~on:'-' s in

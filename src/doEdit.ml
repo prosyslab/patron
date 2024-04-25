@@ -1,5 +1,4 @@
 open Core
-module S = AbsDiff
 module D = Diff
 module EF = EditFunction
 module H = Utils
@@ -264,7 +263,7 @@ let apply_action donee = function
       apply_update_exp func_name s e1 e2 donee
   | D.UpdateCallExp (func_name, s, s2) ->
       apply_update_callexp func_name s s2 donee
-  | _ -> L.error "apply_action - Not implemented"
+  | _ -> failwith "apply_action - Not implemented"
 
 let write_out path ast =
   let out_chan_orig = Core.Out_channel.create path in

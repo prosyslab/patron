@@ -24,7 +24,7 @@ let fst_of_branch b s =
   | Cil.If (_, tb, fb, _) ->
       if b then List.hd tb.bstmts |> Option.value ~default:s
       else List.hd fb.bstmts |> Option.value ~default:s
-  | _ -> L.error "fst_of_branch - wrong stmt"
+  | _ -> failwith "fst_of_branch - wrong stmt"
 
 let ids2asts maps ids =
   StrSet.fold
@@ -53,23 +53,23 @@ let rec translate_offset maps sol_map abs_offset offset =
       let new_e = translate_exp maps sol_map e.ast in
       let new_o = translate_offset maps sol_map o o' in
       Cil.Index (new_e, new_o)
-  | _ -> L.error "translate_offset - concrete and abstract offset not matched"
+  | _ -> failwith "translate_offset - concrete and abstract offset not matched"
 
 and translate_lhost maps sol_map abs_lhost lhost =
   match (abs_lhost, lhost) with
   | A.SMem e, Cil.Mem _ -> Cil.Mem (translate_exp maps sol_map e.ast)
   | A.SVar _, Cil.Var _ -> lhost
-  | _ -> L.error "translate_lhost - concrete and abstract lhost not matched"
+  | _ -> failwith "translate_lhost - concrete and abstract lhost not matched"
 
 and break_down_translate_lval maps sol_map lval =
   match lval with
   | A.AbsLval (sym, cil) -> (
       match (sym, cil) with
-      | A.SLNull, _ -> L.error "translate_lval - Lval is null"
+      | A.SLNull, _ -> failwith "translate_lval - Lval is null"
       | A.Lval (abs_lhost, abs_offset), (lhost, offset) ->
           ( translate_lhost maps sol_map abs_lhost lhost,
             translate_offset maps sol_map abs_offset offset ))
-  | _ -> L.error "translate_lval - translation target is not an lvalue"
+  | _ -> failwith "translate_lval - translation target is not an lvalue"
 
 and translate_lval maps sol_map slval =
   let new_lvs = translate_ids sol_map slval.A.ids |> ids2asts maps in
@@ -111,8 +111,8 @@ and translate_exp maps sol_map = function
       | A.SSizeOf _, e -> e
       | A.SSizeOfStr _, Cil.SizeOfStr _ | _ ->
           Utils.print_ekind cil;
-          L.error "translate_exp - not implemented")
-  | _ -> L.error "translate_exp - translation target is not an expression"
+          failwith "translate_exp - not implemented")
+  | _ -> failwith "translate_exp - translation target is not an expression"
 
 let rec translate_if_stmt maps sol_map scond sthen_block selse_block =
   let cond = translate_exp maps sol_map scond.A.ast in
@@ -153,11 +153,12 @@ and translate_instr maps sol_map abs_instr i =
       in
       Cil.mkStmt (Cil.Instr [ Cil.Call (None, fun_exp, args, Cil.locUnknown) ])
   | a, i ->
-      L.error
+      F.asprintf
         "translate_stmt - translation target is not an instruction type:\n\
          %a\n\
          %s"
         AbsDiff.pp_absstmt a (Ast.s_instr i)
+      |> failwith
 
 and translate_loop maps sol_map sb =
   let block =
@@ -178,8 +179,8 @@ and translate_new_stmt maps sol_map = function
           Cil.mkStmt (Cil.Return (None, Cil.locUnknown))
       | A.SGoto _, Cil.Goto _ -> cil
       | abs_instr, Cil.Instr i -> translate_instr maps sol_map abs_instr i
-      | _ -> L.error "translate_stmt - not implemented")
-  | _ -> L.error "translate_stmt - translation target is not a statement type"
+      | _ -> failwith "translate_stmt - not implemented")
+  | _ -> failwith "translate_stmt - translation target is not a statement type"
 
 let translate_new_stmts maps sol_map =
   List.map ~f:(fun abs_node -> translate_new_stmt maps sol_map abs_node.A.ast)
@@ -258,5 +259,5 @@ let translate cand_donor maps out_dir target_alarm abs_diff =
           translate_update_stmt maps sol_map before after ss
       | A.SUpdateExp (s, e1, e2) -> translate_update_exp maps sol_map s e1 e2
       | A.SUpdateCallExp (s, s2) -> translate_update_callexp maps sol_map s s2
-      | _ -> L.error "translate - not implemented")
+      | _ -> failwith "translate - not implemented")
     abs_diff

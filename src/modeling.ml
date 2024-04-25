@@ -23,7 +23,7 @@ let match_facts =
           List.fold2_exn
             ~f:(fun ps a1 a2 -> PairSet.add (a1, a2) ps)
             ~init:pairs args1 args2
-      | _ -> L.error "match_facts - invalid format")
+      | _ -> failwith "match_facts - invalid format")
     ~init:PairSet.empty
 
 let dump_sol_map target_alarm buggy_maps target_maps cand_donor out_dir pairs =
@@ -59,7 +59,7 @@ let parse_dl_fact rel =
         |> List.map ~f:(fun s -> int_of_string s)
       in
       (func_name, args)
-  | _ -> L.error "parse_dl_fact - invalid format"
+  | _ -> failwith "parse_dl_fact - invalid format"
 
 let is_dl_fact s =
   String.is_suffix s ~suffix:"." && not (String.is_substring ~substring:":-" s)

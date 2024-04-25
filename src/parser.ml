@@ -309,7 +309,7 @@ let get_alarm work_dir =
       |> read_and_split |> List.hd_exn
     with
     | [ src; snk; alarm_id ] -> (src, snk, alarm_id)
-    | _ -> L.error ~to_console:true "get_alarm: invalid format"
+    | _ -> failwith "get_alarm: invalid format"
   in
   let alarm_exp_files =
     Sys.readdir work_dir
