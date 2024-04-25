@@ -272,7 +272,7 @@ let get_alarm_comps alarm splited filename =
   | "AlarmAllocSize", a :: e :: lvs
   | "AlarmDerefExp", a :: e :: lvs
   | "AlarmPrintf", a :: e :: lvs
-  | "AlarmDivExp", a :: _ :: e :: lvs
+  | ("AlarmDivExp" | "AlarmDivIOExp"), a :: _ :: e :: lvs
   | ("AlarmCastExp" | "AlarmCastIOExp"), a :: e :: lvs
   | "AlarmFread", a :: _ :: e :: lvs
     when String.equal a alarm ->
