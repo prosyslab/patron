@@ -224,7 +224,7 @@ let apply_insert_stmt ?(update = false) func_name before after ss donee =
   let very_before = List.last before in
   let very_after = List.hd after in
   if Option.is_none very_before && Option.is_none very_after then
-    L.error "apply_insert_stmt - cannot be patched";
+    L.warn "apply_insert_stmt - cannot be patched";
   let vis = new insertStmtVisitor ~update func_name very_before very_after ss in
   Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply InsertStmt"

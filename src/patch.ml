@@ -71,28 +71,39 @@ let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm donee_ast
   L.info "Try matching with %s..." cand_donor;
   let donor_dir = if db then Filename.concat bt_dir cand_donor else out_dir in
   let buggy_maps = Maps.create_maps () in
-  let buggy_ic =
-    Filename.concat donor_dir "buggy_numeral.map" |> In_channel.create
-  in
-  Maps.load_numeral_map buggy_ic buggy_maps.numeral_map;
-  List.fold_until ~init:()
-    ~f:(fun _ i ->
-      match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm
-        donee_ast out_dir i)
-    [ 0; 1 ] ~finish:ignore
+  if not (Sys.file_exists (Filename.concat donor_dir "buggy_numeral.map")) then (
+    L.warn "No numeral map for %s" cand_donor;
+    ())
+  else
+    let buggy_ic =
+      Filename.concat donor_dir "buggy_numeral.map" |> In_channel.create
+    in
+    Maps.load_numeral_map buggy_ic buggy_maps.numeral_map;
+    List.fold_until ~init:()
+      ~f:(fun _ i ->
+        try
+          match_once z3env cand_donor donor_dir buggy_maps donee_dir
+            target_alarm donee_ast out_dir i
+        with e ->
+          L.warn "%s" (Exn.to_string e);
+          Stop ())
+      [ 0; 1 ] ~finish:ignore
 
 let match_one_alarm ?(db = false) z3env donee_dir donee_ast out_dir db_dir
     target_alarm =
   L.info "Target Alarm: %s" target_alarm;
-  let bug_type = Utils.find_bug_type donee_dir target_alarm in
-  if db then
-    let bt_dir = Filename.concat db_dir bug_type in
-    Sys_unix.ls_dir bt_dir
-    |> List.iter
-         ~f:
-           (match_one_by_one ~db z3env bt_dir donee_dir target_alarm donee_ast
-              out_dir)
-  else match_one_by_one ~db z3env "" donee_dir target_alarm donee_ast out_dir ""
+  if String.equal target_alarm "Alarm.map" then ()
+  else
+    let bug_type = Utils.find_bug_type donee_dir target_alarm in
+    if db then
+      let bt_dir = Filename.concat db_dir bug_type in
+      Sys_unix.ls_dir bt_dir
+      |> List.iter
+           ~f:
+             (match_one_by_one ~db z3env bt_dir donee_dir target_alarm donee_ast
+                out_dir)
+    else
+      match_one_by_one ~db z3env "" donee_dir target_alarm donee_ast out_dir ""
 
 let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir =
   let donee_ast = Parser.parse_ast donee_dir inline_funcs in
