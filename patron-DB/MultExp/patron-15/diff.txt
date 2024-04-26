@@ -1,0 +1,17 @@
+Edit Script Summary:
+Size: 1
+============diff-0============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+NotApplicable
+
+
+
+	UpdateCallExp: 
+Function: jas_cmshapmatlut_set
+Diff Summary:
+From:#line 892 \"/root/patron-new/new_2/src/libjasper/base/jas_cm.c\"\ntmp = jas_malloc((size_t )lut->size * sizeof(jas_cmreal_t ));
+To:	#line 892\ntmp = jas_alloc2((size_t )lut->size,\n                 sizeof(jas_cmreal_t ));
+
+================================

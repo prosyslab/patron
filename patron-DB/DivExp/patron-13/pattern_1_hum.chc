@@ -1,0 +1,9 @@
+(\forall Lval-14765 Lval-14297 Lval-13664 Exp-19627 Exp-19626 Exp-19625 Exp-19624 Exp-19623 Exp-19325 Exp-17928 Exp-17794.
+  (ErrTrace opj_read_from_file-16554 opj_pi_next_rpcl-15122) <-
+    (Set opj_pi_next_rpcl-15122 Lval-14765 Exp-19623),
+    (LvalExp Exp-19325 Lval-14297),
+    (LvalExp Exp-17928 Lval-13664),
+    (BinOpExp Exp-19627 bvshl Exp-17928 Exp-19325),
+    (BinOpExp Exp-19625 PlusA Exp-19626 Exp-19627),
+    (BinOpExp Exp-19624 MinusA Exp-19625 Exp-17794),
+    (BinOpExp Exp-19623 Div Exp-19624 Exp-19627))

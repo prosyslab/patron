@@ -1,0 +1,33 @@
+Edit Script Summary:
+Size: 2
+============diff-0============
+Meta Data:
+Depth: 3
+Previous Sibling Node: 
+#line 884 \"/root/patron/new_22/src/lib/openjp2/t2.c\"\nopj_bio_destroy(l_bio);
+
+
+
+	DeleteStmt: 
+Function: opj_t2_read_packet_header
+Diff Summary:
+Deleted:#line 890\nif ((int )*l_header_data != 255) {\n#line 891\n  printf(\"Error : expected EPH marker\\n\");\n} else\n#line 890\nif ((int )*(l_header_data + 1) != 146) {\n#line 891\n  printf(\"Error : expected EPH marker\\n\");\n} else {\n#line 893\n  l_header_data += 2;\n}
+
+================================
+============diff-1============
+Meta Data:
+Depth: 3
+Previous Sibling Node: 
+#line 884\nopj_bio_destroy(l_bio);
+
+
+
+	InsertStmt: 
+Function: opj_t2_read_packet_header
+# of Before:20
+# of After:0
+Diff Summary:
+Inserted:
+#line 888\nif (p_max_length < 2U) {\n#line 889\n  fprintf(stderr,\n          \"Not enough space for expected EPH marker\\n\");\n} else\n#line 890\nif ((int )*l_header_data != 255) {\n#line 891\n  printf(\"Error : expected EPH marker\\n\");\n} else\n#line 890\nif ((int )*(l_header_data + 1) != 146) {\n#line 891\n  printf(\"Error : expected EPH marker\\n\");\n} else {\n#line 893\n  l_header_data += 2;\n}
+
+================================

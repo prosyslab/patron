@@ -1,0 +1,120 @@
+Edit Script Summary:
+Size: 8
+============diff-0============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 96 \"/root/patchweave_new/21/util/listmp3.c\"\nflags <<= 24;
+
+
+
+	DeleteStmt: 
+Function: printMP3Headers
+Diff Summary:
+Deleted:#line 97\ntmp___4 = fgetc(f);
+
+================================
+============diff-1============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 96\nflags <<= 24;
+
+
+
+	InsertStmt: 
+Function: printMP3Headers
+# of Before:12
+# of After:46
+Diff Summary:
+Inserted:
+#line 97\ni = 2;
+
+================================
+============diff-2============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 97\ntmp___4 = fgetc(f);
+
+
+
+	DeleteStmt: 
+Function: printMP3Headers
+Diff Summary:
+Deleted:#line 97\nflags += (unsigned long )(tmp___4 << 16);
+
+================================
+============diff-3============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 97\ntmp___4 = fgetc(f);
+
+
+
+	InsertStmt: 
+Function: printMP3Headers
+# of Before:13
+# of After:45
+Diff Summary:
+Inserted:
+#line 97\nwhile (1) {\n#line 97\n  if (! (i >= 0)) {\n#line 97\n    goto while_break___1;\n  }\n#line 99\n  flags_char = fgetc(f);\n#line 99\n  if (flags_char == -1) {\n#line 101\n    puts(\"truncated file\");\n#line 101\n    exit(1);\n  } else {\n#line 105\n    flags += (unsigned long )(flags_char << i * 8);\n  }\n#line 97\n  i --;\n}
+
+================================
+============diff-4============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 97\nflags += (unsigned long )(tmp___4 << 16);
+
+
+
+	DeleteStmt: 
+Function: printMP3Headers
+Diff Summary:
+Deleted:#line 98\ntmp___5 = fgetc(f);
+
+================================
+============diff-5============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 97\nflags += (unsigned long )(tmp___4 << 16);
+
+
+
+	DeleteStmt: 
+Function: printMP3Headers
+Diff Summary:
+Deleted:#line 98\nflags += (unsigned long )(tmp___5 << 8);
+
+================================
+============diff-6============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 97\nflags += (unsigned long )(tmp___4 << 16);
+
+
+
+	DeleteStmt: 
+Function: printMP3Headers
+Diff Summary:
+Deleted:#line 99\ntmp___6 = fgetc(f);
+
+================================
+============diff-7============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 97\nflags += (unsigned long )(tmp___4 << 16);
+
+
+
+	DeleteStmt: 
+Function: printMP3Headers
+Diff Summary:
+Deleted:#line 99\nflags += (unsigned long )tmp___6;
+
+================================

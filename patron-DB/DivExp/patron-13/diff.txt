@@ -1,0 +1,19 @@
+Edit Script Summary:
+Size: 1
+============diff-0============
+Meta Data:
+Depth: 5
+Previous Sibling Node: 
+#line 385 \"/root/patron/26/src/lib/openjp2/pi.c\"\nlevelno = (comp->numresolutions - 1U) - pi->resno;
+
+
+
+	InsertStmt: 
+Function: opj_pi_next_rpcl
+# of Before:17
+# of After:23
+Diff Summary:
+Inserted:
+#line 389\nif ((comp->dx << levelno) >> levelno != comp->dx) {\n#line 391\n  goto while_continue___4;\n}
+
+================================

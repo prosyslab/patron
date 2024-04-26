@@ -1,0 +1,19 @@
+Edit Script Summary:
+Size: 1
+============diff-0============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 509\nif (__cil_tmp18) {\n#line 512\n  jas_free((void *)siz->comps);\n#line 513\n  return (-1);\n} else\n#line 509\nif (__cil_tmp19) {\n#line 512\n  jas_free((void *)siz->comps);\n#line 513\n  return (-1);\n} else\n#line 509\nif (__cil_tmp20) {\n#line 512 \"/root/patron/2/src/libjasper/jpc/jpc_cs.c\"\n  jas_free((void *)siz->comps);\n#line 513\n  return (-1);\n}
+
+
+
+	InsertStmt: 
+Function: jpc_siz_getparms
+# of Before:23
+# of After:3
+Diff Summary:
+Inserted:
+#line 515\nif ((int )(siz->comps + i)->hsamp == 0) {\n#line 516\n  jas_eprintf(\"invalid XRsiz value %d\\n\",\n              (int )(siz->comps + i)->hsamp);\n#line 517\n  jas_free((void *)siz->comps);\n#line 518\n  return (-1);\n} else\n#line 515\nif ((int )(siz->comps + i)->hsamp > 255) {\n#line 516\n  jas_eprintf(\"invalid XRsiz value %d\\n\",\n              (int )(siz->comps + i)->hsamp);\n#line 517\n  jas_free((void *)siz->comps);\n#line 518\n  return (-1);\n}
+
+================================

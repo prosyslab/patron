@@ -1,0 +1,50 @@
+Edit Script Summary:
+Size: 3
+============diff-0============
+Meta Data:
+Depth: 1
+Previous Sibling Node: 
+#line 846\nif (offset > 0xffffffffffffffffUL) {\n#line 847\n  zip_error_set(error,\n                4,\n                27);\n#line 848\n  return ((zip_cdir_t *)((void *)0));\n} else\n#line 846\nif (offset + size < offset) {\n#line 847 \"/root/patchweave_new/24/lib/zip_open.c\"\n  zip_error_set(error,\n                4,\n                27);\n#line 848\n  return ((zip_cdir_t *)((void *)0));\n}
+
+
+
+	InsertStmt: 
+Function: _zip_read_eocd64
+# of Before:32
+# of After:7
+Diff Summary:
+Inserted:
+#line 850\nif (offset + size > buf_offset + eocd_offset) {\n#line 852\n  zip_error_set(error,\n                21,\n                0);\n#line 853\n  return ((zip_cdir_t *)((void *)0));\n}
+
+================================
+============diff-1============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 846\nif (offset > 0xffffffffffffffffUL) {\n#line 847\n  zip_error_set(error,\n                4,\n                27);\n#line 848\n  return ((zip_cdir_t *)((void *)0));\n} else\n#line 846\nif (offset + size < offset) {\n#line 847\n  zip_error_set(error,\n                4,\n                27);\n#line 848\n  return ((zip_cdir_t *)((void *)0));\n}
+
+
+
+	DeleteStmt: 
+Function: _zip_read_eocd64
+Diff Summary:
+Deleted:#line 855\nif (offset + size != eocd_offset) {\n#line 856\n  zip_error_set(error,\n                21,\n                0);\n#line 857\n  return ((zip_cdir_t *)((void *)0));\n}
+
+================================
+============diff-2============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 846\nif (offset > 0xffffffffffffffffUL) {\n#line 847\n  zip_error_set(error,\n                4,\n                27);\n#line 848\n  return ((zip_cdir_t *)((void *)0));\n} else\n#line 846\nif (offset + size < offset) {\n#line 847\n  zip_error_set(error,\n                4,\n                27);\n#line 848\n  return ((zip_cdir_t *)((void *)0));\n}
+
+
+
+	InsertStmt: 
+Function: _zip_read_eocd64
+# of Before:32
+# of After:0
+Diff Summary:
+Inserted:
+#line 855\nif (offset + size != buf_offset + eocd_offset) {\n#line 856\n  zip_error_set(error,\n                21,\n                0);\n#line 857\n  return ((zip_cdir_t *)((void *)0));\n}
+
+================================

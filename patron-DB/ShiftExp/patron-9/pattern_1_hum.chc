@@ -1,0 +1,8 @@
+(\forall Pos-7194 Lval-15794 Lval-15051 Lval-13917 Exp-19491 Exp-19490 Exp-18252 Exp-18184 CallExp-300 ArgList-3068.
+  (ErrTrace opj_read_from_file-16933 opj_pi_next_rpcl-15447) <-
+    (Set opj_pi_next_rpcl-15447 Lval-15794 CallExp-300),
+    (LvalExp Exp-19491 Lval-15051),
+    (LvalExp Exp-18252 Lval-13917),
+    (CallExp CallExp-300 Exp-18184 ArgList-3068),
+    (BinOpExp Exp-19490 bvshl Exp-19491 Exp-18252),
+    (Arg ArgList-3068 Pos-7194 Exp-19490))

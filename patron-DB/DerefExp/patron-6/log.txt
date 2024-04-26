@@ -1,0 +1,60 @@
+[20240426-13:57:38][INFO] Starting Patron...
+[20240426-13:57:40][INFO] Constructing AST diff...
+[20240426-13:57:40][INFO] Making facts from 0th alarm
+[20240426-13:57:42][INFO] Making Facts in buggy done
+[20240426-13:57:42][INFO] Making DUG...
+[20240426-13:58:14][WARN] There are two symbols of same lv in one func
+[20240426-13:58:14][WARN] There are two symbols of same lv in one func
+[20240426-13:58:14][WARN] There are two symbols of same lv in one func
+[20240426-13:58:14][WARN] There are two symbols of same lv in one func
+[20240426-13:58:14][WARN] There are two symbols of same lv in one func
+[20240426-13:58:14][WARN] There are two symbols of same lv in one func
+[20240426-13:58:14][WARN] There are two symbols of same lv in one func
+[20240426-13:58:14][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:15][WARN] There are two symbols of same lv in one func
+[20240426-13:58:16][WARN] There are two symbols of same lv in one func
+[20240426-13:58:16][WARN] There are two symbols of same lv in one func
+[20240426-13:58:16][WARN] There are two symbols of same lv in one func
+[20240426-13:58:16][WARN] There are two symbols of same lv in one func
+[20240426-13:58:16][WARN] There are two symbols of same lv in one func
+[20240426-13:58:16][WARN] There are two symbols of same lv in one func
+[20240426-13:58:16][WARN] There are two symbols of same lv in one func
+[20240426-13:58:17][INFO] Making DUG is done
+[20240426-13:58:17][INFO] Making Abstract Diff...
+[20240426-13:58:17][INFO] Making Abstract Diff is done
+[20240426-13:58:17][INFO] patch_comps: Lval-2563 (*__cil_tmp17), 
+[20240426-13:58:17][INFO] alarm_exps: Exp-3498
+[20240426-13:58:17][INFO] alarm_lvs: Lval-2564
+[20240426-13:58:17][INFO] Original Pattern - #Rels: 5, #DUEdges: 1
+[20240426-13:58:17][INFO] patch_comps: Lval-2493 (*__cil_tmp18), 
+[20240426-13:58:17][INFO] alarm_exps: Exp-3498
+[20240426-13:58:17][INFO] alarm_lvs: Lval-2564
+[20240426-13:58:17][INFO] Alternative Pattern - #Rels: 5, #DUEdges: 1
+[20240426-13:58:17][INFO] Making Bug Pattern is done
+[20240426-13:58:17][INFO] Try matching with buggy numeral...
+[20240426-13:58:17][INFO] Start making Z3 instance from facts and rels
+[20240426-13:58:23][INFO] Complete making Z3 instance from facts and rels
+[20240426-13:58:26][INFO] buggy_numer_0 is Matched
+[20240426-13:58:26][INFO] Try matching with buggy numeral...
+[20240426-13:58:26][INFO] Start making Z3 instance from facts and rels
+[20240426-13:58:29][INFO] Complete making Z3 instance from facts and rels
+[20240426-13:58:32][INFO] buggy_numer_1 is Matched
+[20240426-13:58:32][INFO] Preprocessing with pattern is done.

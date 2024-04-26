@@ -1,0 +1,6 @@
+(\forall Lval-7606 Lval-6466 Exp-7894 Exp-11178 Exp-11177 Exp-11175 Exp-11174.
+  (ErrTrace main-32073 putRGBUAcontig8bittile-16374) <-
+    (Set putRGBUAcontig8bittile-16374 Lval-6466 Exp-11174),
+    (LvalExp Exp-11178 Lval-7606),
+    (BinOpExp Exp-11177 bvshl Exp-11178 Exp-7894),
+    (BinOpExp Exp-11174 PlusPI Exp-11175 Exp-11177))

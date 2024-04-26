@@ -1,0 +1,35 @@
+Edit Script Summary:
+Size: 2
+============diff-0============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 586 \"/root/patron-new/22/./src/num.c\"\nplaces_rdx = __cil_tmp5 / 9UL - nrdx;
+
+
+
+	InsertStmt: 
+Function: bc_num_extend
+# of Before:5
+# of After:3
+Diff Summary:
+Inserted:
+#line 592\n__cil_tmp6 = bc_vm_growSize(n->len,\n                            places_rdx);
+
+================================
+============diff-1============
+Meta Data:
+Depth: 0
+Previous Sibling Node: 
+n
+
+
+
+	UpdateExp: 
+Function: bc_num_extend
+Stmt:#line 592\nbc_num_expand(n,\n              n->len + places_rdx);
+Diff Summary:
+From:	*n.len+places_rdx
+To:	__cil_tmp6
+
+================================

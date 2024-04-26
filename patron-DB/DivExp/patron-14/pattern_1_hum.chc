@@ -1,0 +1,15 @@
+(\forall opj_j2k_setup_encoder-12506 opj_j2k_setup_encoder-12485 opj_j2k_setup_encoder-12483 opj_j2k_setup_encoder-12164 Lval-323 Lval-282 Loc-218 Exp-679 Exp-497 Exp-496 Exp-495 Exp-494 Exp-437 Exp-26.
+  (ErrTrace tga_readheader-23266 opj_j2k_setup_encoder-12502) <-
+    (Set opj_j2k_setup_encoder-12506 Lval-282 Exp-437),
+    (Set opj_j2k_setup_encoder-12502 Lval-323 Exp-494),
+    (Set opj_j2k_setup_encoder-12483 Lval-282 Exp-679),
+    (LvalExp Exp-497 Lval-282),
+    (EvalLv opj_j2k_setup_encoder-12506 Lval-282 Loc-218),
+    (EvalLv opj_j2k_setup_encoder-12502 Lval-282 Loc-218),
+    (EvalLv opj_j2k_setup_encoder-12483 Lval-282 Loc-218),
+    (DUEdge opj_j2k_setup_encoder-12485 opj_j2k_setup_encoder-12502),
+    (DUEdge opj_j2k_setup_encoder-12483 opj_j2k_setup_encoder-12502),
+    (DUEdge opj_j2k_setup_encoder-12164 opj_j2k_setup_encoder-12485),
+    (BinOpExp Exp-496 PlusA Exp-437 Exp-497),
+    (BinOpExp Exp-495 MinusA Exp-496 Exp-26),
+    (BinOpExp Exp-494 Div Exp-495 Exp-497))

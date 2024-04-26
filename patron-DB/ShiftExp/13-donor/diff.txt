@@ -1,0 +1,18 @@
+Edit Script Summary:
+Size: 1
+============diff-0============
+Meta Data:
+Depth: 1
+Previous Sibling Node: 
+NotApplicable
+
+
+
+	UpdateExp: 
+Function: GetImageType
+Stmt:#line 120 \"/root/patchweave_new/13/examples/cwebp.c\"\nmagic = (((unsigned int )((int )buf[0] << 24) | (unsigned int )((int )buf[1] << 16)) | (unsigned int )((int )buf[2] << 8)) | (unsigned int )buf[3];
+Diff Summary:
+From:	(unsigned int )(((int )buf[0])<<24)
+To:	(uint32_t )(((int )buf[0])<<24)
+
+================================

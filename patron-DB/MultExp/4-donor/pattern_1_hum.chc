@@ -1,0 +1,6 @@
+(\forall Lval-328 Lval-327 Lval-326 Exp-268 Exp-267 Exp-266.
+  (ErrTrace main-13325 j2k_read_siz-9094) <-
+    (Set j2k_read_siz-9094 Lval-326 Exp-266),
+    (LvalExp Exp-268 Lval-328),
+    (LvalExp Exp-267 Lval-327),
+    (BinOpExp Exp-266 Mult Exp-267 Exp-268))

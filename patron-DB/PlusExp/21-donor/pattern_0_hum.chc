@@ -1,0 +1,22 @@
+(\forall printMP3Headers-30622 printMP3Headers-30620 printMP3Headers-30618 Lval-3 Lval-0 Loc-3 Loc-0 LibCallExp-0 Exp-4 Exp-3 Exp-2 Exp-17 Exp-16 Exp-11 Exp-10 Exp-1 Exp-0.
+  (ErrTrace printMP3Headers-30623 printMP3Headers-30624) <-
+    (Set printMP3Headers-30624 Lval-0 Exp-16),
+    (Set printMP3Headers-30623 Lval-3 LibCallExp-0),
+    (Set printMP3Headers-30622 Lval-0 Exp-3),
+    (Set printMP3Headers-30620 Lval-0 Exp-10),
+    (Set printMP3Headers-30618 Lval-0 Exp-0),
+    (LvalExp Exp-17 Lval-3),
+    (LvalExp Exp-1 Lval-0),
+    (EvalLv printMP3Headers-30624 Lval-3 Loc-3),
+    (EvalLv printMP3Headers-30624 Lval-0 Loc-0),
+    (EvalLv printMP3Headers-30623 Lval-3 Loc-3),
+    (EvalLv printMP3Headers-30622 Lval-0 Loc-0),
+    (EvalLv printMP3Headers-30620 Lval-0 Loc-0),
+    (EvalLv printMP3Headers-30618 Lval-0 Loc-0),
+    (DUEdge printMP3Headers-30622 printMP3Headers-30624),
+    (DUEdge printMP3Headers-30620 printMP3Headers-30622),
+    (DUEdge printMP3Headers-30618 printMP3Headers-30620),
+    (BinOpExp Exp-3 PlusA Exp-1 Exp-4),
+    (BinOpExp Exp-16 PlusA Exp-1 Exp-17),
+    (BinOpExp Exp-10 PlusA Exp-1 Exp-11),
+    (BinOpExp Exp-0 bvshl Exp-1 Exp-2))

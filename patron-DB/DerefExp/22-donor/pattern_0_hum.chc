@@ -1,0 +1,21 @@
+(\forall PSDataColorContig-34871 PSDataColorContig-34869 PSDataColorContig-34843 PSDataColorContig-34810 PSDataColorContig-31330 PSDataColorContig-31280 PSDataColorContig-31264 Lval-600 Lval-510 Lval-3204 Lval-3203 Loc-415 Exp-796 Exp-699 Exp-594 Exp-4775 Exp-4774 Exp-4773 Exp-1036 Exp-1035.
+  (ErrTrace main-32120 PSDataColorContig-34822) <-
+    (Set PSDataColorContig-34843 Lval-600 Exp-1035),
+    (Set PSDataColorContig-34822 Lval-3203 Exp-4773),
+    (Set PSDataColorContig-34810 Lval-510 Exp-594),
+    (Mem Lval-3204 Exp-4775),
+    (LvalExp Exp-4774 Lval-3204),
+    (LvalExp Exp-1036 Lval-510),
+    (EvalLv PSDataColorContig-34843 Lval-510 Loc-415),
+    (EvalLv PSDataColorContig-34810 Lval-510 Loc-415),
+    (DUEdge PSDataColorContig-34871 PSDataColorContig-31264),
+    (DUEdge PSDataColorContig-34869 PSDataColorContig-31330),
+    (DUEdge PSDataColorContig-34843 PSDataColorContig-31280),
+    (DUEdge PSDataColorContig-34810 PSDataColorContig-34869),
+    (DUEdge PSDataColorContig-34810 PSDataColorContig-34843),
+    (DUEdge PSDataColorContig-31330 PSDataColorContig-34871),
+    (DUEdge PSDataColorContig-31280 PSDataColorContig-34843),
+    (DUEdge PSDataColorContig-31280 PSDataColorContig-34822),
+    (DUEdge PSDataColorContig-31264 PSDataColorContig-31280),
+    (BinOpExp Exp-4773 MinusA Exp-796 Exp-4774),
+    (BinOpExp Exp-1035 PlusPI Exp-699 Exp-1036))

@@ -1,0 +1,26 @@
+[20240426-14:39:12][INFO] Starting Patron...
+[20240426-14:39:13][INFO] Constructing AST diff...
+[20240426-14:39:13][INFO] Making facts from 1th alarm
+[20240426-14:39:15][INFO] Making Facts in buggy done
+[20240426-14:39:15][INFO] Making DUG...
+[20240426-14:40:54][INFO] Making DUG is done
+[20240426-14:40:54][INFO] Making Abstract Diff...
+[20240426-14:40:54][INFO] Making Abstract Diff is done
+[20240426-14:40:54][INFO] patch_comps: Lval-6850 (*(*siz.comps+i).vsamp), Lval-6851 (*siz.comps), 
+[20240426-14:40:54][INFO] alarm_exps: Exp-9665
+[20240426-14:40:54][INFO] alarm_lvs: Lval-7551, Lval-7125
+[20240426-14:40:54][INFO] Original Pattern - #Rels: 20, #DUEdges: 1
+[20240426-14:40:54][INFO] patch_comps: Lval-6325 (*siz.comps), Lval-7125 (*cmpt.vstep), 
+[20240426-14:40:54][INFO] alarm_exps: Exp-9665
+[20240426-14:40:54][INFO] alarm_lvs: Lval-7551, Lval-7125
+[20240426-14:40:54][INFO] Alternative Pattern - #Rels: 10, #DUEdges: 2
+[20240426-14:40:54][INFO] Making Bug Pattern is done
+[20240426-14:40:54][INFO] Try matching with buggy numeral...
+[20240426-14:40:54][INFO] Start making Z3 instance from facts and rels
+[20240426-14:41:00][INFO] Complete making Z3 instance from facts and rels
+[20240426-14:41:04][INFO] buggy_numer_0 is Matched
+[20240426-14:41:05][INFO] Try matching with buggy numeral...
+[20240426-14:41:05][INFO] Start making Z3 instance from facts and rels
+[20240426-14:41:10][INFO] Complete making Z3 instance from facts and rels
+[20240426-14:41:15][INFO] buggy_numer_1 is Matched
+[20240426-14:41:15][INFO] Preprocessing with pattern is done.

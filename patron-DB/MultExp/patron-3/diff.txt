@@ -1,0 +1,19 @@
+Edit Script Summary:
+Size: 1
+============diff-0============
+Meta Data:
+Depth: 1
+Previous Sibling Node: 
+#line 1344 \"/root/patron-new/4/tools/tiffcrop.c\"\nTIFFGetField(out,\n             (uint32 )258,\n             & bps);
+
+
+
+	InsertStmt: 
+Function: writeBufferToSeparateTiles
+# of Before:8
+# of After:5
+Diff Summary:
+Inserted:
+#line 1346\nif (imagewidth == 0U) {\n#line 1350\n  __cil_tmp21 = TIFFFileName(out);\n#line 1350\n  TIFFError(__cil_tmp21,\n            \"Error, uint32 overflow when computing (imagewidth * bps * spp) + 78\\366\\374U\");\n#line 1352\n  return (1);\n} else\n#line 1346\nif ((uint32 )bps * (uint32 )spp > 4294967295U / imagewidth) {\n#line 1350\n  __cil_tmp21 = TIFFFileName(out);\n#line 1350\n  TIFFError(__cil_tmp21,\n            \"Error, uint32 overflow when computing (imagewidth * bps * spp) + 78\\366\\374U\");\n#line 1352\n  return (1);\n} else\n#line 1346\nif ((unsigned int )((int )bps * (int )spp) * imagewidth > 4294967288U) {\n#line 1350\n  __cil_tmp21 = TIFFFileName(out);\n#line 1350\n  TIFFError(__cil_tmp21,\n            \"Error, uint32 overflow when computing (imagewidth * bps * spp) + 78\\366\\374U\");\n#line 1352\n  return (1);\n}
+
+================================

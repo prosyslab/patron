@@ -1,0 +1,19 @@
+Edit Script Summary:
+Size: 1
+============diff-0============
+Meta Data:
+Depth: 2
+Previous Sibling Node: 
+#line 7786\nif (parameters___11->cp_comment) {\n#line 7787\n  __cil_tmp28___1 = strlen((char const   *)parameters___11->cp_comment);\n#line 7787\n  __cil_tmp29___1 = opj_malloc(__cil_tmp28___1 + 1UL);\n#line 7787\n  cp___2->comment = (char *)__cil_tmp29___1;\n#line 7788\n  if (! cp___2->comment) {\n#line 7789\n    opj_event_msg(p_manager___101,\n                  1,\n                  \"Not enough memory to allocate copy of comment string\\n\");\n#line 7791\n    return (0);\n  }\n#line 7793\n  strcpy(cp___2->comment,\n         (char const   *)parameters___11->cp_comment);\n} else {\n#line 7796 \"/root/patron-new/39/src/lib/openjp2/j2k.c\"\n  __asm__  (\"booo_exp(/root/patron-new/39/src/lib/openjp2/j2k.c:7796)\":);\n#line 7797\n  __cil_tmp32___1 = strlen((char const   *)(comment));\n#line 7797\n  clen = __cil_tmp32___1;\n#line 7798\n  __cil_tmp34___1 = opj_version();\n#line 7798\n  version = __cil_tmp34___1;\n#line 7810\n  __cil_tmp35___1 = strlen(version);\n#line 7810\n  __cil_tmp36___1 = opj_malloc((clen + __cil_tmp35___1) + 1UL);\n#line 7810\n  cp___2->comment = (char *)__cil_tmp36___1;\n#line 7811\n  if (! cp___2->comment) {\n#line 7812\n    opj_event_msg(p_manager___101,\n                  1,\n                  \"Not enough memory to allocate comment string\\n\");\n#line 7814\n    return (0);\n  }\n#line 7816\n  sprintf(cp___2->comment,\n          \"%s%s\",\n          (char const   *)(comment),\n          version);\n}
+
+
+
+	InsertStmt: 
+Function: opj_j2k_setup_encoder
+# of Before:31
+# of After:4
+Diff Summary:
+Inserted:
+#line 7826\nif (cp___2->tdx == 0U) {\n#line 7827\n  opj_event_msg(p_manager___101,\n                1,\n                \"Invalid tile width\\n\\005]U\");\n#line 7828\n  return (0);\n}
+
+================================

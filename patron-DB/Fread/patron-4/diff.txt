@@ -1,0 +1,19 @@
+Edit Script Summary:
+Size: 1
+============diff-0============
+Meta Data:
+Depth: 3
+Previous Sibling Node: 
+#line 349 \"/root/patron-new/5/tools/gif2tiff.c\"\ncount = getc(infile);
+
+
+
+	UpdateStmt: 
+Function: readraster
+# of Before:16
+# of After:0
+Diff Summary:
+Inserted:
+#line 349\nif (! (count <= 255)) {\n#line 349\n  goto while_break___0;\n}
+
+================================

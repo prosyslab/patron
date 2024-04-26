@@ -1,0 +1,6 @@
+(\forall Lval-59 Lval-5 Lval-27 Exp-92 Exp-31 Exp-114.
+  (ErrTrace main-32077 ReadDirectory-32492) <-
+    (Set ReadDirectory-32492 Lval-5 Exp-114),
+    (LvalExp Exp-92 Lval-59),
+    (LvalExp Exp-31 Lval-27),
+    (BinOpExp Exp-114 Mult Exp-31 Exp-92))

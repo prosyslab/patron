@@ -1,0 +1,18 @@
+Edit Script Summary:
+Size: 1
+============diff-0============
+Meta Data:
+Depth: 3
+Previous Sibling Node: 
+NotApplicable
+
+
+
+	UpdateExp: 
+Function: putRGBUAcontig8bittile
+Stmt:#line 1443 \"/root/patron/13/libtiff/tif_getimage.c\"\nm = img->UaToAa + (a << 8);
+Diff Summary:
+From:	a
+To:	(size_t )a
+
+================================

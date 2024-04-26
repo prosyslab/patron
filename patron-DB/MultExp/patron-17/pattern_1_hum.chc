@@ -1,0 +1,6 @@
+(\forall Lval-6848 Lval-2759 Exp-8656 Exp-3163 Exp-17412 Exp-17411 Exp-17410.
+  (ErrTrace main-30379 EmitRescaledRowsRGBA-21586) <-
+    (Set EmitRescaledRowsRGBA-21586 Lval-2759 Exp-17410),
+    (LvalExp Exp-8656 Lval-6848),
+    (BinOpExp Exp-17412 Mult Exp-8656 Exp-3163),
+    (BinOpExp Exp-17410 PlusPI Exp-17411 Exp-17412))

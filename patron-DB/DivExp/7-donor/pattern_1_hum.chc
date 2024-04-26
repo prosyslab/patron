@@ -1,0 +1,12 @@
+(\forall jpc_dec_process_siz-18779 jpc_dec_process_siz-16924 Lval-7125 Lval-11101 Loc-574 Exp-9665 Exp-8593 Exp-15372 Exp-15371 Exp-15370 Exp-11418 Exp-10168.
+  (ErrTrace file_read-25922 jpc_dec_process_siz-18781) <-
+    (Set jpc_dec_process_siz-18781 Lval-11101 Exp-15370),
+    (Set jpc_dec_process_siz-18779 Lval-7125 Exp-11418),
+    (LvalExp Exp-9665 Lval-7125),
+    (EvalLv jpc_dec_process_siz-18781 Lval-7125 Loc-574),
+    (EvalLv jpc_dec_process_siz-18779 Lval-7125 Loc-574),
+    (DUEdge jpc_dec_process_siz-18779 jpc_dec_process_siz-18781),
+    (DUEdge jpc_dec_process_siz-16924 jpc_dec_process_siz-18781),
+    (BinOpExp Exp-15372 PlusA Exp-10168 Exp-9665),
+    (BinOpExp Exp-15371 MinusA Exp-15372 Exp-8593),
+    (BinOpExp Exp-15370 Div Exp-15371 Exp-9665))

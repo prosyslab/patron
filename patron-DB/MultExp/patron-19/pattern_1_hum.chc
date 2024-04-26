@@ -1,0 +1,6 @@
+(\forall Lval-45648 Lval-45251 Exp-68319 Exp-68318 Exp-68317 Exp-68316 Exp-67811.
+  (ErrTrace main-30379 EmitSampledRGB-23749) <-
+    (Set EmitSampledRGB-23749 Lval-45251 Exp-68316),
+    (LvalExp Exp-68319 Lval-45648),
+    (BinOpExp Exp-68318 Mult Exp-68319 Exp-67811),
+    (BinOpExp Exp-68316 PlusPI Exp-68317 Exp-68318))

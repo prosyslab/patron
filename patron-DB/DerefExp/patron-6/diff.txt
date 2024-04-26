@@ -1,0 +1,18 @@
+Edit Script Summary:
+Size: 1
+============diff-0============
+Meta Data:
+Depth: 3
+Previous Sibling Node: 
+NotApplicable
+
+
+
+	UpdateExp: 
+Function: get_histogram
+Stmt:#line 374 \"/root/patron/11/tools/tiffmedian.c\"\nred = (int )*__cil_tmp17 >> 3;
+Diff Summary:
+From:	((int )*__cil_tmp17)>>3
+To:	((int )*__cil_tmp17)&(255>>3)
+
+================================

@@ -1,0 +1,29 @@
+[20240426-13:49:24][INFO] Starting Patron...
+[20240426-13:49:25][INFO] Constructing AST diff...
+[20240426-13:49:26][INFO] Making facts from 0th alarm
+[20240426-13:49:26][INFO] Making Facts in buggy done
+[20240426-13:49:26][INFO] Making DUG...
+[20240426-13:49:26][WARN] There are two symbols of same lv in one func
+[20240426-13:49:26][WARN] There are two symbols of same lv in one func
+[20240426-13:49:26][WARN] There are two symbols of same lv in one func
+[20240426-13:49:26][INFO] Making DUG is done
+[20240426-13:49:26][INFO] Making Abstract Diff...
+[20240426-13:49:26][INFO] Making Abstract Diff is done
+[20240426-13:49:26][INFO] patch_comps: Lval-27 (count), Lval-59 (typewidth), 
+[20240426-13:49:26][INFO] alarm_exps: Exp-92, Exp-31
+[20240426-13:49:26][INFO] alarm_lvs: Lval-59, Lval-27
+[20240426-13:49:26][INFO] Original Pattern - #Rels: 4, #DUEdges: 0
+[20240426-13:49:26][INFO] patch_comps: Lval-27 (count), Lval-59 (typewidth), 
+[20240426-13:49:26][INFO] alarm_exps: Exp-92, Exp-31
+[20240426-13:49:26][INFO] alarm_lvs: Lval-59, Lval-27
+[20240426-13:49:26][INFO] Alternative Pattern - #Rels: 4, #DUEdges: 0
+[20240426-13:49:26][INFO] Making Bug Pattern is done
+[20240426-13:49:26][INFO] Try matching with buggy numeral...
+[20240426-13:49:26][INFO] Start making Z3 instance from facts and rels
+[20240426-13:49:27][INFO] Complete making Z3 instance from facts and rels
+[20240426-13:49:27][INFO] buggy_numer_0 is Matched
+[20240426-13:49:27][INFO] Try matching with buggy numeral...
+[20240426-13:49:27][INFO] Start making Z3 instance from facts and rels
+[20240426-13:49:27][INFO] Complete making Z3 instance from facts and rels
+[20240426-13:49:27][INFO] buggy_numer_1 is Matched
+[20240426-13:49:27][INFO] Preprocessing with pattern is done.
