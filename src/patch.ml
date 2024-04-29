@@ -98,5 +98,7 @@ let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir =
   let donee_ast = Parser.parse_ast donee_dir inline_funcs in
   Sys_unix.ls_dir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> List.iter ~f:(fun ta ->
-         try match_one_alarm ~db z3env donee_dir donee_ast out_dir db_dir ta
-         with e -> L.warn "%s" (Exn.to_string e))
+         if String.is_suffix ta ~suffix:".map" then ()
+         else
+           try match_one_alarm ~db z3env donee_dir donee_ast out_dir db_dir ta
+           with e -> L.warn "%s" (Exn.to_string e))
