@@ -4,7 +4,7 @@ module F = Format
 module L = Logger
 module Sys = Stdlib.Sys
 
-let mk_file_diff orig_path patch_path target_alarm out_dir =
+let mk_file_diff orig_path patch_path cand_donor target_alarm out_dir =
   Sys.command
     (String.concat
        [
@@ -13,7 +13,8 @@ let mk_file_diff orig_path patch_path target_alarm out_dir =
          " ";
          patch_path;
          " > ";
-         Filename.concat out_dir ("result_" ^ target_alarm ^ "_diff.patch");
+         Filename.concat out_dir
+           ("result_" ^ cand_donor ^ "_" ^ target_alarm ^ "_diff.patch");
        ])
   |> ignore
 
@@ -60,7 +61,7 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
     in
     DoEdit.write_out out_file_patch patch_file;
     L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
-    mk_file_diff out_file_orig out_file_patch target_alarm out_dir;
+    mk_file_diff out_file_orig out_file_patch cand_donor target_alarm out_dir;
     Stop ())
   else (
     L.info "%s is Not Matched" target_alarm;
@@ -95,10 +96,11 @@ let match_one_alarm ?(db = false) z3env donee_dir donee_ast out_dir db_dir
   else match_one_by_one ~db z3env "" donee_dir target_alarm donee_ast out_dir ""
 
 let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir =
-  let donee_ast = Parser.parse_ast donee_dir inline_funcs in
   Sys_unix.ls_dir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> List.iter ~f:(fun ta ->
          if String.is_suffix ta ~suffix:".map" then ()
-         else
+         else (
+           Cil.resetCIL ();
+           let donee_ast = Parser.parse_ast donee_dir inline_funcs in
            try match_one_alarm ~db z3env donee_dir donee_ast out_dir db_dir ta
-           with e -> L.warn "%s" (Exn.to_string e))
+           with e -> L.warn "%s" (Exn.to_string e)))
