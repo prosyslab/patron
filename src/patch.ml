@@ -67,8 +67,8 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
     L.info "%s is Not Matched" target_alarm;
     Continue ())
 
-let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm donee_ast
-    out_dir cand_donor =
+let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
+    inline_funcs out_dir cand_donor =
   L.info "Try matching with %s..." cand_donor;
   let donor_dir = if db then Filename.concat bt_dir cand_donor else out_dir in
   let buggy_maps = Maps.create_maps () in
@@ -78,11 +78,13 @@ let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm donee_ast
   Maps.load_numeral_map buggy_ic buggy_maps.numeral_map;
   List.fold_until ~init:()
     ~f:(fun _ i ->
+      Cil.resetCIL ();
+      let donee_ast = Parser.parse_ast donee_dir inline_funcs in
       match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm
         donee_ast out_dir i)
     [ 0; 1 ] ~finish:ignore
 
-let match_one_alarm ?(db = false) z3env donee_dir donee_ast out_dir db_dir
+let match_one_alarm ?(db = false) z3env donee_dir inline_funcs out_dir db_dir
     target_alarm =
   L.info "Target Alarm: %s" target_alarm;
   let bug_type = Utils.find_bug_type donee_dir target_alarm in
@@ -91,16 +93,16 @@ let match_one_alarm ?(db = false) z3env donee_dir donee_ast out_dir db_dir
     Sys_unix.ls_dir bt_dir
     |> List.iter
          ~f:
-           (match_one_by_one ~db z3env bt_dir donee_dir target_alarm donee_ast
-              out_dir)
-  else match_one_by_one ~db z3env "" donee_dir target_alarm donee_ast out_dir ""
+           (match_one_by_one ~db z3env bt_dir donee_dir target_alarm
+              inline_funcs out_dir)
+  else
+    match_one_by_one ~db z3env "" donee_dir target_alarm inline_funcs out_dir ""
 
 let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir =
   Sys_unix.ls_dir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> List.iter ~f:(fun ta ->
          if String.is_suffix ta ~suffix:".map" then ()
-         else (
-           Cil.resetCIL ();
-           let donee_ast = Parser.parse_ast donee_dir inline_funcs in
-           try match_one_alarm ~db z3env donee_dir donee_ast out_dir db_dir ta
-           with e -> L.warn "%s" (Exn.to_string e)))
+         else
+           try
+             match_one_alarm ~db z3env donee_dir inline_funcs out_dir db_dir ta
+           with e -> L.warn "%s" (Exn.to_string e))
