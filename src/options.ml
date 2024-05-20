@@ -249,57 +249,6 @@ let main_cmd =
   let info = Cmd.info name ~version:"0.0.1" ~doc ~man in
   Cmd.group info [ db_cmd; patch_cmd; dtd_cmd ]
 
-(* let main_cmd =
-   let name = "patron" in
-   let doc = "A vaccine for programs" in
-   let man =
-     [
-       `S Manpage.s_description;
-       `P "$(tname) transplant a correct patch from matched bug pattern.";
-       `S Manpage.s_bugs;
-       `P "Report bugs to <jaeho.kim@prosys.kaist.ac.kr>";
-     ]
-   in
-   let info = Cmd.info name ~version:"0.0.1" ~doc ~man in
-   let donor_dir =
-     Arg.(
-       required
-       & pos 0 (some file) None
-       & info [] ~docv:"DONOR_DIR"
-           ~doc:"The DONOR directory that has bug and patch directories")
-   in
-   let donee_dir =
-     Arg.(
-       required
-       & pos 1 (some file) None
-       & info [] ~docv:"DONEE_DIR"
-           ~doc:"The donee directory that has bug directory")
-   in
-   let docs = Manpage.s_options in
-   let out_dir =
-     Arg.(
-       value
-       & opt string Filename.(concat current_dir_name "patron-out")
-       & info [ "o"; "out_dir" ] ~docs ~docv:"OUT_DIR"
-           ~doc:"The output directory")
-   in
-   let write_out =
-     Arg.(
-       value & flag
-       & info [ "w"; "write_out" ]
-           ~doc:"write out the diff.json file containing the detailed diff info")
-   in
-   let z3_mem_limit =
-     Arg.(value & flag & info [ "m"; "mem_limit" ] ~doc:"Memory limit for Z3")
-   in
-   let sort_size =
-     Arg.(
-       value & opt int 1000000
-       & info [ "s"; "sort_size" ] ~docs ~docv:"SORT_SIZE"
-           ~doc:"Size of finite domain in Z3 context")
-   in
-   Cmd.group info [ db_cmd ] *)
-
 let parse () =
   match Cmd.eval_value main_cmd with
   | Ok v -> ( match v with `Ok t -> t | _ -> exit 1)
