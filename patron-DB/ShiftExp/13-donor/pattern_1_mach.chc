@@ -1,1 +1,0 @@
-((ErrTrace GetImageType-24755 GetImageType-24756)(Set GetImageType-24756 Lval-69 Exp-152)(LvalExp Exp-156 Lval-70)(BinOpExp Exp-155 bvshl Exp-156 Exp-157)(BinOpExp Exp-154 bvor Exp-155 Exp-158)(BinOpExp Exp-153 bvor Exp-154 Exp-161)(BinOpExp Exp-152 bvor Exp-153 Exp-164))

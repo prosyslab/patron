@@ -1,1 +1,0 @@
-((ErrTrace main-32077 ReadDirectory-32492)(Set ReadDirectory-32492 Lval-5 Exp-114)(LvalExp Exp-92 Lval-59)(LvalExp Exp-31 Lval-27)(BinOpExp Exp-114 Mult Exp-31 Exp-92))
