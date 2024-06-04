@@ -136,6 +136,7 @@ let match_sort z3env s =
     | "Loc" -> z3env.loc
     | "Val" -> z3env.value
     | "Pos" -> z3env.int_sort
+    | "BinOp" -> z3env.binop_sort
     | _ -> z3env.node
 
 let numer_cnt = ref 24 (* for binop, unop *)

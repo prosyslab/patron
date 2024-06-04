@@ -183,6 +183,12 @@ module Elt = struct
     | Implies (cons, hd) -> Sexp.List (chc2sexp hd :: List.map ~f:chc2sexp cons)
 
   let duedge src dst = FuncApply ("DUEdge", [ numer src; numer dst ])
+  let assume n e = FuncApply ("Assume", [ numer n; numer e ])
+
+  let binop e o e1 e2 =
+    FuncApply ("BinOpExp", [ numer e; numer o; numer e1; numer e2 ])
+
+  let cfpath src dst = FuncApply ("CFPath", [ numer src; numer dst ])
   let is_rel = function FuncApply _ -> true | _ -> false
   let is_rule = function Implies _ -> true | _ -> false
   let is_duedge = function FuncApply ("DUEdge", _) -> true | _ -> false

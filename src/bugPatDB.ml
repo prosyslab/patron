@@ -7,10 +7,12 @@ module Map = Stdlib.Map
 module Sys = Stdlib.Sys
 
 let preproc_using_pattern z3env maps src snk facts out_dir i
-    (pattern_in_numeral, pattern, diff) =
+    (pattern_in_numeral, pattern, patpat, diff) =
   let i_str = string_of_int i in
   Chc.sexp_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
   Chc.pretty_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
+  Chc.sexp_dump (Filename.concat out_dir "patch_pattern_" ^ i_str) patpat;
+  Chc.pretty_dump (Filename.concat out_dir "patch_pattern_" ^ i_str) patpat;
   Maps.dump "buggy" maps out_dir;
   L.info "Try matching with buggy numeral...";
   ( Chc.match_and_log z3env out_dir ("buggy_numer_" ^ i_str) maps facts src snk

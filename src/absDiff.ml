@@ -328,6 +328,8 @@ type t =
   | SDeleteLval of string * abs_node
   | SUpdateLval of string * abs_node * abs_node
 
+let is_insert_stmt = function SInsertStmt _ -> true | _ -> false
+
 let rec to_styp t =
   match t with
   | Cil.TVoid _ -> SVoid

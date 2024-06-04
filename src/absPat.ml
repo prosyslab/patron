@@ -164,6 +164,18 @@ let num_of_rels rels =
   F.asprintf "#Rels: %d, #DUEdges: %d" (Chc.cardinal rels)
     (Chc.filter Chc.Elt.is_duedge rels |> Chc.cardinal)
 
+let gen_patpat abs_diff snk facts =
+  let n = "Node-00" in
+  if List.exists ~f:AbsDiff.is_insert_stmt abs_diff then
+    let e1 = "Exp-00" in
+    let e2 = "Exp-000" in
+    let e3 = "Exp-0000" in
+    let op = "BinOp-00" in
+    Chc.add (Chc.Elt.duedge n snk) facts
+    |> Chc.add (Chc.Elt.assume n e1)
+    |> Chc.add (Chc.Elt.binop e1 op e2 e3)
+  else Chc.singleton (Chc.Elt.cfpath n n)
+
 let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff =
   let errtrace =
     Chc.Elt.FuncApply
@@ -178,6 +190,10 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff =
   let pattern_in_numeral =
     Chc.Elt.Implies (abs_facts |> Chc.to_list, errtrace)
   in
+  let patpat =
+    Chc.Elt.Implies (gen_patpat abs_diff snk abs_facts |> Chc.to_list, errtrace)
+    |> Chc.Elt.numer2var |> Chc.singleton
+  in
   let snk_func = Utils.get_func_name_from_node snk in
   let alt_pc, alt_diff = find_alt_lvs snk_func facts patch_comps abs_diff in
   let alt_pat =
@@ -191,13 +207,20 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff =
       let alt_pattern_in_numeral =
         Chc.Elt.Implies (alt_facts |> Chc.to_list, errtrace)
       in
+      let alt_patpat =
+        Chc.Elt.Implies
+          (gen_patpat abs_diff snk alt_facts |> Chc.to_list, errtrace)
+        |> Chc.Elt.numer2var |> Chc.singleton
+      in
       [
         ( alt_pattern_in_numeral |> Chc.singleton,
           alt_pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton,
+          alt_patpat,
           alt_diff' );
       ]
   in
   ( pattern_in_numeral |> Chc.singleton,
     pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton,
+    patpat,
     abs_diff' )
   :: alt_pat

@@ -29,6 +29,11 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
     |> Filename.concat donor_dir |> Parser.parse_chc
     |> Chc.map Chc.Elt.numer2var
   in
+  let patpat =
+    F.asprintf "patch_pattern_%d_mach.chc" i
+    |> Filename.concat donor_dir |> Parser.parse_chc
+    |> Chc.map Chc.Elt.numer2var
+  in
   let cdp_ic =
     F.asprintf "abs_diff_%d.marshal" i
     |> Filename.concat donor_dir |> In_channel.create
@@ -38,31 +43,39 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
   let facts, (src, snk, _, _), target_maps =
     Parser.make_facts donee_dir target_alarm ast out_dir
   in
-  let status =
+  let is_bug =
     Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
       pattern
   in
   Maps.dump target_alarm target_maps out_dir;
-  if Option.is_some status then (
-    Modeling.match_ans buggy_maps target_maps target_alarm i cand_donor
-      donor_dir out_dir;
-    L.info "Matching with %s is done" target_alarm;
-    let target_diff =
-      EditFunction.translate cand_donor target_maps out_dir target_alarm diff
+  if Option.is_some is_bug then
+    let is_pat =
+      Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
+        patpat
     in
-    L.info "Applying patch on the target file ...";
-    let out_file_orig =
-      F.asprintf "%s/orig_%s_%s_%d.c" out_dir cand_donor target_alarm i
-    in
-    DoEdit.write_out out_file_orig ast;
-    let patch_file = DoEdit.run ast target_diff in
-    let out_file_patch =
-      F.asprintf "%s/patch_%s_%s_%d.c" out_dir cand_donor target_alarm i
-    in
-    DoEdit.write_out out_file_patch patch_file;
-    L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
-    mk_file_diff out_file_orig out_file_patch cand_donor target_alarm out_dir;
-    Stop ())
+    if Option.is_none is_pat then (
+      Modeling.match_ans buggy_maps target_maps target_alarm i cand_donor
+        donor_dir out_dir;
+      L.info "Matching with %s is done" target_alarm;
+      let target_diff =
+        EditFunction.translate cand_donor target_maps out_dir target_alarm diff
+      in
+      L.info "Applying patch on the target file ...";
+      let out_file_orig =
+        F.asprintf "%s/orig_%s_%s_%d.c" out_dir cand_donor target_alarm i
+      in
+      DoEdit.write_out out_file_orig ast;
+      let patch_file = DoEdit.run ast target_diff in
+      let out_file_patch =
+        F.asprintf "%s/patch_%s_%s_%d.c" out_dir cand_donor target_alarm i
+      in
+      DoEdit.write_out out_file_patch patch_file;
+      L.info "Patch for %s is done, written at %s" target_alarm out_file_patch;
+      mk_file_diff out_file_orig out_file_patch cand_donor target_alarm out_dir;
+      Stop ())
+    else (
+      L.info "%s is Matched with patch pattern" target_alarm;
+      Continue ())
   else (
     L.info "%s is Not Matched" target_alarm;
     Continue ())
