@@ -85,6 +85,7 @@ let file2func = function
   | "BinOpExp.facts" -> "BinOpExp"
   | "UnOpExp.facts" -> "UnOpExp"
   | "CallExp.facts" -> "CallExp"
+  | "ReadCallExp.facts" -> "ReadCallExp"
   | "CFPath.facts" -> "CFPath"
   | "DetailedDUEdge.facts" -> "DetailedDUEdge"
   | "DUEdge.facts" -> "DUEdge"
@@ -106,6 +107,7 @@ let file2func = function
 type facts4sparrow = {
   set_facts : Chc.elt list list;
   callexp_facts : Chc.elt list list;
+  readcall_facts : Chc.elt list list;
   libcall_facts : Chc.elt list list;
   args_facts : Chc.elt list list;
   alloc_exp_facts : Chc.elt list list;

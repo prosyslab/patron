@@ -520,6 +520,7 @@ let from_node_to_ast ?(leaf = empty) terms = function
       if (not (mem l1 leaf)) && mem l1 terms then (true, add l2 terms)
       else (false, terms)
   | FuncApply ("CallExp", [ e; _; arg_list ])
+  | FuncApply ("ReadCallExp", [ e; _; arg_list ])
   | FuncApply ("LibCallExp", [ e; _; arg_list ]) ->
       if (not (mem e leaf)) && mem e terms then (true, add arg_list terms)
       else (false, terms)
@@ -568,6 +569,7 @@ let is_child var = function
   | FuncApply ("UnOpExp", hd :: _)
   | FuncApply ("LvalExp", hd :: _)
   | FuncApply ("CallExp", hd :: _)
+  | FuncApply ("ReadCallExp", hd :: _)
   | FuncApply ("LibCallExp", hd :: _)
   | FuncApply ("AllocExp", hd :: _)
   | FuncApply ("SAllocExp", hd :: _) ->
@@ -652,6 +654,7 @@ let from_ast_to_node terms = function
   | FuncApply ("Field", [ l1; l2 ]) ->
       if mem l2 terms then (true, add l1 terms) else (false, terms)
   | FuncApply ("CallExp", [ e; _; arg_list ])
+  | FuncApply ("ReadCallExp", [ e; _; arg_list ])
   | FuncApply ("LibCallExp", [ e; _; arg_list ]) ->
       if mem arg_list terms then (true, add e terms) else (false, terms)
   | FuncApply ("AllocExp", [ e; size_e ]) ->
@@ -701,7 +704,8 @@ let filter_by_node =
       if List.length sort_id = 2 then
         match name with
         | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp"
-        | "ArgList" | "Lval" | "Loc" | "Val" | "Pos" | "AstNode" ->
+        | "ReadCallExp" | "ArgList" | "Lval" | "Loc" | "Val" | "Pos" | "AstNode"
+          ->
             false
         | _ -> true
       else false)

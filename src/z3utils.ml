@@ -21,6 +21,7 @@ let match_func z3env f =
   | "AddrOf" -> z3env.addrof
   | "CallExp" -> z3env.call
   | "LibCallExp" -> z3env.libcall
+  | "ReadCallExp" -> z3env.readcall
   | "Arg" -> z3env.arg
   | "ConstExp" -> z3env.constexp
   | "Return" -> z3env.ret
@@ -130,7 +131,9 @@ let match_sort z3env s =
     else z3env.bv_sort
   else
     match name with
-    | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp" -> z3env.expr
+    | "Exp" | "CallExp" | "LibCallExp" | "SallocExp" | "AllocExp"
+    | "ReadCallExp" ->
+        z3env.expr
     | "ArgList" -> z3env.arg_list
     | "Lval" -> z3env.lval
     | "Loc" -> z3env.loc

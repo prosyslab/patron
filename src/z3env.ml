@@ -40,6 +40,7 @@ type t = {
   addrof : Z3.FuncDecl.func_decl;
   call : Z3.FuncDecl.func_decl;
   libcall : Z3.FuncDecl.func_decl;
+  readcall : Z3.FuncDecl.func_decl;
   arg : Z3.FuncDecl.func_decl;
   constexp : Z3.FuncDecl.func_decl;
   ret : Z3.FuncDecl.func_decl;
@@ -106,6 +107,7 @@ let reg_rel_to_solver env solver =
   Z3.Fixedpoint.register_relation solver env.addrof;
   Z3.Fixedpoint.register_relation solver env.call;
   Z3.Fixedpoint.register_relation solver env.libcall;
+  Z3.Fixedpoint.register_relation solver env.readcall;
   Z3.Fixedpoint.register_relation solver env.arg;
   Z3.Fixedpoint.register_relation solver env.constexp;
   Z3.Fixedpoint.register_relation solver env.ret;
@@ -141,6 +143,7 @@ let fact_files =
     "DUEdge.facts";
     "DUPath.facts";
     "LibCallExp.facts";
+    "ReadCallExp.facts";
     "LvalExp.facts";
     "Index.facts";
     "Mem.facts";
@@ -234,6 +237,10 @@ let mk_env sort_size =
   in
   let libcall =
     Z3.FuncDecl.mk_func_decl_s z3ctx "LibCallExp" [ expr; expr; arg_list ]
+      boolean_sort
+  in
+  let readcall =
+    Z3.FuncDecl.mk_func_decl_s z3ctx "ReadCallExp" [ expr; expr; arg_list ]
       boolean_sort
   in
   let arg =
@@ -351,6 +358,7 @@ let mk_env sort_size =
     addrof;
     call;
     libcall;
+    readcall;
     arg;
     constexp;
     ret;

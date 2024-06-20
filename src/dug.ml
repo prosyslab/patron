@@ -131,8 +131,9 @@ let mapping_func_lvmap lval_map v lvs g =
     let orig_lvmap = Hashtbl.find g.lvmap_per_func func_name in
     LvalMap.union
       (fun _ a_sym b_sym ->
-        if String.equal a_sym b_sym |> not then
+        if String.equal a_sym b_sym |> not then (
           L.warn "There are two symbols of same lv in one func";
+          L.warn "a_sym: %s, b_sym: %s" a_sym b_sym);
         Some a_sym)
       orig_lvmap lvm
     |> Hashtbl.replace g.lvmap_per_func func_name
