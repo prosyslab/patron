@@ -216,7 +216,7 @@ class updateCallExpVisitor target_func from_stmt to_stmt =
   end
 
 let apply_insert_stmt ?(update = false) func_name before after ss donee =
-  if update then L.info "Applying UpdateStmt..."
+  if update then L.info "Applying UpdateGoToStmt..."
   else L.info "Applying InsertStmt...";
   is_patched := false;
   List.iter ~f:(fun s -> L.info "before:\n%s" (Ast.s_stmt s)) before;
@@ -228,6 +228,23 @@ let apply_insert_stmt ?(update = false) func_name before after ss donee =
   Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply InsertStmt"
   else L.info "Successfully applied InsertStmt at %s" func_name
+
+let apply_update_stmt ?(update = false) func_name before s ss after donee =
+  L.info "Applying UpdateStmt...";
+  is_patched := false;
+  List.iter ~f:(fun s -> L.info "before:\n%s" (Ast.s_stmt s)) before;
+  let very_before = List.last before in
+  let very_after = if List.is_empty after then Some s else List.hd after in
+  if Option.is_none very_before && Option.is_none very_after then
+    L.warn "apply_update_stmt - cannot be patched";
+  let vis1 =
+    new insertStmtVisitor ~update func_name very_before very_after ss
+  in
+  Cil.visitCilFile vis1 donee;
+  let vis2 = new deleteStmtfromFuncVisitor func_name s in
+  Cil.visitCilFile vis2 donee;
+  if not !is_patched then Logger.warn "failed to apply UpdateStmt"
+  else L.info "Successfully applied UpdateStmt at %s" func_name
 
 let apply_delete_stmt func_name s donee =
   L.info "Applying DeleteStmt...";
@@ -257,7 +274,9 @@ let apply_action donee = function
   | D.InsertStmt (func_name, before, ss, after) ->
       apply_insert_stmt func_name before after ss donee
   | D.DeleteStmt (func_name, s) -> apply_delete_stmt func_name s donee
-  | D.UpdateStmt (func_name, before, ss, after) ->
+  | D.UpdateStmt (func_name, before, s, ss, after) ->
+      apply_update_stmt func_name before s ss after donee
+  | D.UpdateGoToStmt (func_name, before, ss, after) ->
       apply_insert_stmt ~update:true func_name before after ss donee
   | D.UpdateExp (func_name, s, e1, e2) ->
       apply_update_exp func_name s e1 e2 donee

@@ -79,8 +79,20 @@ let rec mk_json_obj saction =
       let action_json = ("action", `String "delete_stmt") in
       let change_json = ("change", `String s) in
       `Assoc [ action_json; change_json ]
-  | SUpdateStmt (before, ss, after) ->
+  | SUpdateStmt (before, s, ss, after) ->
       let action_json = ("action", `String "update_stmt") in
+      let bn_id_lst = StrSet.fold (fun id l -> `String id :: l) before [] in
+      let before_json = ("before", `List bn_id_lst) in
+      let an_id_lst = StrSet.fold (fun id l -> `String id :: l) after [] in
+      let after_json = ("after", `List an_id_lst) in
+      let change_from_json = ("from", `String s) in
+      let change_to_json = ("to", `List (List.map ~f:sstmt_to_json ss)) in
+      let change_json =
+        ("change", `Assoc [ change_from_json; change_to_json ])
+      in
+      `Assoc [ action_json; before_json; change_json; after_json ]
+  | SUpdateGoToStmt (before, ss, after) ->
+      let action_json = ("action", `String "update_goto_stmt") in
       let bn_id_lst = StrSet.fold (fun id l -> `String id :: l) before [] in
       let before_json = ("before", `List bn_id_lst) in
       let an_id_lst = StrSet.fold (fun id l -> `String id :: l) after [] in

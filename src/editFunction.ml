@@ -185,9 +185,22 @@ and translate_new_stmt maps sol_map = function
 let translate_new_stmts maps sol_map =
   List.map ~f:(fun abs_node -> translate_new_stmt maps sol_map abs_node.A.ast)
 
+(* TODO: add heuristic to find function translation *)
+let translate_func_name_alt sol_map abs_node_lst =
+  let patch_func =
+    abs_node_lst |> StrSet.choose |> Utils.get_func_name_from_node
+  in
+  Hashtbl.to_seq_keys sol_map
+  |> Seq.find (fun x -> String.is_prefix x ~prefix:patch_func)
+  |> Option.value_exn |> Utils.get_func_name_from_node
+
 let translate_func_name sol_map abs_node_lst =
-  abs_node_lst |> translate_ids sol_map |> StrSet.choose
-  |> Utils.get_func_name_from_node
+  let translated_nodes = abs_node_lst |> translate_ids sol_map in
+  let translated_node =
+    try StrSet.choose translated_nodes
+    with _ -> translate_func_name_alt sol_map abs_node_lst
+  in
+  Utils.get_func_name_from_node translated_node
 
 let translate_orig_stmts maps sol_map abs_nodes =
   let new_asts = abs_nodes |> translate_ids sol_map |> ids2asts maps in
@@ -215,7 +228,7 @@ let translate_delete_stmt maps sol_map s =
   in
   D.DeleteStmt (target_func_name, new_s)
 
-let translate_update_stmt maps sol_map before after ss =
+let translate_update_stmt maps sol_map before after s ss =
   let target_before = translate_orig_stmts maps sol_map before in
   let target_after = translate_orig_stmts maps sol_map after in
   let target_func_name =
@@ -223,7 +236,20 @@ let translate_update_stmt maps sol_map before after ss =
       (if List.is_empty target_before then after else before)
   in
   let new_ss = translate_new_stmts maps sol_map ss in
-  D.UpdateStmt (target_func_name, target_before, new_ss, target_after)
+  let new_s =
+    translate_orig_stmts maps sol_map (StrSet.singleton s) |> List.hd_exn
+  in
+  D.UpdateStmt (target_func_name, target_before, new_s, new_ss, target_after)
+
+let translate_update_goto_stmt maps sol_map before after ss =
+  let target_before = translate_orig_stmts maps sol_map before in
+  let target_after = translate_orig_stmts maps sol_map after in
+  let target_func_name =
+    translate_func_name sol_map
+      (if List.is_empty target_before then after else before)
+  in
+  let new_ss = translate_new_stmts maps sol_map ss in
+  D.UpdateGoToStmt (target_func_name, target_before, new_ss, target_after)
 
 let translate_update_exp maps sol_map s e1 e2 =
   let target_func_name = translate_func_name sol_map (StrSet.singleton s) in
@@ -255,8 +281,10 @@ let translate cand_donor maps out_dir target_alarm abs_diff =
       | A.SInsertStmt (before, ss, after) ->
           translate_insert_stmt maps sol_map before after ss
       | A.SDeleteStmt s -> translate_delete_stmt maps sol_map s
-      | A.SUpdateStmt (before, ss, after) ->
-          translate_update_stmt maps sol_map before after ss
+      | A.SUpdateStmt (before, s, ss, after) ->
+          translate_update_stmt maps sol_map before after s ss
+      | A.SUpdateGoToStmt (before, ss, after) ->
+          translate_update_goto_stmt maps sol_map before after ss
       | A.SUpdateExp (s, e1, e2) -> translate_update_exp maps sol_map s e1 e2
       | A.SUpdateCallExp (s, s2) -> translate_update_callexp maps sol_map s s2
       | _ -> failwith "translate - not implemented")

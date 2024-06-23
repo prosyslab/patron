@@ -19,7 +19,7 @@ let mk_file_diff orig_path patch_path cand_donor target_alarm out_dir =
   |> ignore
 
 let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
-    out_dir i =
+    out_dir i cmd =
   let src_ic = Filename.concat donor_dir "src" in
   Z3env.buggy_src := In_channel.read_all src_ic;
   let snk_ic = Filename.concat donor_dir "snk" in
@@ -50,8 +50,11 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
   Maps.dump target_alarm target_maps out_dir;
   if Option.is_some is_bug then
     let is_pat =
-      Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
-        patpat
+      match cmd with
+      | Options.DonorToDonee -> None
+      | _ ->
+          Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
+            patpat
     in
     if Option.is_none is_pat then (
       Modeling.match_ans buggy_maps target_maps target_alarm i cand_donor
@@ -81,7 +84,7 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
     Continue ())
 
 let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
-    inline_funcs out_dir cand_donor =
+    inline_funcs out_dir cmd cand_donor =
   L.info "Try matching with %s..." cand_donor;
   let donor_dir = if db then Filename.concat bt_dir cand_donor else out_dir in
   let buggy_maps = Maps.create_maps () in
@@ -94,11 +97,11 @@ let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
       Cil.resetCIL ();
       let donee_ast = Parser.parse_ast donee_dir inline_funcs in
       match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm
-        donee_ast out_dir i)
+        donee_ast out_dir i cmd)
     [ 0; 1 ] ~finish:ignore
 
 let match_one_alarm ?(db = false) z3env donee_dir inline_funcs out_dir db_dir
-    target_alarm =
+    target_alarm cmd =
   L.info "Target Alarm: %s" target_alarm;
   let bug_type = Utils.find_bug_type donee_dir target_alarm in
   if db then
@@ -107,15 +110,17 @@ let match_one_alarm ?(db = false) z3env donee_dir inline_funcs out_dir db_dir
     |> List.iter
          ~f:
            (match_one_by_one ~db z3env bt_dir donee_dir target_alarm
-              inline_funcs out_dir)
+              inline_funcs out_dir cmd)
   else
-    match_one_by_one ~db z3env "" donee_dir target_alarm inline_funcs out_dir ""
+    match_one_by_one ~db z3env "" donee_dir target_alarm inline_funcs out_dir
+      cmd ""
 
-let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir =
+let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir cmd =
   Sys_unix.ls_dir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> List.iter ~f:(fun ta ->
          if String.is_suffix ta ~suffix:".map" then ()
          else
            try
              match_one_alarm ~db z3env donee_dir inline_funcs out_dir db_dir ta
+               cmd
            with e -> L.warn "%s" (Exn.to_string e))

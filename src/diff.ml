@@ -40,7 +40,10 @@ type t =
   | DeleteStmt of string * Cil.stmt
   (* Only use update stmt when goto is deleted and new stmt is inserted *)
   (* func name * orig before stmts (until goto) * new stmts * orig after stmts *)
-  | UpdateStmt of string * Cil.stmt list * Cil.stmt list * Cil.stmt list
+  | UpdateGoToStmt of string * Cil.stmt list * Cil.stmt list * Cil.stmt list
+  (* func name * orig before stmts * old stmt * new stmts * orig after stmts *)
+  | UpdateStmt of
+      string * Cil.stmt list * Cil.stmt * Cil.stmt list * Cil.stmt list
   (* func name * target stmt (may be call exp) * orig before exps * new exps * orig after exps *)
   | InsertExp of string * Cil.stmt * Cil.exp list * Cil.exp list * Cil.exp list
   (* func name * target stmt * deleted exps *)
@@ -91,8 +94,19 @@ let pp_diff ~simple fmt action =
       F.fprintf fmt "Function: %s\n" func;
       F.fprintf fmt "Diff Summary:\n";
       F.fprintf fmt "Deleted:%s\n" (Ast.s_stmt s)
-  | UpdateStmt (func, before, ss, after) ->
+  | UpdateStmt (func, before, s, ss, after) ->
       F.fprintf fmt "\tUpdateStmt: \n";
+      F.fprintf fmt "Function: %s\n" func;
+      if simple then F.fprintf fmt "# of Before:%i\n" (List.length before)
+      else F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_stmt before);
+      F.fprintf fmt "From:%s\n" (Ast.s_stmt s);
+      if simple then F.fprintf fmt "# of After:%i\n" (List.length after)
+      else F.fprintf fmt "After:%s\n" (lst2strlines Ast.s_stmt after);
+      F.fprintf fmt "Diff Summary:\n";
+      F.fprintf fmt "UpdateFrom:%s\n" (Ast.s_stmt s);
+      F.fprintf fmt "UpdateTo:%s\n" (lst2strlines Ast.s_stmt ss)
+  | UpdateGoToStmt (func, before, ss, after) ->
+      F.fprintf fmt "\tUpdateGoToStmt: \n";
       F.fprintf fmt "Function: %s\n" func;
       if simple then F.fprintf fmt "# of Before:%i\n" (List.length before)
       else F.fprintf fmt "Before:%s\n" (lst2strlines Ast.s_stmt before);
@@ -364,7 +378,7 @@ and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
     if List.is_empty deleted_stmts then
       let env = mk_diff_env depth prnt_brnch prev_node in
       if Ast.is_cil_goto hd1.skind then
-        [ (UpdateStmt (func_name, before, [ hd2 ], tl1), env) ]
+        [ (UpdateGoToStmt (func_name, before, [ hd2 ], tl1), env) ]
       else
         [
           (DeleteStmt (func_name, hd1), env);
@@ -590,12 +604,28 @@ and fold_globals2 depth donor_gobals patch_globals left_sibs =
 
 let compare = compare
 
+let convert_to_update_stmt diff =
+  match diff with
+  | (InsertStmt (func, before, ss, after), env)
+    :: (DeleteStmt (func', s'), _)
+    :: _
+  | (DeleteStmt (func', s'), _)
+    :: (InsertStmt (func, before, ss, after), env)
+    :: _ ->
+      print_endline "check";
+      if List.hd_exn ss |> Ast.eq_loc_stmt s' then print_endline "true"
+      else print_endline "false";
+      if String.equal func func' && List.hd_exn ss |> Ast.eq_loc_stmt s' then
+        [ (UpdateStmt (func, before, s', ss, after), env) ]
+      else diff
+  | _ -> diff
+
 let define_diff out_dir buggy_file patch_file =
   let globs1, globs2 =
     ( H.remove_comments buggy_file.Cil.globals,
       H.remove_comments patch_file.Cil.globals )
   in
-  let diff = fold_globals2 0 globs1 globs2 [] in
+  let diff = fold_globals2 0 globs1 globs2 [] |> convert_to_update_stmt in
   let oc = Out_channel.create (Filename.concat out_dir "diff.txt") in
   let fmt = F.formatter_of_out_channel oc in
   pp_edit_script fmt diff;

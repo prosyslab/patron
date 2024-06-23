@@ -319,7 +319,8 @@ type t =
   (* func name is not necessary *)
   | SInsertStmt of StrSet.t * abs_node list * StrSet.t
   | SDeleteStmt of string
-  | SUpdateStmt of StrSet.t * abs_node list * StrSet.t
+  | SUpdateStmt of StrSet.t * string * abs_node list * StrSet.t
+  | SUpdateGoToStmt of StrSet.t * abs_node list * StrSet.t
   | SInsertExp of string * abs_node list * abs_node list * abs_node list
   | SDeleteExp of string * abs_node
   | SUpdateExp of string * abs_node * abs_node
@@ -426,7 +427,8 @@ let subst_single_abs_diff o_lv n_lv adiff =
   match adiff with
   | SInsertStmt (b, ss, a) -> SInsertStmt (b, List.map ~f:subst ss, a)
   | SDeleteStmt _ -> adiff
-  | SUpdateStmt (b, ss, a) -> SUpdateStmt (b, List.map ~f:subst ss, a)
+  | SUpdateGoToStmt (b, ss, a) -> SUpdateGoToStmt (b, List.map ~f:subst ss, a)
+  | SUpdateStmt (b, s, ss, a) -> SUpdateStmt (b, s, List.map ~f:subst ss, a)
   | SInsertExp (s, b, es, a) ->
       SInsertExp
         (s, List.map ~f:subst b, List.map ~f:subst es, List.map ~f:subst a)
@@ -441,14 +443,16 @@ let subst_abs_diff o_lv n_lv = List.map ~f:(subst_single_abs_diff o_lv n_lv)
 
 let change_def_single nodes = function
   | SInsertStmt (_, ss, a) -> SInsertStmt (nodes, ss, a)
-  | SUpdateStmt (_, ss, a) -> SUpdateStmt (nodes, ss, a)
+  | SUpdateStmt (_, s, ss, a) -> SUpdateStmt (nodes, s, ss, a)
+  | SUpdateGoToStmt (_, ss, a) -> SUpdateGoToStmt (nodes, ss, a)
   | _ as ad -> ad
 
 let change_def nodes = List.map ~f:(change_def_single nodes)
 
 let change_use_single nodes = function
   | SInsertStmt (b, ss, _) -> SInsertStmt (b, ss, nodes)
-  | SUpdateStmt (b, ss, _) -> SUpdateStmt (b, ss, nodes)
+  | SUpdateStmt (b, s, ss, _) -> SUpdateStmt (b, s, ss, nodes)
+  | SUpdateGoToStmt (b, ss, _) -> SUpdateGoToStmt (b, ss, nodes)
   (* NOTE: Only InsertStmt is handled correctly *)
   | _ as ad -> ad
 
@@ -456,6 +460,7 @@ let change_use nodes = List.map ~f:(change_use_single nodes)
 
 let change_exact_single node = function
   | SDeleteStmt _ -> SDeleteStmt node
+  | SUpdateStmt (b, _, ss, a) -> SUpdateStmt (b, node, ss, a)
   | SInsertExp (_, b, es, a) -> SInsertExp (node, b, es, a)
   | SDeleteExp (_, e) -> SDeleteExp (node, e)
   | SUpdateExp (_, e1, e2) -> SUpdateExp (node, e1, e2)
@@ -679,13 +684,23 @@ let mk_abs_action maps dug = function
         mk_abs_stmt func_name maps dug (s, StrSet.empty)
       in
       (SDeleteStmt (abs_stmt.ids |> StrSet.choose), patch_comps)
-  | D.UpdateStmt (func_name, before, ss, after) ->
+  | D.UpdateStmt (func_name, before, s, ss, after) ->
+      let abs_before = mk_dummy_abs_stmts maps before in
+      let abs_stmt_s, _ = mk_abs_stmt func_name maps dug (s, StrSet.empty) in
+      let abs_stmt_ss, patch_comps =
+        mk_abs_stmts func_name maps dug (ss, StrSet.empty)
+      in
+      let abs_after = mk_dummy_abs_stmts maps after in
+      ( SUpdateStmt
+          (abs_before, abs_stmt_s.ids |> StrSet.choose, abs_stmt_ss, abs_after),
+        patch_comps )
+  | D.UpdateGoToStmt (func_name, before, ss, after) ->
       let abs_before = mk_dummy_abs_stmts maps before in
       let abs_stmts, patch_comps =
         mk_abs_stmts func_name maps dug (ss, StrSet.empty)
       in
       let abs_after = mk_dummy_abs_stmts maps after in
-      (SUpdateStmt (abs_before, abs_stmts, abs_after), patch_comps)
+      (SUpdateGoToStmt (abs_before, abs_stmts, abs_after), patch_comps)
   | D.UpdateExp (func_name, s, e1, e2) ->
       (* NOTE: abs_stmt is exactly that one *)
       let abs_stmt = mk_dummy_abs_stmt maps s |> StrSet.choose in

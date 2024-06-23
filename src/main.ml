@@ -10,17 +10,17 @@ let db z3env inline_fns write_out donor_dir true_alarm db_dir out_dir =
       out_dir
   else L.error "No target directory specified"
 
-let patch z3env inline_fns db_dir donee_dir out_dir =
+let patch z3env inline_fns db_dir donee_dir out_dir cmd =
   if exist_all [ donee_dir; out_dir ] then
-    Patch.run ~db:true z3env inline_fns db_dir donee_dir out_dir
+    Patch.run ~db:true z3env inline_fns db_dir donee_dir out_dir cmd
   else L.error "No target directory specified"
 
-let dtd z3env inline_fns write_out donor_dir donee_dir true_alarm out_dir =
+let dtd z3env inline_fns write_out donor_dir donee_dir true_alarm out_dir cmd =
   let buggy_dir = Filename.concat donor_dir "bug" in
   let patch_dir = Filename.concat donor_dir "patch" in
   if exist_all [ buggy_dir; patch_dir; donor_dir ] then
     PatMat.run z3env inline_fns write_out true_alarm buggy_dir patch_dir
-      donee_dir out_dir
+      donee_dir out_dir cmd
   else L.error "No target directory specified"
 
 let main () =
@@ -39,9 +39,10 @@ let main () =
         options.true_alarm options.db_dir options.out_dir
   | Patch ->
       patch z3env options.inline options.db_dir options.donee_dir
-        options.out_dir
+        options.out_dir options.Options.command
   | DonorToDonee ->
       dtd z3env options.inline options.write_out options.donor_dir
         options.donee_dir options.true_alarm options.out_dir
+        options.Options.command
 
 let _ = main ()
