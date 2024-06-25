@@ -350,9 +350,9 @@ let rec eq_stmt skind1 skind2 =
   | _ -> false
 
 let eq_loc_stmt s1 s2 =
-    String.equal
-      (get_stmtLoc s1.skind |> s_location)
-      (get_stmtLoc s2.skind |> s_location)
+  String.equal
+    (get_stmtLoc s1.skind |> s_location)
+    (get_stmtLoc s2.skind |> s_location)
 
 let eq_global glob1 glob2 =
   match (glob1, glob2) with

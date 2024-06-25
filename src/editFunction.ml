@@ -190,8 +190,8 @@ let translate_func_name_alt sol_map abs_node_lst =
   let patch_func =
     abs_node_lst |> StrSet.choose |> Utils.get_func_name_from_node
   in
-  Hashtbl.to_seq_keys sol_map
-  |> Seq.find (fun x -> String.is_prefix x ~prefix:patch_func)
+  Hashtbl.fold (fun k _ acc -> k :: acc) sol_map []
+  |> List.find ~f:(fun x -> String.is_prefix x ~prefix:patch_func)
   |> Option.value_exn |> Utils.get_func_name_from_node
 
 let translate_func_name sol_map abs_node_lst =
