@@ -175,29 +175,29 @@ let abs_by_comps ?(new_ad = false) maps dug patch_comps snk alarm_exps alarm_lvs
   patch_comps2str maps patch_comps |> L.info "patch_comps: %s";
   terms2str alarm_exps |> L.info "alarm_exps: %s";
   terms2str alarm_lvs |> L.info "alarm_lvs: %s";
-  (* if Chc.subset patch_comps alarm_lvs && Options.is_dtd cmd then
-       ( collect_ast_rels dug snk patch_comps,
-         if new_ad then AbsDiff.change_use (StrSet.singleton snk) abs_diff
-         else abs_diff )
-     else *)
-  let collected_by_patch_comps, defs =
-    Chc.fold
-      (fun lv (rels, defs) ->
-        let r_opt = find_rels_by_lv dug maps.Maps.cmd_map snk lv facts in
-        if Option.is_none r_opt then (rels, defs)
-        else
-          let path_rels, new_defs = Option.value_exn r_opt in
-          (Chc.union path_rels rels, NodeSet.union defs new_defs))
-      patch_comps (Chc.empty, NodeSet.empty)
-  in
-  let filetered_patch_comps = filter_duedge collected_by_patch_comps facts in
-  let collected_by_alarm_comps = collect_ast_rels dug snk alarm_exps in
-  let abs_diff' =
-    AbsDiff.change_def defs abs_diff
-    |> AbsDiff.change_use (StrSet.singleton snk)
-  in
-  ( Chc.union filetered_patch_comps collected_by_alarm_comps,
-    if new_ad then abs_diff' else abs_diff )
+  if Chc.subset patch_comps alarm_lvs && Options.is_dtd cmd then
+    ( collect_ast_rels dug snk patch_comps,
+      if new_ad then AbsDiff.change_use (StrSet.singleton snk) abs_diff
+      else abs_diff )
+  else
+    let collected_by_patch_comps, defs =
+      Chc.fold
+        (fun lv (rels, defs) ->
+          let r_opt = find_rels_by_lv dug maps.Maps.cmd_map snk lv facts in
+          if Option.is_none r_opt then (rels, defs)
+          else
+            let path_rels, new_defs = Option.value_exn r_opt in
+            (Chc.union path_rels rels, NodeSet.union defs new_defs))
+        patch_comps (Chc.empty, NodeSet.empty)
+    in
+    let filetered_patch_comps = filter_duedge collected_by_patch_comps facts in
+    let collected_by_alarm_comps = collect_ast_rels dug snk alarm_exps in
+    let abs_diff' =
+      AbsDiff.change_def defs abs_diff
+      |> AbsDiff.change_use (StrSet.singleton snk)
+    in
+    ( Chc.union filetered_patch_comps collected_by_alarm_comps,
+      if new_ad then abs_diff' else abs_diff )
 
 let num_of_rels rels =
   F.asprintf "#Rels: %d, #DUEdges: %d" (Chc.cardinal rels)
