@@ -30,7 +30,8 @@ let preproc_using_pattern z3env maps src snk facts out_dir i
   Marshal.to_channel diff_oc diff [];
   Out_channel.close diff_oc
 
-let run z3env inline_funcs write_out true_alarm buggy_dir patch_dir out_dir =
+let run z3env inline_funcs write_out true_alarm buggy_dir patch_dir out_dir cmd
+    =
   let buggy_ast = Parser.parse_ast buggy_dir inline_funcs in
   let patch_ast = Parser.parse_ast patch_dir inline_funcs in
   L.info "Constructing AST diff...";
@@ -52,6 +53,7 @@ let run z3env inline_funcs write_out true_alarm buggy_dir patch_dir out_dir =
     DiffJson.dump abs_diff out_dir);
   let patterns =
     AbsPat.run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff
+      cmd
   in
   L.info "Making Bug Pattern is done";
   List.iteri

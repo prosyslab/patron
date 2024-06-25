@@ -2,12 +2,12 @@ module L = Logger
 
 let exist_all = List.for_all Sys.file_exists
 
-let db z3env inline_fns write_out donor_dir true_alarm db_dir out_dir =
+let db z3env inline_fns write_out donor_dir true_alarm db_dir out_dir cmd =
   let buggy_dir = Filename.concat donor_dir "bug" in
   let patch_dir = Filename.concat donor_dir "patch" in
   if exist_all [ buggy_dir; patch_dir; db_dir; out_dir ] then
     BugPatDB.run z3env inline_fns write_out true_alarm buggy_dir patch_dir
-      out_dir
+      out_dir cmd
   else L.error "No target directory specified"
 
 let patch z3env inline_fns db_dir donee_dir out_dir cmd =
@@ -37,6 +37,7 @@ let main () =
   | DB ->
       db z3env options.inline options.write_out options.donor_dir
         options.true_alarm options.db_dir options.out_dir
+        options.Options.command
   | Patch ->
       patch z3env options.inline options.db_dir options.donee_dir
         options.out_dir options.Options.command

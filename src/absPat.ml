@@ -132,12 +132,35 @@ let find_alt_lvs snk_func facts patch_lvs abs_diff =
       alt_map (Chc.empty, abs_diff)
   else (Chc.empty, abs_diff)
 
+let filter_duedge rels =
+  let duedges = Chc.filter Chc.Elt.is_duedge rels in
+  let ast_rels = Chc.filter (fun c -> not (Chc.Elt.is_duedge c)) rels in
+  let nodes =
+    Chc.fold
+      (fun c acc ->
+        match c with
+        | Chc.Elt.FuncApply ("Set", [ n; _; _ ])
+        | Chc.Elt.FuncApply ("Assume", [ n; _ ])
+        | Chc.Elt.FuncApply ("Return", [ n; _ ]) ->
+            Chc.add n acc
+        | _ -> acc)
+      ast_rels Chc.empty
+  in
+  Chc.filter
+    (fun c ->
+      match c with
+      | Chc.Elt.FuncApply ("DUEdge", [ n1; n2 ]) ->
+          Chc.mem n1 nodes || Chc.mem n2 nodes
+      | _ -> false)
+    duedges
+  |> Chc.union ast_rels
+
 let abs_by_comps ?(new_ad = false) maps dug patch_comps snk alarm_exps alarm_lvs
-    facts abs_diff =
+    facts abs_diff cmd =
   patch_comps2str maps patch_comps |> L.info "patch_comps: %s";
   terms2str alarm_exps |> L.info "alarm_exps: %s";
   terms2str alarm_lvs |> L.info "alarm_lvs: %s";
-  if Chc.subset patch_comps alarm_lvs then
+  if Chc.subset patch_comps alarm_lvs && Options.is_dtd cmd then
     ( collect_ast_rels dug snk patch_comps,
       if new_ad then AbsDiff.change_use (StrSet.singleton snk) abs_diff
       else abs_diff )
@@ -152,12 +175,13 @@ let abs_by_comps ?(new_ad = false) maps dug patch_comps snk alarm_exps alarm_lvs
             (Chc.union path_rels rels, NodeSet.union defs new_defs))
         patch_comps (Chc.empty, NodeSet.empty)
     in
+    let filetered_patch_comps = filter_duedge collected_by_patch_comps in
     let collected_by_alarm_comps = collect_ast_rels dug snk alarm_exps in
     let abs_diff' =
       AbsDiff.change_def defs abs_diff
       |> AbsDiff.change_use (StrSet.singleton snk)
     in
-    ( Chc.union collected_by_patch_comps collected_by_alarm_comps,
+    ( Chc.union filetered_patch_comps collected_by_alarm_comps,
       if new_ad then abs_diff' else abs_diff )
 
 let num_of_rels rels =
@@ -176,7 +200,7 @@ let gen_patpat abs_diff snk facts =
     |> Chc.add (Chc.Elt.binop e1 op e2 e3)
   else Chc.singleton (Chc.Elt.cfpath n n)
 
-let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff =
+let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
@@ -185,6 +209,7 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff =
   Z3env.buggy_snk := snk;
   let abs_facts, abs_diff' =
     abs_by_comps maps dug patch_comps snk alarm_exps alarm_lvs facts abs_diff
+      cmd
   in
   L.info "Original Pattern - %s" (num_of_rels abs_facts);
   let pattern_in_numeral =
@@ -201,7 +226,7 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff =
     else
       let alt_facts, alt_diff' =
         abs_by_comps ~new_ad:true maps dug alt_pc snk alarm_exps alarm_lvs facts
-          alt_diff
+          alt_diff cmd
       in
       L.info "Alternative Pattern - %s" (num_of_rels alt_facts);
       let alt_pattern_in_numeral =

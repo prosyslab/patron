@@ -10,6 +10,7 @@ module L = Logger
 
 type command = DB | Patch | DonorToDonee
 
+let is_dtd = function DonorToDonee -> true | _ -> false
 let verbose = ref 0
 
 type t = {

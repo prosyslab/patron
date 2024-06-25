@@ -70,5 +70,5 @@ let sort_rule_optimize ref deps =
 let run z3env inline_funcs write_out true_alarm buggy_dir patch_dir donee_dir
     out_dir cmd =
   BugPatDB.run z3env inline_funcs write_out true_alarm buggy_dir patch_dir
-    out_dir;
+    out_dir cmd;
   Patch.run z3env inline_funcs "" donee_dir out_dir cmd
