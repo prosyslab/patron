@@ -620,12 +620,20 @@ let convert_to_update_stmt diff =
       else diff
   | _ -> diff
 
+let rm_global_diff diffs =
+  List.filter
+    ~f:(fun (x, _) ->
+      match x with InsertGlobal _ | DeleteGlobal _ -> false | _ -> true)
+    diffs
+
 let define_diff out_dir buggy_file patch_file =
   let globs1, globs2 =
     ( H.remove_comments buggy_file.Cil.globals,
       H.remove_comments patch_file.Cil.globals )
   in
-  let diff = fold_globals2 0 globs1 globs2 [] |> convert_to_update_stmt in
+  let diff =
+    fold_globals2 0 globs1 globs2 [] |> rm_global_diff |> convert_to_update_stmt
+  in
   let oc = Out_channel.create (Filename.concat out_dir "diff.txt") in
   let fmt = F.formatter_of_out_channel oc in
   pp_edit_script fmt diff;
