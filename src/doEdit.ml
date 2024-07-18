@@ -20,7 +20,7 @@ let partition mid stmts =
 
 type insert_mode = Before | After
 
-let insert_internal ?(using = Before) ?(update = false) assist_opt patch stmts =
+let insert_internal ?(using = After) ?(update = false) assist_opt patch stmts =
   if Option.is_none assist_opt then
     let stmts = List.rev stmts in
     match using with Before -> patch @ stmts | After -> stmts @ patch
