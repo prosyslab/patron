@@ -120,7 +120,7 @@ let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir cmd =
   |> List.iter ~f:(fun ta ->
          if String.is_suffix ta ~suffix:".map" then ()
          else
-           try
-             match_one_alarm ~db z3env donee_dir inline_funcs out_dir db_dir ta
-               cmd
-           with e -> L.warn "%s" (Exn.to_string e))
+           (* try *)
+           match_one_alarm ~db z3env donee_dir inline_funcs out_dir db_dir ta
+             cmd)
+(* with e -> L.warn "%s" (Exn.to_string e)) *)

@@ -133,6 +133,16 @@ let delete_elt_stmt s stmts =
   in
   (List.rev new_stmts, patched)
 
+let update_elt_stmt s ss stmts =
+  let new_stmts, patched =
+    List.fold_left
+      ~f:(fun (new_stmts, patched) stmt ->
+        if (not patched) && phys_equal stmt s then (ss @ new_stmts, true)
+        else (stmt :: new_stmts, patched))
+      ~init:([], false) stmts
+  in
+  (List.rev new_stmts, patched)
+
 class deleteStmtfromBlockVisitor s =
   object
     inherit Cil.nopCilVisitor
@@ -152,6 +162,29 @@ class deleteStmtfromFuncVisitor target_func ss =
     method! vfunc (f : Cil.fundec) =
       if String.equal f.svar.vname target_func then
         let vis = new deleteStmtfromBlockVisitor ss in
+        ChangeTo (Cil.visitCilFunction vis f)
+      else SkipChildren
+  end
+
+class updateStmtfromBlockVisitor s ss =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vblock (b : Cil.block) =
+      let new_bstmts, patched = update_elt_stmt s ss b.bstmts in
+      if patched then (
+        is_patched := true;
+        ChangeTo { b with bstmts = new_bstmts })
+      else DoChildren
+  end
+
+class updateStmtfromFuncVisitor target_func s ss =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vfunc (f : Cil.fundec) =
+      if String.equal f.svar.vname target_func then
+        let vis = new updateStmtfromBlockVisitor s ss in
         ChangeTo (Cil.visitCilFunction vis f)
       else SkipChildren
   end
@@ -229,20 +262,11 @@ let apply_insert_stmt ?(update = false) func_name before after ss donee =
   if not !is_patched then Logger.warn "failed to apply InsertStmt"
   else L.info "Successfully applied InsertStmt at %s" func_name
 
-let apply_update_stmt ?(update = false) func_name before s ss after donee =
+let apply_update_stmt func_name s ss donee =
   L.info "Applying UpdateStmt...";
   is_patched := false;
-  List.iter ~f:(fun s -> L.info "before:\n%s" (Ast.s_stmt s)) before;
-  let very_before = List.last before in
-  let very_after = if List.is_empty after then Some s else List.hd after in
-  if Option.is_none very_before && Option.is_none very_after then
-    L.warn "apply_update_stmt - cannot be patched";
-  let vis1 =
-    new insertStmtVisitor ~update func_name very_before very_after ss
-  in
-  Cil.visitCilFile vis1 donee;
-  let vis2 = new deleteStmtfromFuncVisitor func_name s in
-  Cil.visitCilFile vis2 donee;
+  let vis = new updateStmtfromFuncVisitor func_name s ss in
+  Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply UpdateStmt"
   else L.info "Successfully applied UpdateStmt at %s" func_name
 
@@ -274,8 +298,8 @@ let apply_action donee = function
   | D.InsertStmt (func_name, before, ss, after) ->
       apply_insert_stmt func_name before after ss donee
   | D.DeleteStmt (func_name, s) -> apply_delete_stmt func_name s donee
-  | D.UpdateStmt (func_name, before, s, ss, after) ->
-      apply_update_stmt func_name before s ss after donee
+  | D.UpdateStmt (func_name, _, s, ss, _) ->
+      apply_update_stmt func_name s ss donee
   | D.UpdateGoToStmt (func_name, before, ss, after) ->
       apply_insert_stmt ~update:true func_name before after ss donee
   | D.UpdateExp (func_name, s, e1, e2) ->

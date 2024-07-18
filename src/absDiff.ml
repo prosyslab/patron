@@ -313,6 +313,7 @@ and subst_abs_node o_lv n_lv anode =
   }
 
 let to_null = Null
+let pp_strset fmt set = StrSet.iter (fun x -> Format.fprintf fmt "%s " x) set
 
 type t =
   (* same format with Diff.t excluding func name *)
@@ -328,6 +329,40 @@ type t =
   | SInsertLval of string * abs_node
   | SDeleteLval of string * abs_node
   | SUpdateLval of string * abs_node * abs_node
+
+let pp_abs_action fmt aaction =
+  match aaction with
+  | SInsertStmt (before, ss, after) ->
+      Format.fprintf fmt
+        "SInsertStmt(\n\tbefore:%a\n\t, \n\tInserted:%a, \n\tafter:%a)"
+        pp_strset before pp_node_lst ss pp_strset after
+  | SDeleteStmt s -> Format.fprintf fmt "SDeleteStmt(%s)" s
+  | SUpdateStmt (before, s, ss, after) ->
+      Format.fprintf fmt
+        "SUpdateStmt(\n\
+         \tbefore:%a\n\
+         \t, \n\
+         \tUpdated:%s, \n\
+         \twith:%a, \n\
+         \tafter:%a)"
+        pp_strset before s pp_node_lst ss pp_strset after
+  | SUpdateGoToStmt (before, ss, after) ->
+      Format.fprintf fmt
+        "SUpdateGoToStmt(\n\tbefore:%a\n\t, \n\tUpdated:%a, \n\tafter:%a)"
+        pp_strset before pp_node_lst ss pp_strset after
+  | SInsertExp (s, b, es, a) ->
+      Format.fprintf fmt
+        "SInsertExp(\n\t%s\n\t, \n\tbefore:%a, \n\tInserted:%a, \n\tafter:%a)" s
+        pp_node_lst b pp_node_lst es pp_node_lst a
+  | SDeleteExp (s, e) -> Format.fprintf fmt "SDeleteExp(%s, %a)" s pp_node e
+  | SUpdateExp (s, e1, e2) ->
+      Format.fprintf fmt "SUpdateExp(%s, %a, %a)" s pp_node e1 pp_node e2
+  | SUpdateCallExp (s, s2) ->
+      Format.fprintf fmt "SUpdateCallExp(%s, %a)" s pp_node s2
+  | SInsertLval (s, l) -> Format.fprintf fmt "SInsertLval(%s, %a)" s pp_node l
+  | SDeleteLval (s, l) -> Format.fprintf fmt "SDeleteLval(%s, %a)" s pp_node l
+  | SUpdateLval (s, l1, l2) ->
+      Format.fprintf fmt "SUpdateLval(%s, %a, %a)" s pp_node l1 pp_node l2
 
 let is_insert_stmt = function SInsertStmt _ -> true | _ -> false
 

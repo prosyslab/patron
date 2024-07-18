@@ -379,6 +379,11 @@ and get_followup_diff_stmt func_name prnt_brnch depth hd1 hd2 tl1 tl2 before =
       let env = mk_diff_env depth prnt_brnch prev_node in
       if Ast.is_cil_goto hd1.skind then
         [ (UpdateGoToStmt (func_name, before, [ hd2 ], tl1), env) ]
+      else if List.length tl1 = 0 && List.length tl2 <> 0 then
+        [
+          (DeleteStmt (func_name, hd1), env);
+          (InsertStmt (func_name, before, hd2 :: tl2 |> List.rev, tl1), env);
+        ]
       else
         [
           (DeleteStmt (func_name, hd1), env);
@@ -612,9 +617,6 @@ let convert_to_update_stmt diff =
   | (DeleteStmt (func', s'), _)
     :: (InsertStmt (func, before, ss, after), env)
     :: _ ->
-      print_endline "check";
-      if List.hd_exn ss |> Ast.eq_loc_stmt s' then print_endline "true"
-      else print_endline "false";
       if String.equal func func' && List.hd_exn ss |> Ast.eq_loc_stmt s' then
         [ (UpdateStmt (func, before, s', ss, after), env) ]
       else diff

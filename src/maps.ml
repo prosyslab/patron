@@ -14,18 +14,45 @@ type cmd =
   | Skip
   | Etc
 
+let parse_param_str param =
+  String.sub param ~pos:1 ~len:(String.length param - 2)
+  |> String.filter ~f:(fun c -> not (Char.equal c ' '))
+  |> String.split ~on:','
+
+let is_str_arg arg =
+  String.prefix arg 2 |> String.equal "\\\""
+  && String.suffix arg 2 |> String.equal "\\\""
+
+let equal_param a b =
+  let a' = parse_param_str a in
+  let b' = parse_param_str b in
+  if List.length a' <> List.length b' then false
+  else
+    List.fold2_exn a' b' ~init:true ~f:(fun acc a b ->
+        is_str_arg a || is_str_arg b || (acc && String.equal a b))
+
 let equal_cmd a b =
   match (a, b) with
   | Set (l1, e1), Set (l2, e2) -> String.equal l1 l2 && String.equal e1 e2
   | Call (Some l1, f1, e1), Call (Some l2, f2, e2) ->
-      String.equal l1 l2 && String.equal f1 f2 && String.equal e1 e2
+      String.equal l1 l2 && String.equal f1 f2 && equal_param e1 e2
   | Call (None, f1, e1), Call (None, f2, e2) ->
-      String.equal f1 f2 && String.equal e1 e2
+      String.equal f1 f2 && equal_param e1 e2
   | Return (Some e1), Return (Some e2) -> String.equal e1 e2
   | Return None, Return None | Assume _, Assume _ | Skip, Skip | Etc, _ | _, Etc
     ->
       true
   | _ -> false
+
+let pp_cmd fmt = function
+  | Set (l, e) -> F.fprintf fmt "set %s %s" l e
+  | Call (Some l, f, e) -> F.fprintf fmt "call %s %s %s" l f e
+  | Call (None, f, e) -> F.fprintf fmt "call %s %s" f e
+  | Return (Some e) -> F.fprintf fmt "return %s" e
+  | Return None -> F.fprintf fmt "return"
+  | Assume b -> F.fprintf fmt "assume %b" b
+  | Skip -> F.fprintf fmt "skip"
+  | Etc -> F.fprintf fmt "etc"
 
 type t = {
   sym_map : (string, Z3.Expr.expr) Hashtbl.t; (* symbol -> z3 expr *)
@@ -121,6 +148,16 @@ let dump_ast_glob x =
   match x with
   | Cil.GFun (f, l) -> "gfun:" ^ f.Cil.svar.vname ^ Ast.s_location l
   | _ -> L.error "dump_ast_glob"
+
+let dump_ast_rev_map map =
+  Hashtbl.iter
+    (fun a b -> F.fprintf F.std_formatter "%s\n%s\n\n" (Ast.repr a) b)
+    map
+
+let dump_cmd_map map =
+  Hashtbl.iter
+    (fun a b -> F.fprintf F.std_formatter "%s\n%a\n\n" a pp_cmd b)
+    map
 
 let dump mode maps out_dir =
   dump_sym_map mode maps.sym_map out_dir;
