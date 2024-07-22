@@ -103,6 +103,8 @@ and abs_stmt =
 and abs_global = SGNull | SGFun | GVar of string * string
 and abs_node = { ast : abs_ast; ids : StrSet.t; literal : string }
 
+let get_ids node = node.ids
+
 let get_original_exp node =
   match node.ast with
   | AbsExp (_, e) -> e

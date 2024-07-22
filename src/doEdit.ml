@@ -4,6 +4,124 @@ module EF = EditFunction
 module H = Utils
 module L = Logger
 
+let target_func = ref []
+let patron_tmp_var_cnt = ref 0
+let vdec_map = Hashtbl.create (module String)
+
+class funcFinder func =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vglob glob =
+      match glob with
+      | Cil.GFun (fd, _) ->
+          if String.equal fd.svar.vname func then (
+            target_func := fd :: !target_func;
+            SkipChildren)
+          else Cil.SkipChildren
+      | _ -> Cil.SkipChildren
+  end
+
+let extract_fundec func_name ast =
+  target_func := [];
+  let vis = new funcFinder func_name in
+  Cil.visitCilFile vis ast;
+  List.hd_exn !target_func
+
+let insert_var_dec v =
+  let func_dec = List.hd_exn !target_func in
+  Cil.makeLocalVar func_dec v.Cil.vname v.Cil.vtype |> ignore
+
+let mk_patron_tmp_var v =
+  if Hashtbl.mem vdec_map v.Cil.vname then
+    let new_vname = Hashtbl.find_exn vdec_map v.Cil.vname in
+    Cil.makeVarinfo false new_vname v.Cil.vtype
+  else
+    let new_vname = "__patron_tmp" ^ string_of_int !patron_tmp_var_cnt in
+    patron_tmp_var_cnt := !patron_tmp_var_cnt + 1;
+    Hashtbl.add_exn vdec_map ~key:v.Cil.vname ~data:new_vname;
+    Cil.makeLocalVar (List.hd_exn !target_func) new_vname v.Cil.vtype
+
+let transform_lval lv fundec =
+  match lv with
+  | Cil.Var v, off -> (
+      let v' =
+        if Str.string_match (Str.regexp ".*__cil_tmp.*") v.Cil.vname 0 then
+          Some (mk_patron_tmp_var v)
+        else
+          List.find
+            ~f:(fun v' -> String.equal v.vname v'.Cil.vname)
+            fundec.Cil.slocals
+      in
+      match v' with
+      | Some v' -> (Cil.Var v', off)
+      | None ->
+          if not (Hashtbl.mem vdec_map v.Cil.vname) then (
+            insert_var_dec v;
+            Hashtbl.add_exn vdec_map ~key:v.Cil.vname ~data:v.Cil.vname);
+          lv)
+  | _ -> lv
+
+let rec transform_exp e fundec =
+  match e with
+  | Cil.Lval lv -> Cil.Lval (transform_lval lv fundec)
+  | Cil.CastE (t, e) -> Cil.CastE (t, transform_exp e fundec)
+  | Cil.BinOp (b, e1, e2, t) ->
+      Cil.BinOp (b, transform_exp e1 fundec, transform_exp e2 fundec, t)
+  | Cil.UnOp (u, e, t) -> Cil.UnOp (u, transform_exp e fundec, t)
+  | _ -> e
+
+let transform_instr i fundec =
+  match i with
+  | Cil.Set (lv, e, loc) ->
+      let lv' = transform_lval lv fundec in
+      let e' = transform_exp e fundec in
+      Cil.Set (lv', e', loc)
+  | Cil.Call (lv, e, el, loc) ->
+      let lv' = Option.map ~f:(fun lv -> transform_lval lv fundec) lv in
+      let e' = transform_exp e fundec in
+      let el' = List.map ~f:(fun e -> transform_exp e fundec) el in
+      Cil.Call (lv', e', el', loc)
+  | _ -> i
+
+let transform_return e loc fundec =
+  match fundec.Cil.svar.vtype with
+  | Cil.TVoid _ -> Cil.Return (None, loc)
+  | Cil.TInt _ ->
+      if Option.is_none e then
+        Cil.Return
+          ( Some (Cil.Const (Cil.CInt64 (Int64.of_int (-1), Cil.IInt, None))),
+            loc )
+      else Cil.Return (e, loc)
+  | _ -> Cil.Return (e, loc)
+
+let rec transform_stmt s fundec =
+  match s.Cil.skind with
+  | Cil.Instr instrs ->
+      let instrs' = List.map ~f:(fun i -> transform_instr i fundec) instrs in
+      { s with skind = Cil.Instr instrs' }
+  | Cil.Return (e, loc) -> { s with skind = transform_return e loc fundec }
+  | Cil.If (e, tb, fb, loc) ->
+      let e' = transform_exp e fundec in
+      let tb'_stmts =
+        List.fold_left
+          ~f:(fun acc s -> transform_stmt s fundec :: acc)
+          ~init:[] tb.bstmts
+      in
+      let tb' = { tb with bstmts = List.rev tb'_stmts } in
+      let fb'_stmts =
+        List.fold_left
+          ~f:(fun acc s -> transform_stmt s fundec :: acc)
+          ~init:[] fb.bstmts
+      in
+      let fb' = { fb with bstmts = List.rev fb'_stmts } in
+      { s with skind = Cil.If (e', tb', fb', loc) }
+  | _ -> s
+
+let fit_stmt_to_donee s func_name donee =
+  let fun_dec = extract_fundec func_name donee in
+  transform_stmt s fun_dec
+
 let is_patched = ref false
 
 let partition mid stmts =
@@ -257,7 +375,15 @@ let apply_insert_stmt ?(update = false) func_name before after ss donee =
   let very_after = List.hd after in
   if Option.is_none very_before && Option.is_none very_after then
     L.warn "apply_insert_stmt - cannot be patched";
-  let vis = new insertStmtVisitor ~update func_name very_before very_after ss in
+  let ss' =
+    List.fold_left
+      ~f:(fun acc s -> fit_stmt_to_donee s func_name donee :: acc)
+      ~init:[] ss
+    |> List.rev
+  in
+  let vis =
+    new insertStmtVisitor ~update func_name very_before very_after ss'
+  in
   Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply InsertStmt"
   else L.info "Successfully applied InsertStmt at %s" func_name
@@ -265,7 +391,13 @@ let apply_insert_stmt ?(update = false) func_name before after ss donee =
 let apply_update_stmt func_name s ss donee =
   L.info "Applying UpdateStmt...";
   is_patched := false;
-  let vis = new updateStmtfromFuncVisitor func_name s ss in
+  let ss' =
+    List.fold_left
+      ~f:(fun acc s -> fit_stmt_to_donee s func_name donee :: acc)
+      ~init:[] ss
+    |> List.rev
+  in
+  let vis = new updateStmtfromFuncVisitor func_name s ss' in
   Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply UpdateStmt"
   else L.info "Successfully applied UpdateStmt at %s" func_name

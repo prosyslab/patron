@@ -85,6 +85,8 @@ let s_location (loc : Cil.location) =
   get_loc_filename loc ^ ":" ^ string_of_int loc.line
 
 let tostring s = Escape.escape_string (Pretty.sprint ~width:0 s)
+let s_attrs attrs = tostring (d_attrlist () attrs)
+let s_attr attr = tostring (d_attr () attr)
 
 let s_glob g =
   match g with
@@ -137,6 +139,11 @@ and s_offset = function
 
 and s_uop u = tostring (d_unop () u)
 and s_bop b = tostring (d_binop () b)
+
+and s_varinfo vi =
+  let name = vi.vname in
+  let typ = s_type vi.vtype in
+  name ^ ":" ^ typ
 
 and s_instr i =
   match i with
