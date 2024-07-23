@@ -79,9 +79,8 @@ let transform_instr i fundec =
       Cil.Set (lv', e', loc)
   | Cil.Call (lv, e, el, loc) ->
       let lv' = Option.map ~f:(fun lv -> transform_lval lv fundec) lv in
-      let e' = transform_exp e fundec in
       let el' = List.map ~f:(fun e -> transform_exp e fundec) el in
-      Cil.Call (lv', e', el', loc)
+      Cil.Call (lv', e, el', loc)
   | _ -> i
 
 let transform_return e loc fundec =
