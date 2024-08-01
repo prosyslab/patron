@@ -140,7 +140,7 @@ let fact_files =
     "Arg.facts";
     "BinOpExp.facts";
     "CallExp.facts";
-    "DUEdge.facts";
+    "DUEdgeNoSkip.facts";
     "DUPath.facts";
     "LibCallExp.facts";
     "ReadCallExp.facts";

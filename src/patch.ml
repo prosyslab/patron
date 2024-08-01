@@ -43,6 +43,7 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
   let facts, (src, snk, _, _), target_maps =
     Parser.make_facts donee_dir target_alarm ast out_dir
   in
+  L.info "First, trying to match %s with bug pattern" target_alarm;
   let is_bug =
     Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
       pattern
@@ -50,6 +51,8 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
   Maps.dump target_alarm target_maps out_dir;
   if Option.is_some is_bug then
     let is_pat =
+      L.info "%s is Matched with bug pattern" target_alarm;
+      L.info "Now, trying to match %s with patch pattern" target_alarm;
       match cmd with
       | Options.DonorToDonee -> None
       | _ ->
@@ -57,6 +60,7 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
             patpat
     in
     if Option.is_none is_pat then (
+      L.info "%s is not Matched with patch pattern (Good)" target_alarm;
       Modeling.match_ans buggy_maps target_maps target_alarm i cand_donor
         donor_dir out_dir;
       L.info "Matching with %s is done" target_alarm;
@@ -77,10 +81,10 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
       mk_file_diff out_file_orig out_file_patch cand_donor target_alarm out_dir;
       Stop ())
     else (
-      L.info "%s is Matched with patch pattern" target_alarm;
+      L.info "%s is Matched with patch pattern (Bad)" target_alarm;
       Continue ())
   else (
-    L.info "%s is Not Matched" target_alarm;
+    L.info "%s is Not Matched with bug pattern" target_alarm;
     Continue ())
 
 let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm

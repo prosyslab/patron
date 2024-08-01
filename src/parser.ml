@@ -88,7 +88,7 @@ let file2func = function
   | "ReadCallExp.facts" -> "ReadCallExp"
   | "CFPath.facts" -> "CFPath"
   | "DetailedDUEdge.facts" -> "DetailedDUEdge"
-  | "DUEdge.facts" -> "DUEdge"
+  | "DUEdgeNoSkip.facts" -> "DUEdge"
   | "DUPath.facts" -> "DUPath"
   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
   | "Index.facts" -> "Index"
