@@ -136,11 +136,12 @@ let reg_rel_to_solver env solver =
 
 let fact_files =
   [
+    "Skip.facts";
     "AllocExp.facts";
     "Arg.facts";
     "BinOpExp.facts";
     "CallExp.facts";
-    "DUEdgeNoSkip.facts";
+    "DUEdge.facts";
     "DUPath.facts";
     "LibCallExp.facts";
     "ReadCallExp.facts";
@@ -152,7 +153,6 @@ let fact_files =
     "Return.facts";
     "Set.facts";
     "Copy.facts";
-    "Skip.facts";
     "UnOpExp.facts";
     "Assume.facts";
     "EvalLv.facts";

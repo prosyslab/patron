@@ -11,7 +11,7 @@ type cmd =
   | Call of string option * string * string
   | Return of string option
   | Assume of bool
-  | Skip
+  | Skip of string
   | Etc
 
 let parse_param_str param =
@@ -39,9 +39,8 @@ let equal_cmd a b =
   | Call (None, f1, e1), Call (None, f2, e2) ->
       String.equal f1 f2 && equal_param e1 e2
   | Return (Some e1), Return (Some e2) -> String.equal e1 e2
-  | Return None, Return None | Assume _, Assume _ | Skip, Skip | Etc, _ | _, Etc
-    ->
-      true
+  | Skip s1, Skip s2 -> String.equal s1 s2
+  | Return None, Return None | Assume _, Assume _ | Etc, _ | _, Etc -> true
   | _ -> false
 
 let pp_cmd fmt = function
@@ -51,7 +50,7 @@ let pp_cmd fmt = function
   | Return (Some e) -> F.fprintf fmt "return %s" e
   | Return None -> F.fprintf fmt "return"
   | Assume b -> F.fprintf fmt "assume %b" b
-  | Skip -> F.fprintf fmt "skip"
+  | Skip _ -> F.fprintf fmt "skip"
   | Etc -> F.fprintf fmt "etc"
 
 type t = {

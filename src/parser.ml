@@ -77,6 +77,75 @@ let mk_term s =
       let splitted = String.split ~on:'-' s in
       if List.length splitted = 1 then Chc.Elt.Var s else Chc.Elt.FDNumeral s
 
+let find_non_skip start duedges skip_set =
+  let rec aux stack visited acc =
+    match stack with
+    | [] -> acc
+    | node :: rest ->
+        if
+          Chc.mem (Chc.Elt.FuncApply ("Skip", [ node ])) skip_set
+          && not (Chc.mem node visited)
+        then
+          let new_nodes =
+            Chc.fold
+              (fun edge node_set ->
+                match edge with
+                | Chc.Elt.FuncApply ("DUEdge", [ src; dest ]) ->
+                    if String.equal (Chc.Elt.to_sym dest) (Chc.Elt.to_sym node)
+                    then src :: node_set
+                    else node_set
+                | _ -> node_set)
+              duedges []
+          in
+          aux (new_nodes @ rest) (Chc.add node visited) (new_nodes @ acc)
+        else aux rest (Chc.add node visited) (node :: acc)
+  in
+  aux [ start ] Chc.empty []
+
+let process_edge src dst duedges skip_set cmd_map =
+  let elt = Chc.Elt.FuncApply ("DUEdge", [ src; dst ]) in
+  if Chc.mem (Chc.Elt.FuncApply ("Skip", [ src ])) skip_set then
+    let cmd = Chc.Elt.to_sym src |> Hashtbl.find cmd_map in
+    match cmd with
+    | Maps.Skip s ->
+        if String.equal s "" then
+          let new_srcs = find_non_skip src duedges skip_set in
+          List.fold_left ~init:Chc.empty
+            ~f:(fun acc new_src ->
+              Chc.add (Chc.Elt.FuncApply ("DUEdge", [ new_src; dst ])) acc)
+            new_srcs
+          |> Chc.add elt
+        else Chc.add elt Chc.empty
+    | _ -> Chc.add elt Chc.empty
+  else Chc.add elt Chc.empty
+
+let filter_skip_nodes (cmd_map : (string, Maps.cmd) Hashtbl.t) chc =
+  let rest, duedges =
+    Chc.partition
+      (fun elt ->
+        match elt with Chc.Elt.FuncApply ("DUEdge", _) -> false | _ -> true)
+      chc
+  in
+  let skip_set =
+    Chc.partition
+      (fun elt ->
+        match elt with
+        | Chc.Elt.FuncApply ("Skip", t) -> (
+            let cmd = List.hd_exn t |> Chc.Elt.to_sym |> Hashtbl.find cmd_map in
+            match cmd with Maps.Skip s -> String.equal s "" | _ -> false)
+        | _ -> false)
+      rest
+    |> fst
+  in
+  Chc.fold
+    (fun elt acc ->
+      match elt with
+      | Chc.Elt.FuncApply ("DUEdge", [ src; dst ]) ->
+          process_edge src dst duedges skip_set cmd_map |> Chc.union acc
+      | _ -> acc)
+    duedges Chc.empty
+  |> Chc.union chc
+
 let file2func = function
   | "AllocExp.facts" -> "AllocExp"
   | "Arg.facts" -> "Arg"
@@ -88,7 +157,7 @@ let file2func = function
   | "ReadCallExp.facts" -> "ReadCallExp"
   | "CFPath.facts" -> "CFPath"
   | "DetailedDUEdge.facts" -> "DetailedDUEdge"
-  | "DUEdgeNoSkip.facts" -> "DUEdge"
+  | "DUEdge.facts" -> "DUEdge"
   | "DUPath.facts" -> "DUPath"
   | "GlobalVar.facts" | "LocalVar.facts" -> "Var"
   | "Index.facts" -> "Index"
@@ -122,17 +191,19 @@ type facts4sparrow = {
   index_facts : Chc.elt list list;
 }
 
+let parse_file func_name lines =
+  List.fold_left ~init:[]
+    ~f:(fun lst line ->
+      let arg_lst = String.split ~on:'\t' line in
+      let args = List.map ~f:mk_term arg_lst in
+      let elt = Chc.Elt.FuncApply (func_name, args) in
+      elt :: lst)
+    lines
+
 let parse_du_facts datalog_dir fact_file =
   let func_name = file2func fact_file in
   let fact_file_path = Filename.concat datalog_dir fact_file in
-  let elt_lst =
-    In_channel.read_lines fact_file_path
-    |> List.fold_left ~init:[] ~f:(fun lst line ->
-           let arg_lst = String.split ~on:'\t' line in
-           let args = List.map ~f:mk_term arg_lst in
-           let elt = Chc.Elt.FuncApply (func_name, args) in
-           elt :: lst)
-  in
+  let elt_lst = In_channel.read_lines fact_file_path |> parse_file func_name in
   List.rev elt_lst |> Chc.of_list
 
 let make_du_facts work_dir =
@@ -194,7 +265,7 @@ let verify_ast_mapping maps ast =
   match pre_id with
   | Some id -> (
       match Hashtbl.find_opt maps.Maps.cmd_map id with
-      | Some Maps.Etc | Some Maps.Skip -> false
+      | Some Maps.Etc | Some (Maps.Skip _) -> false
       | None -> false
       | _ -> true)
   | None -> false
@@ -344,7 +415,7 @@ let get_alarm work_dir =
   in
   (src, snk, alarm_exps, alarm_lvs)
 
-let make_facts target_dir target_alarm ast out_dir =
+let make_facts target_dir target_alarm ast out_dir cmd =
   let maps = Maps.create_maps () in
   Maps.reset_maps maps;
   let spo_dir = Filename.concat target_dir "sparrow-out" in
@@ -356,7 +427,11 @@ let make_facts target_dir target_alarm ast out_dir =
     ~rev_map:(Some maps.Maps.lval_rev_map);
   Utils.parse_node_json spo_dir maps.Maps.loc_map maps.Maps.cmd_map;
   Cil.visitCilFile (new mkAstMap maps) ast;
-  let du_facts = make_du_facts alarm_dir in
+  let du_facts =
+    match cmd with
+    | Options.DonorToDonee -> make_du_facts alarm_dir
+    | _ -> make_du_facts alarm_dir |> filter_skip_nodes maps.Maps.cmd_map
+  in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) du_facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) du_facts;
   (du_facts, get_alarm alarm_dir, maps)

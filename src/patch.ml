@@ -41,7 +41,7 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
   let diff = Marshal.from_channel cdp_ic in
   In_channel.close cdp_ic;
   let facts, (src, snk, _, _), target_maps =
-    Parser.make_facts donee_dir target_alarm ast out_dir
+    Parser.make_facts donee_dir target_alarm ast out_dir cmd
   in
   L.info "First, trying to match %s with bug pattern" target_alarm;
   let is_bug =

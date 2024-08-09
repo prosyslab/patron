@@ -445,6 +445,9 @@ end
 
 include Set.Make (Elt)
 
+let list2chc lst =
+  List.fold_left ~init:empty ~f:(fun chc term -> add term chc) lst
+
 let to_list s = fold (fun c l -> c :: l) s []
 let pp fmt = iter (fun chc -> F.fprintf fmt "%a\n" Elt.pp chc)
 

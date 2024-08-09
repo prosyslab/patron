@@ -141,7 +141,7 @@ let parse_cmd = function
   | [ `String "call"; `Null; `String f; `String exp ] -> Maps.Call (None, f, exp)
   | [ `String "return"; `String e ] -> Maps.Return (Some e)
   | [ `String "return"; `Null ] -> Maps.Return None
-  | `String "skip" :: _ -> Maps.Skip
+  | [ `String "skip"; `String s ] -> Maps.Skip s
   | `String "assume" :: `Bool b :: _ -> Maps.Assume b
   | _ -> Maps.Etc
 

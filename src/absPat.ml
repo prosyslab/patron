@@ -203,17 +203,17 @@ let num_of_rels rels =
   F.asprintf "#Rels: %d, #DUEdges: %d" (Chc.cardinal rels)
     (Chc.filter Chc.Elt.is_duedge rels |> Chc.cardinal)
 
+(* TODO: generalize patch pattern *)
 let gen_patpat abs_diff snk facts =
   let n = "Node-00" in
-  if List.exists ~f:AbsDiff.is_insert_stmt abs_diff then
-    let e1 = "Exp-00" in
-    let e2 = "Exp-000" in
-    let e3 = "Exp-0000" in
-    let op = "BinOp-00" in
-    Chc.add (Chc.Elt.duedge n snk) facts
-    |> Chc.add (Chc.Elt.assume n e1)
-    |> Chc.add (Chc.Elt.binop e1 op e2 e3)
-  else Chc.singleton (Chc.Elt.cfpath n n)
+  (* if List.exists ~f:AbsDiff.is_insert_stmt abs_diff then *)
+  let e1 = "Exp-00" in
+  (* let e2 = "Exp-000" in *)
+  (* let e3 = "Exp-0000" in *)
+  (* let op = "BinOp-00" in *)
+  Chc.add (Chc.Elt.duedge n snk) facts |> Chc.add (Chc.Elt.assume n e1)
+(* |> Chc.add (Chc.Elt.binop e1 op e2 e3) *)
+(* else Chc.singleton (Chc.Elt.cfpath n n) *)
 
 let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
   let errtrace =

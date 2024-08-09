@@ -160,7 +160,7 @@ let process_vertex lval_map v r g =
 
 let is_skip_node cmd_map n =
   match Hashtbl.find cmd_map n with
-  | Maps.Skip | Maps.Assume _ -> true
+  | Maps.Skip _ | Maps.Assume _ -> true
   | _ -> false
 
 let of_facts lval_map cmd_map rels =

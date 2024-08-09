@@ -37,7 +37,7 @@ let run z3env inline_funcs write_out true_alarm buggy_dir patch_dir out_dir cmd
   L.info "Constructing AST diff...";
   let ast_diff = Diff.define_diff out_dir buggy_ast patch_ast in
   let facts, (src, snk, alarm_exps, alarm_lvs), maps =
-    Parser.make_facts buggy_dir true_alarm buggy_ast out_dir
+    Parser.make_facts buggy_dir true_alarm buggy_ast out_dir cmd
   in
   L.info "Making Facts in buggy done";
   L.info "Making DUG...";
