@@ -188,6 +188,8 @@ module Elt = struct
   let binop e o e1 e2 =
     FuncApply ("BinOpExp", [ numer e; numer o; numer e1; numer e2 ])
 
+  let unop e o e1 = FuncApply ("UnOpExp", [ numer e; numer o; numer e1 ])
+  let lvexp e l = FuncApply ("LvalExp", [ numer e; numer l ])
   let cfpath src dst = FuncApply ("CFPath", [ numer src; numer dst ])
   let is_rel = function FuncApply _ -> true | _ -> false
   let is_rule = function Implies _ -> true | _ -> false

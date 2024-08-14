@@ -7,6 +7,48 @@ module L = Logger
 module F = Format
 module NodeSet = Set.Make (String)
 
+let arbitrary_node_cnt = ref 1
+let arbitrary_exp_cnt = ref 1
+
+let mk_arbitrary_node () =
+  let node = "Node-" ^ String.make !arbitrary_node_cnt '0' in
+  incr arbitrary_node_cnt;
+  node
+
+let mk_arbitrary_exp () =
+  let exp = "Exp-" ^ String.make (!arbitrary_exp_cnt + 1) '0' in
+  incr arbitrary_exp_cnt;
+  exp
+
+let is_arbitrary_exp e =
+  String.is_prefix ~prefix:"Exp-" e
+  && String.is_suffix ~suffix:(String.make (String.length e - 4) '0') e
+
+let get_previous_arbitrary_exp () =
+  let exp = "Exp-" ^ String.make !arbitrary_exp_cnt '0' in
+  exp
+
+let comps_of_facts facts =
+  Chc.fold
+    (fun rel acc ->
+      match rel with
+      | Chc.Elt.FuncApply ("Assume", [ _; e ]) -> Chc.add e acc
+      | FuncApply ("BinOpExp", [ _; e1; e2 ]) -> Chc.add e1 acc |> Chc.add e2
+      | FuncApply ("Set", [ _; lv; e ]) -> Chc.add e acc |> Chc.add lv
+      | FuncApply ("LvalExp", [ e; lv ]) -> Chc.add e acc |> Chc.add lv
+      | FuncApply ("EvalLv", [ _; lv; _ ]) -> Chc.add lv acc
+      | FuncApply ("CallExp", [ e; _; _ ]) -> Chc.add e acc
+      | FuncApply ("LibCallExp", [ e; _; _ ]) -> Chc.add e acc
+      | FuncApply ("ReadCallExp", [ e; _; _ ]) -> Chc.add e acc
+      | FuncApply ("AllocExp", [ e; _ ]) -> Chc.add e acc
+      | FuncApply ("SAllocExp", [ e; _ ]) -> Chc.add e acc
+      | FuncApply ("Var", [ e ]) -> Chc.add e acc
+      | FuncApply ("Index", [ _; _; e ]) -> Chc.add e acc
+      | FuncApply ("Mem", [ _; e ]) -> Chc.add e acc
+      | FuncApply ("AddrOf", [ e; _ ]) -> Chc.add e acc
+      | _ -> acc)
+    facts Chc.empty
+
 let collect_ast_rels dug node leaf =
   let node_info = Dug.info_of_v dug node in
   Chc.fixedpoint Chc.from_ast_to_node node_info.Dug.rels leaf Chc.empty |> fst
@@ -203,17 +245,128 @@ let num_of_rels rels =
   F.asprintf "#Rels: %d, #DUEdges: %d" (Chc.cardinal rels)
     (Chc.filter Chc.Elt.is_duedge rels |> Chc.cardinal)
 
-(* TODO: generalize patch pattern *)
+let is_patch_comp abs_node comp =
+  AbsDiff.StrSet.exists (fun s -> String.equal comp s) abs_node
+
+let get_eq_exp abs_node patch_exps =
+  Chc.fold
+    (fun exp acc ->
+      let exp_str = Chc.Elt.to_sym exp in
+      if is_patch_comp abs_node.AbsDiff.ids exp_str then exp_str :: acc else acc)
+    patch_exps []
+  |> List.hd
+
+let absbinop2chcop = function
+  | AbsDiff.SPlusA -> "PlusA"
+  | SPlusPI -> "PlusPI"
+  | SIndexPI -> "IndexPI"
+  | SMinusA -> "MinusA"
+  | SMinusPI -> "MinusPI"
+  | SMinusPP -> "MinusPP"
+  | SMod -> "Mod"
+  | SShiftlt -> "bvshl"
+  | SShiftrt -> "bvshr"
+  | SAnd -> "bvand"
+  | SXor -> "bvxor"
+  | SOr -> "bvor"
+  | SMult -> "Mult"
+  | SDiv -> "Div"
+  | SEq -> "Eq"
+  | SNe -> "Ne"
+  | SLt -> "Lt"
+  | SLe -> "Le"
+  | SGt -> "Gt"
+  | SGe -> "Ge"
+  | SLAnd -> "and"
+  | SLOr -> "or"
+
+let absunop2chcop = function AbsDiff.SNot -> "BNot" | SNeg -> "Neg"
+
+let lv2exp facts lv =
+  Chc.fold
+    (fun c acc ->
+      match c with
+      | Chc.Elt.FuncApply ("LvalExp", [ e; lv' ])
+        when Chc.Elt.to_sym lv' |> String.equal lv ->
+          e :: acc
+      | _ -> acc)
+    facts []
+  |> List.hd_exn |> Chc.Elt.to_sym
+
+let abs_lv2chc facts patch_exps abs_ast =
+  match abs_ast with
+  | AbsDiff.AbsExp (exp, _) -> (
+      match exp with
+      | AbsDiff.SELval lv_node ->
+          let parent_exp = mk_arbitrary_exp () in
+          let lval_opt = get_eq_exp lv_node patch_exps in
+          if Option.is_none lval_opt then parent_exp
+          else lv2exp facts (Option.value_exn lval_opt)
+      | _ -> mk_arbitrary_exp ())
+  | _ -> L.error "non-Exp node in abs_lv2chc"
+
+let rec abs_exp2chc facts patch_exps abs_node acc =
+  match abs_node.AbsDiff.ast with
+  | AbsDiff.AbsExp (abs_exp, _) ->
+      let exp_opt = get_eq_exp abs_node patch_exps in
+      let exp =
+        if Option.is_none exp_opt then mk_arbitrary_exp ()
+        else Option.value_exn exp_opt
+      in
+      (exp, fold_patch facts patch_exps abs_exp exp acc)
+  | _ -> L.error "non-Exp node in abs_exp2chc"
+
+and fold_patch facts patch_exps abs_exp parent acc =
+  match abs_exp with
+  | AbsDiff.SBinOp (op, e1, e2, _) ->
+      let e1', acc1 =
+        if AbsDiff.is_selv e1.ast then (abs_lv2chc facts patch_exps e1.ast, acc)
+        else abs_exp2chc facts patch_exps e1 acc
+      in
+      let e2', acc2 =
+        if AbsDiff.is_selv e2.ast then (abs_lv2chc facts patch_exps e2.ast, acc1)
+        else abs_exp2chc facts patch_exps e2 acc1
+      in
+      let chc_op = absbinop2chcop op in
+      Chc.add (Chc.Elt.binop parent chc_op e1' e2') acc2
+  | SUnOp (op, e, _) ->
+      let e', acc' =
+        if AbsDiff.is_selv e.ast then (abs_lv2chc facts patch_exps e.ast, acc)
+        else abs_exp2chc facts patch_exps e acc
+      in
+      if is_arbitrary_exp e' then acc
+      else
+        let chc_op = absunop2chcop op in
+        Chc.add (Chc.Elt.unop parent chc_op e') acc'
+  | SELval lv_node ->
+      let _, acc' = abs_exp2chc facts patch_exps lv_node acc in
+      acc'
+  | SConst _ | SSizeOf _ | SSizeOfE _ | SSizeOfStr _ | SQuestion _ | SCastE _
+  | SAddrOf _ | SAddrOfLabel _ | SStartOf _ | SENULL ->
+      acc
+
+let patch2chc facts abs_diff patch_exps n snk =
+  let guard_cond_opt = AbsDiff.get_guard_cond_opt abs_diff in
+  if Option.is_none guard_cond_opt then
+    Chc.singleton (Chc.Elt.duedge n snk)
+    |> Chc.add (mk_arbitrary_exp () |> Chc.Elt.assume n)
+  else
+    let guard_cond = Option.value_exn guard_cond_opt in
+    let cond_exp, patch_chc =
+      abs_exp2chc facts patch_exps guard_cond Chc.empty
+    in
+    Chc.singleton (Chc.Elt.assume n cond_exp)
+    |> Chc.add (Chc.Elt.duedge n snk)
+    |> Chc.union patch_chc
+
 let gen_patpat abs_diff snk facts =
-  let n = "Node-00" in
-  (* if List.exists ~f:AbsDiff.is_insert_stmt abs_diff then *)
-  let e1 = "Exp-00" in
-  (* let e2 = "Exp-000" in *)
-  (* let e3 = "Exp-0000" in *)
-  (* let op = "BinOp-00" in *)
-  Chc.add (Chc.Elt.duedge n snk) facts |> Chc.add (Chc.Elt.assume n e1)
-(* |> Chc.add (Chc.Elt.binop e1 op e2 e3) *)
-(* else Chc.singleton (Chc.Elt.cfpath n n) *)
+  let n = mk_arbitrary_node () in
+  if List.exists ~f:AbsDiff.is_guard_patch abs_diff then
+    let patch_exps = comps_of_facts facts in
+    patch2chc facts abs_diff patch_exps n snk |> Chc.union facts
+  else
+    let e = mk_arbitrary_exp () in
+    Chc.add (Chc.Elt.duedge n snk) facts |> Chc.add (Chc.Elt.assume n e)
 
 let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
   let errtrace =

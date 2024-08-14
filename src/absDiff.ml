@@ -120,12 +120,16 @@ let get_original_stmt node =
   | AbsStmt (_, s) -> s
   | _ -> L.error "get_original_stmt - not a statement"
 
+let pp_ids fmt ids = StrSet.iter (fun id -> Format.fprintf fmt "%s, " id) ids
+
 let rec pp_node fmt e =
   match e.ast with
   | Null -> Format.fprintf fmt "SNull"
-  | AbsStmt (s, _) -> Format.fprintf fmt "AbsStmt(%a)" pp_absstmt s
-  | AbsExp (e, _) -> Format.fprintf fmt "AbsExp(%a)" pp_absExp e
-  | AbsLval (l, _) -> Format.fprintf fmt "AbsLval(%a)" pp_absLval l
+  | AbsStmt (s, _) -> Format.fprintf fmt "AbsStmt(%a)\n" pp_absstmt s
+  | AbsExp (e', _) ->
+      Format.fprintf fmt "AbsExp: ids(%a)\n(%a)\n" pp_ids e.ids pp_absExp e'
+  | AbsLval (l, _) ->
+      Format.fprintf fmt "AbsLval: ids(%a)\n(%a)\n" pp_ids e.ids pp_absLval l
   | _ -> L.error "not implemented"
 
 and pp_node_lst fmt lst =
@@ -175,23 +179,23 @@ and pp_soptexp fmt e =
 and pp_absExp fmt e =
   match e with
   | SENULL -> Format.fprintf fmt "SENULL"
-  | SConst c -> Format.fprintf fmt "SConst(%a)" pp_sconst c
-  | SELval l -> Format.fprintf fmt "SELval(%a)" pp_node l
-  | SSizeOf t -> Format.fprintf fmt "SSizeOf(%a)" pp_styp t
-  | SSizeOfE e -> Format.fprintf fmt "SSizeOfE(%a)" pp_node e
-  | SSizeOfStr s -> Format.fprintf fmt "SSizeOfStr(%s)" s
+  | SConst c -> Format.fprintf fmt "SConst(%a)\n" pp_sconst c
+  | SELval l -> Format.fprintf fmt "SELval(%a)\n" pp_node l
+  | SSizeOf t -> Format.fprintf fmt "SSizeOf(%a)\n" pp_styp t
+  | SSizeOfE e -> Format.fprintf fmt "SSizeOfE(%a)\n" pp_node e
+  | SSizeOfStr s -> Format.fprintf fmt "SSizeOfStr(%s)\n" s
   | SBinOp (op, e1, e2, t) ->
-      Format.fprintf fmt "SBinOp(%a, %a, %a, %a)" pp_sbinop op pp_node e1
+      Format.fprintf fmt "SBinOp(%a, %a, %a, %a)\n" pp_sbinop op pp_node e1
         pp_node e2 pp_styp t
   | SUnOp (op, e, t) ->
-      Format.fprintf fmt "SUnOp(%a, %a, %a)" pp_sunop op pp_node e pp_styp t
+      Format.fprintf fmt "SUnOp(%a, %a, %a)\n" pp_sunop op pp_node e pp_styp t
   | SQuestion (e1, e2, e3, t) ->
-      Format.fprintf fmt "SQuestion(%a, %a, %a, %a)" pp_node e1 pp_node e2
+      Format.fprintf fmt "SQuestion(%a, %a, %a, %a)\n" pp_node e1 pp_node e2
         pp_styp t pp_node e3
-  | SCastE (t, e) -> Format.fprintf fmt "SCastE(%a, %a)" pp_styp t pp_node e
-  | SAddrOf e -> Format.fprintf fmt "SAddrOf(%a)" pp_node e
-  | SStartOf e -> Format.fprintf fmt "SStartOf(%a)" pp_node e
-  | SAddrOfLabel e -> Format.fprintf fmt "SAddrOfLabel(%a)" pp_node e
+  | SCastE (t, e) -> Format.fprintf fmt "SCastE(%a, %a)\n" pp_styp t pp_node e
+  | SAddrOf e -> Format.fprintf fmt "SAddrOf(%a)\n" pp_node e
+  | SStartOf e -> Format.fprintf fmt "SStartOf(%a)\n" pp_node e
+  | SAddrOfLabel e -> Format.fprintf fmt "SAddrOfLabel(%a)\n" pp_node e
 
 and pp_sconst fmt c =
   match c with
@@ -368,6 +372,10 @@ let pp_abs_action fmt aaction =
 
 let is_insert_stmt = function SInsertStmt _ -> true | _ -> false
 
+let is_guard_patch = function
+  | SInsertStmt _ | SUpdateStmt _ | SUpdateGoToStmt _ -> true
+  | _ -> false
+
 let rec to_styp t =
   match t with
   | Cil.TVoid _ -> SVoid
@@ -526,7 +534,27 @@ let get_gvars ast =
   let gv = new globVisitor in
   Cil.visitCilFile gv ast
 
+let get_guard_cond_opt abs_diff =
+  let get_guard_patch_single = function
+    | SInsertStmt (_, ss, _)
+    | SUpdateStmt (_, _, ss, _)
+    | SUpdateGoToStmt (_, ss, _) ->
+        List.fold_left
+          ~f:(fun acc stmt ->
+            match stmt.ast with
+            | AbsStmt (SIf (cond, _, _), _) -> cond :: acc
+            | _ -> acc)
+          ~init:[] ss
+        |> List.hd_exn
+    | _ -> L.error "get_guard_patch_single - not a guard patch"
+  in
+  List.map ~f:get_guard_patch_single abs_diff |> List.hd
+
 let is_lv_or_exp t = Ast.is_exp t || Ast.is_lv t
+
+let rec is_selv = function
+  | AbsExp (exp, _) -> ( match exp with SELval _ -> true | _ -> false)
+  | _ -> false
 
 let match_stmt_id maps s =
   Hashtbl.find_all maps.Maps.ast_rev_map (Ast.of_stmt (Some s))
