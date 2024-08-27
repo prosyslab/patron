@@ -535,24 +535,30 @@ let get_gvars ast =
   Cil.visitCilFile gv ast
 
 let get_guard_cond_opt abs_diff =
-  let get_guard_patch_single = function
+  let get_guard_patch_single adiff acc =
+    match adiff with
     | SInsertStmt (_, ss, _)
     | SUpdateStmt (_, _, ss, _)
     | SUpdateGoToStmt (_, ss, _) ->
-        List.fold_left
-          ~f:(fun acc stmt ->
-            match stmt.ast with
-            | AbsStmt (SIf (cond, _, _), _) -> cond :: acc
-            | _ -> acc)
-          ~init:[] ss
-        |> List.hd_exn
-    | _ -> L.error "get_guard_patch_single - not a guard patch"
+        let cond_lst =
+          List.fold_left
+            ~f:(fun acc stmt ->
+              match stmt.ast with
+              | AbsStmt (SIf (cond, _, _), _) -> cond :: acc
+              | _ -> acc)
+            ~init:[] ss
+        in
+        acc @ cond_lst
+    | _ -> acc
   in
-  List.map ~f:get_guard_patch_single abs_diff |> List.hd
+  List.fold_left
+    ~f:(fun acc adiff -> get_guard_patch_single adiff acc)
+    ~init:[] abs_diff
+  |> fun lst -> if List.is_empty lst then None else Some (lst |> List.hd_exn)
 
 let is_lv_or_exp t = Ast.is_exp t || Ast.is_lv t
 
-let rec is_selv = function
+let is_selv = function
   | AbsExp (exp, _) -> ( match exp with SELval _ -> true | _ -> false)
   | _ -> false
 

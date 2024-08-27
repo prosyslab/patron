@@ -286,12 +286,15 @@ let lv2exp facts lv =
   Chc.fold
     (fun c acc ->
       match c with
-      | Chc.Elt.FuncApply ("LvalExp", [ e; lv' ])
-        when Chc.Elt.to_sym lv' |> String.equal lv ->
-          e :: acc
+      | Chc.Elt.FuncApply ("LvalExp", [ e; lv' ]) ->
+          Chc.Elt.to_sym lv' |> print_endline;
+          if Chc.Elt.to_sym lv' |> String.equal lv then e :: acc else acc
       | _ -> acc)
     facts []
-  |> List.hd_exn |> Chc.Elt.to_sym
+  |> List.hd
+  |> fun e ->
+  if Option.is_none e then mk_arbitrary_exp ()
+  else Option.value_exn e |> Chc.Elt.to_sym
 
 let abs_lv2chc facts patch_exps abs_ast =
   match abs_ast with
@@ -307,6 +310,9 @@ let abs_lv2chc facts patch_exps abs_ast =
 
 let rec abs_exp2chc facts patch_exps abs_node acc =
   match abs_node.AbsDiff.ast with
+  | AbsDiff.AbsExp _ when AbsDiff.is_selv abs_node.AbsDiff.ast ->
+      let exp = abs_lv2chc facts patch_exps abs_node.AbsDiff.ast in
+      (exp, acc)
   | AbsDiff.AbsExp (abs_exp, _) ->
       let exp_opt = get_eq_exp abs_node patch_exps in
       let exp =

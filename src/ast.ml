@@ -1,6 +1,7 @@
 open Core
 open Cil
 module L = Logger
+module Hashtbl = Stdlib.Hashtbl
 
 type t =
   | Global of global
@@ -23,6 +24,10 @@ let is_stmt = function Stmt _ -> true | _ -> false
 let is_exp = function Exp _ -> true | _ -> false
 let is_lv = function Lval _ -> true | _ -> false
 let is_blk = function Cil.Block _ | Cil.Loop _ | Cil.If _ -> true | _ -> false
+let is_instr = function Cil.Instr _ -> true | _ -> false
+
+let get_instrs stmt =
+  match stmt.Cil.skind with Cil.Instr instrs -> instrs | _ -> []
 
 (* for the reference *)
 type edge = t * t
@@ -65,6 +70,7 @@ let get_loc_filename (loc : Cil.location) =
   String.split ~on:'/' loc.file |> List.last_exn
 
 let get_loc_line (loc : Cil.location) = loc.line
+let get_stmt_line stmt = get_loc_line (get_stmtLoc stmt.skind)
 
 let get_global_loc glob =
   match glob with
@@ -356,10 +362,24 @@ let rec eq_stmt skind1 skind2 =
       true
   | _ -> false
 
+let eq_blk (b1 : Cil.block) (b2 : Cil.block) =
+  let stmts1 = b1.bstmts in
+  let stmts2 = b2.bstmts in
+  let rec aux stmts1 stmts2 =
+    match (stmts1, stmts2) with
+    | [], [] -> true
+    | [], _ | _, [] -> false
+    | hd1 :: tl1, hd2 :: tl2 ->
+        if eq_stmt hd1.skind hd2.skind then aux tl1 tl2 else false
+  in
+  aux stmts1 stmts2
+
 let eq_loc_stmt s1 s2 =
   String.equal
     (get_stmtLoc s1.skind |> s_location)
     (get_stmtLoc s2.skind |> s_location)
+
+let eq_location l1 l2 = String.equal (s_location l1) (s_location l2)
 
 let eq_global glob1 glob2 =
   match (glob1, glob2) with
@@ -406,3 +426,9 @@ let glob2func_name glob =
   | _ -> L.error "Not a function"
 
 let eq_exp_ref e1 e2 = String.equal e1 e2 || String.equal e1 ("&" ^ e2)
+
+let extract_snk_stmt ast_map snk =
+  Hashtbl.find_opt ast_map snk |> fun snk ->
+  match snk with
+  | Some s -> ( match s with Stmt s -> Some s | _ -> None)
+  | None -> None

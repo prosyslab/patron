@@ -72,7 +72,10 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
         F.asprintf "%s/orig_%s_%s_%d.c" out_dir cand_donor target_alarm i
       in
       DoEdit.write_out out_file_orig ast;
-      let patch_file = DoEdit.run ast target_diff in
+      let patch_file =
+        Ast.extract_snk_stmt target_maps.ast_map snk
+        |> DoEdit.run ast target_diff
+      in
       let out_file_patch =
         F.asprintf "%s/patch_%s_%s_%d.c" out_dir cand_donor target_alarm i
       in
