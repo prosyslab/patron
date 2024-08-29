@@ -81,10 +81,12 @@ let def_from_normal_node dug cmd_map lv_term loc used_node node rels_acc =
       (not (Dug.is_skip_node cmd_map succ))
       && Hashtbl.find dug.label (node, succ) |> Chc.mem lv_term
     then
-      let path = Dug.shortest_path dug succ used_node in
-      Dug.path2rels path
-      |> Chc.add (Chc.Elt.duedge node succ)
-      |> Chc.union path_rels
+      let path = Dug.shortest_path_opt dug succ used_node in
+      if Option.is_none path then path_rels
+      else
+        Option.value_exn path |> Dug.path2rels
+        |> Chc.add (Chc.Elt.duedge node succ)
+        |> Chc.union path_rels
     else path_rels
   in
   Dug.fold_succ find_path_rels dug node rels_acc |> Chc.union ast_rels

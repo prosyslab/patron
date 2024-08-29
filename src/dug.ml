@@ -98,6 +98,9 @@ let delete_first_edge src edges =
 
 let shortest_path g src dst = Dijkstra.shortest_path g.graph src dst |> fst
 
+let shortest_path_opt g src dst =
+  try Some (shortest_path g src dst) with _ -> None
+
 let path2lst edge_lst =
   List.fold_left
     ~f:(fun l edge ->
