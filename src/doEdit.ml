@@ -89,55 +89,205 @@ let rec transform_exp e fundec =
   | Cil.UnOp (u, e, t) -> Cil.UnOp (u, transform_exp e fundec, t)
   | _ -> e
 
+let count_format_specifiers str =
+  let rec aux str acc =
+    match String.index str '%' with
+    | None -> acc
+    | Some i -> (
+        let str' = String.drop_prefix str (i + 1) in
+        match String.get str' 0 with
+        | 'd' | 'i' | 'o' | 'u' | 'x' | 'X' | 'f' | 'F' | 'e' | 'E' | 'g' | 'G'
+        | 'a' | 'A' | 'c' | 's' | 'p' | 'n' | 'l' ->
+            aux str' (acc + 1)
+        | '%' -> aux str' acc
+        | _ -> acc)
+  in
+  aux str 0
+
+let rec find_string func loc args_before args_after =
+  match args_after with
+  | [] -> None
+  | Cil.Const (Cil.CStr fmt_str) :: rest_after ->
+      let fmt_count = count_format_specifiers fmt_str in
+      if List.length rest_after = fmt_count then
+        Some (Cil.Call (None, func, args_before @ args_after, loc))
+      else if List.length args_before >= fmt_count then
+        let start_index = List.length args_before - fmt_count in
+        let args_to_use = List.drop args_before start_index in
+        Some
+          (Cil.Call
+             (None, func, Cil.Const (Cil.CStr fmt_str) :: args_to_use, loc))
+      else None
+  | x :: xs -> find_string func loc (args_before @ [ x ]) xs
+
+let mk_printf args loc =
+  let func =
+    Cil.Lval
+      (Cil.Var (Cil.makeVarinfo false "printf" Cil.voidType), Cil.NoOffset)
+  in
+  match args with
+  | [] -> None
+  | str_arg :: rest_args -> (
+      match str_arg with
+      | Cil.Const (Cil.CStr fmt_str) ->
+          let fmt_count = count_format_specifiers fmt_str in
+          if List.length rest_args = fmt_count then
+            Some (Cil.Call (None, func, args, loc))
+          else None
+      | _ -> find_string func loc [] args)
+
+let mk_free args loc fundec =
+  let func =
+    Cil.Lval (Cil.Var (Cil.makeVarinfo false "free" Cil.voidType), Cil.NoOffset)
+  in
+  if List.length args <> 1 then None
+  else
+    let arg = List.hd_exn args in
+    let rec aux arg =
+      match arg with
+      | Cil.Lval (Cil.Var v, _) ->
+          if
+            List.exists
+              ~f:(fun v' -> String.equal v.vname v'.Cil.vname)
+              fundec.Cil.slocals
+          then Some (Cil.Call (None, func, args, loc))
+          else None
+      | Cil.CastE (_, e) -> aux e
+      | _ -> None
+    in
+    aux arg
+
+let transform_func f args loc fundec =
+  let f_str = Ast.s_exp f in
+  if
+    String.is_substring f_str ~substring:"exit"
+    || String.is_substring f_str ~substring:"abort"
+  then
+    let func =
+      Cil.Lval
+        (Cil.Var (Cil.makeVarinfo false "exit" Cil.voidType), Cil.NoOffset)
+    in
+    let args = [ Cil.integer 0 ] in
+    Some (Cil.Call (None, func, args, loc))
+  else if
+    String.is_substring f_str ~substring:"msg"
+    || String.is_substring f_str ~substring:"print"
+    || String.is_substring f_str ~substring:"debug"
+  then mk_printf args loc
+  else if String.is_substring f_str ~substring:"free" then
+    mk_free args loc fundec
+  else Some (Cil.Call (None, f, args, loc))
+
 let transform_instr i fundec =
   match i with
   | Cil.Set (lv, e, loc) ->
       let lv' = transform_lval lv fundec in
       let e' = transform_exp e fundec in
-      Cil.Set (lv', e', loc)
+      Some (Cil.Set (lv', e', loc))
+  | Cil.Call (None, e, el, loc) -> transform_func e el loc fundec
   | Cil.Call (lv, e, el, loc) ->
       let lv' = Option.map ~f:(fun lv -> transform_lval lv fundec) lv in
       let el' = List.map ~f:(fun e -> transform_exp e fundec) el in
-      Cil.Call (lv', e, el', loc)
-  | _ -> i
+      Some (Cil.Call (lv', e, el', loc))
+  | _ -> Some i
 
 let transform_return e loc fundec =
-  match fundec.Cil.svar.vtype with
-  | Cil.TVoid _ -> Cil.Return (None, loc)
-  | Cil.TInt _ ->
-      if Option.is_none e then
-        Cil.Return
-          ( Some (Cil.Const (Cil.CInt64 (Int64.of_int (-1), Cil.IInt, None))),
-            loc )
-      else Cil.Return (e, loc)
-  | _ -> Cil.Return (e, loc)
+  let rec match_func_type = function
+    | Cil.TVoid _ -> Cil.Return (None, loc)
+    | Cil.TInt _ ->
+        if Option.is_none e then
+          Cil.Return
+            ( Some (Cil.Const (Cil.CInt64 (Int64.of_int (-1), Cil.IInt, None))),
+              loc )
+        else Cil.Return (e, loc)
+    | Cil.TFun (t, _, _, _) -> match_func_type t
+    | _ -> Cil.Return (e, loc)
+  in
+  match_func_type fundec.Cil.svar.vtype
 
-let rec transform_stmt s fundec =
+let is_loop_in_path path =
+  List.exists ~f:(fun s -> Ast.is_loop s.Cil.skind) path
+
+let transform_break_continue donee cand1 cand2 s =
+  let parent_path =
+    if not (List.is_empty cand1) then
+      Ast.get_patent_path (List.hd_exn cand1) donee
+    else Ast.get_patent_path (List.hd_exn cand2) donee
+  in
+  if is_loop_in_path parent_path then s
+  else
+    let exit =
+      Cil.Lval
+        (Cil.Var (Cil.makeVarinfo false "exit" Cil.voidType), Cil.NoOffset)
+    in
+    let args = [ Cil.integer 0 ] in
+    let new_f = Cil.Call (None, exit, args, Cil.locUnknown) in
+    Cil.mkStmt (Cil.Instr [ new_f ])
+
+let rec transform_stmt (donee : Cil.file) s fundec fname cand1 cand2 =
   match s.Cil.skind with
   | Cil.Instr instrs ->
-      let instrs' = List.map ~f:(fun i -> transform_instr i fundec) instrs in
+      let instrs' =
+        List.fold_left
+          ~f:(fun acc i ->
+            let new_i = transform_instr i fundec in
+            if Option.is_none new_i then acc else Option.value_exn new_i :: acc)
+          ~init:[] instrs
+        |> List.rev
+      in
       { s with skind = Cil.Instr instrs' }
   | Cil.Return (e, loc) -> { s with skind = transform_return e loc fundec }
   | Cil.If (e, tb, fb, loc) ->
       let e' = transform_exp e fundec in
       let tb'_stmts =
         List.fold_left
-          ~f:(fun acc s -> transform_stmt s fundec :: acc)
+          ~f:(fun acc s ->
+            transform_stmt donee s fundec fname cand1 cand2 :: acc)
           ~init:[] tb.bstmts
       in
       let tb' = { tb with bstmts = List.rev tb'_stmts } in
       let fb'_stmts =
         List.fold_left
-          ~f:(fun acc s -> transform_stmt s fundec :: acc)
+          ~f:(fun acc s ->
+            transform_stmt donee s fundec fname cand1 cand2 :: acc)
           ~init:[] fb.bstmts
       in
       let fb' = { fb with bstmts = List.rev fb'_stmts } in
       { s with skind = Cil.If (e', tb', fb', loc) }
+  | Cil.Loop (block, loc, t1, t2) ->
+      let new_b_stmts =
+        List.fold_left
+          ~f:(fun acc s ->
+            transform_stmt donee s fundec fname cand1 cand2 :: acc)
+          ~init:[] block.bstmts
+      in
+      let new_block = { block with bstmts = List.rev new_b_stmts } in
+      { s with skind = Cil.Loop (new_block, loc, t1, t2) }
+  | Cil.Block block ->
+      let new_b_stmts =
+        List.fold_left
+          ~f:(fun acc s ->
+            transform_stmt donee s fundec fname cand1 cand2 :: acc)
+          ~init:[] block.bstmts
+      in
+      let new_block = { block with bstmts = List.rev new_b_stmts } in
+      { s with skind = Cil.Block new_block }
+  | Cil.Break _ | Cil.Continue _ -> transform_break_continue donee cand1 cand2 s
   | _ -> s
 
-let fit_stmt_to_donee s func_name donee =
+let fit_stmt_to_donee donee func_name cand1 cand2 ss =
   let fun_dec = extract_fundec func_name donee in
-  transform_stmt s fun_dec
+  List.map ~f:(fun s -> transform_stmt donee s fun_dec func_name cand1 cand2) ss
+
+let fit_diff_to_donee diff donee =
+  match diff with
+  | D.InsertStmt (f, b, ss, a) ->
+      D.InsertStmt (f, b, fit_stmt_to_donee donee f a b ss, a)
+  | D.UpdateStmt (f, b, s, ss, a) ->
+      D.UpdateStmt (f, b, s, fit_stmt_to_donee donee f a b ss, a)
+  | D.UpdateGoToStmt (f, b, ss, a) ->
+      D.UpdateGoToStmt (f, b, fit_stmt_to_donee donee f a b ss, a)
+  | _ -> diff
 
 let is_patched = ref false
 
@@ -511,14 +661,8 @@ let apply_insert_stmt ?(update = false) func_name snk_opt before after ss donee
   let very_after = List.hd after in
   if Option.is_none very_before && Option.is_none very_after then
     L.warn "apply_insert_stmt - cannot be patched";
-  let ss' =
-    List.fold_left
-      ~f:(fun acc s -> fit_stmt_to_donee s func_name donee :: acc)
-      ~init:[] ss
-    |> List.rev
-  in
   let vis =
-    new insertStmtVisitor ~update func_name snk_opt very_before very_after ss'
+    new insertStmtVisitor ~update func_name snk_opt very_before very_after ss
   in
   Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply InsertStmt"
@@ -527,13 +671,7 @@ let apply_insert_stmt ?(update = false) func_name snk_opt before after ss donee
 let apply_update_stmt func_name s ss donee =
   L.info "Applying UpdateStmt...";
   is_patched := false;
-  let ss' =
-    List.fold_left
-      ~f:(fun acc s -> fit_stmt_to_donee s func_name donee :: acc)
-      ~init:[] ss
-    |> List.rev
-  in
-  let vis = new updateStmtfromFuncVisitor func_name s ss' in
+  let vis = new updateStmtfromFuncVisitor func_name s ss in
   Cil.visitCilFile vis donee;
   if not !is_patched then Logger.warn "failed to apply UpdateStmt"
   else L.info "Successfully applied UpdateStmt at %s" func_name
@@ -582,9 +720,16 @@ let write_out path ast =
 
 let run donee diff snk_opt =
   Logger.info "%d actions to apply" (List.length diff);
+  Logger.info "Generalizing the patch to the donee program...";
+  let new_diff =
+    List.fold_left
+      ~f:(fun acc d -> fit_diff_to_donee d donee :: acc)
+      ~init:[] diff
+    |> List.rev
+  in
   List.iter
     ~f:
       (is_patched := false;
        apply_action donee snk_opt)
-    diff;
+    new_diff;
   donee

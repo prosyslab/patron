@@ -238,6 +238,7 @@ let eq_tmpvar str1 str2 =
 let eq_var s1 s2 = if eq_tmpvar s1 s2 then true else String.equal s1 s2
 let isom_exp e1 e2 = String.equal (s_exp e1) (s_exp e2)
 let isom_lv l1 l2 = String.equal (s_lv l1) (s_lv l2)
+let is_loop = function Cil.Loop _ -> true | _ -> false
 
 let eq_bop a b =
   match (a, b) with
@@ -379,6 +380,7 @@ let eq_loc_stmt s1 s2 =
     (get_stmtLoc s1.skind |> s_location)
     (get_stmtLoc s2.skind |> s_location)
 
+let isom_stmt s1 s2 = String.equal (s_stmt s1) (s_stmt s2)
 let eq_location l1 l2 = String.equal (s_location l1) (s_location l2)
 
 let eq_global glob1 glob2 =
@@ -432,3 +434,26 @@ let extract_snk_stmt ast_map snk =
   match snk with
   | Some s -> ( match s with Stmt s -> Some s | _ -> None)
   | None -> None
+
+let found_stmt = ref []
+
+class findStmtVisitor stmt =
+  object
+    inherit Cil.nopCilVisitor
+
+    method! vstmt s =
+      if isom_stmt s stmt then found_stmt := s :: !found_stmt;
+      DoChildren
+  end
+
+let get_patent_path stmt ast =
+  let rec aux stmt acc =
+    found_stmt := [];
+    let vis = new findStmtVisitor stmt in
+    Cil.visitCilFile vis ast;
+    if List.length !found_stmt = 1 then
+      let stmt = List.hd_exn !found_stmt in
+      stmt :: acc |> aux stmt
+    else acc
+  in
+  aux stmt []

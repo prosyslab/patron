@@ -185,7 +185,7 @@ and translate_new_stmt maps sol_map = function
 let translate_new_stmts maps sol_map =
   List.map ~f:(fun abs_node -> translate_new_stmt maps sol_map abs_node.A.ast)
 
-(* TODO: add heuristic to find function translation *)
+(* TODO: add heuristic to find function translation (selective inlining)*)
 let translate_func_name_alt sol_map abs_node_lst =
   let patch_func =
     abs_node_lst |> StrSet.choose |> Utils.get_func_name_from_node
