@@ -109,14 +109,18 @@ let rec find_string func loc args_before args_after =
   | [] -> None
   | Cil.Const (Cil.CStr fmt_str) :: rest_after ->
       let fmt_count = count_format_specifiers fmt_str in
-      if List.length rest_after = fmt_count then
-        Some (Cil.Call (None, func, args_before @ args_after, loc))
-      else if List.length args_before >= fmt_count then
+      if List.length rest_after = fmt_count then (
+        if List.length args_before = fmt_count then
+          Some (Cil.Call (None, func, Cil.Const (Cil.CStr fmt_str) :: args_before, loc))
+        else
+        Some
+          (Cil.Call (None, func, Cil.Const (Cil.CStr fmt_str) :: rest_after, loc)))
+      else if List.length args_before >= fmt_count then (
         let start_index = List.length args_before - fmt_count in
         let args_to_use = List.drop args_before start_index in
         Some
           (Cil.Call
-             (None, func, Cil.Const (Cil.CStr fmt_str) :: args_to_use, loc))
+             (None, func, Cil.Const (Cil.CStr fmt_str) :: args_to_use, loc)))
       else None
   | x :: xs -> find_string func loc (args_before @ [ x ]) xs
 
@@ -161,7 +165,9 @@ let transform_func f args loc fundec =
   let f_str = Ast.s_exp f in
   if
     String.is_substring f_str ~substring:"exit"
+    || String.is_substring f_str ~substring:"EXIT"
     || String.is_substring f_str ~substring:"abort"
+    || String.is_substring f_str ~substring:"ABORT"
   then
     let func =
       Cil.Lval
@@ -171,8 +177,12 @@ let transform_func f args loc fundec =
     Some (Cil.Call (None, func, args, loc))
   else if
     String.is_substring f_str ~substring:"msg"
+    || String.is_substring f_str ~substring:"MSG"
     || String.is_substring f_str ~substring:"print"
     || String.is_substring f_str ~substring:"debug"
+    || String.is_substring f_str ~substring:"DEBUG"
+    || String.is_substring f_str ~substring:"error"
+    || String.is_substring f_str ~substring:"ERROR"
   then mk_printf args loc
   else if String.is_substring f_str ~substring:"free" then
     mk_free args loc fundec
