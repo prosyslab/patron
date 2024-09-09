@@ -1,8 +1,10 @@
 open Core
 open Continue_or_stop
+module Hashtbl = Stdlib.Hashtbl
 module F = Format
 module L = Logger
 module Sys = Stdlib.Sys
+module H = Utils
 
 let mk_file_diff orig_path patch_path cand_donor target_alarm out_dir =
   Sys.command
@@ -17,6 +19,10 @@ let mk_file_diff orig_path patch_path cand_donor target_alarm out_dir =
            ("result_" ^ cand_donor ^ "_" ^ target_alarm ^ "_diff.patch");
        ])
   |> ignore
+
+let concretize_patpat sol_map patpat =
+  (* TODO: convert patch pattern and rearrange the DUEdge *)
+  patpat
 
 let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
     out_dir i cmd =
@@ -49,24 +55,27 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
       pattern
   in
   Maps.dump target_alarm target_maps out_dir;
-  if Option.is_some is_bug then
+  if Option.is_some is_bug then (
+    let sol_map = Hashtbl.create 1000 in
+    Hashtbl.reset sol_map;
+    let sm_file = F.asprintf "%s_%s_sol.map" cand_donor target_alarm in
+    H.parse_map out_dir sm_file sol_map;
     let is_pat =
       L.info "%s is Matched with bug pattern" target_alarm;
       L.info "Now, trying to match %s with patch pattern" target_alarm;
       match cmd with
       | Options.DonorToDonee -> None
       | _ ->
-          Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
-            patpat
+          concretize_patpat sol_map patpat
+          |> Chc.match_and_log z3env out_dir target_alarm target_maps facts src
+               snk
     in
     if Option.is_none is_pat then (
       L.info "%s is not Matched with patch pattern (Good)" target_alarm;
       Modeling.match_ans buggy_maps target_maps target_alarm i cand_donor
         donor_dir out_dir;
       L.info "Matching with %s is done" target_alarm;
-      let target_diff =
-        EditFunction.translate cand_donor target_maps out_dir target_alarm diff
-      in
+      let target_diff = EditFunction.translate sol_map target_maps diff in
       L.info "Applying patch on the target file ...";
       let out_file_orig =
         F.asprintf "%s/orig_%s_%s_%d.c" out_dir cand_donor target_alarm i
@@ -85,7 +94,7 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
       Stop ())
     else (
       L.info "%s is Matched with patch pattern (Bad)" target_alarm;
-      Continue ())
+      Continue ()))
   else (
     L.info "%s is Not Matched with bug pattern" target_alarm;
     Continue ())

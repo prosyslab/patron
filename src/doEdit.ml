@@ -109,18 +109,21 @@ let rec find_string func loc args_before args_after =
   | [] -> None
   | Cil.Const (Cil.CStr fmt_str) :: rest_after ->
       let fmt_count = count_format_specifiers fmt_str in
-      if List.length rest_after = fmt_count then (
+      if List.length rest_after = fmt_count then
         if List.length args_before = fmt_count then
-          Some (Cil.Call (None, func, Cil.Const (Cil.CStr fmt_str) :: args_before, loc))
+          Some
+            (Cil.Call
+               (None, func, Cil.Const (Cil.CStr fmt_str) :: args_before, loc))
         else
-        Some
-          (Cil.Call (None, func, Cil.Const (Cil.CStr fmt_str) :: rest_after, loc)))
-      else if List.length args_before >= fmt_count then (
+          Some
+            (Cil.Call
+               (None, func, Cil.Const (Cil.CStr fmt_str) :: rest_after, loc))
+      else if List.length args_before >= fmt_count then
         let start_index = List.length args_before - fmt_count in
         let args_to_use = List.drop args_before start_index in
         Some
           (Cil.Call
-             (None, func, Cil.Const (Cil.CStr fmt_str) :: args_to_use, loc)))
+             (None, func, Cil.Const (Cil.CStr fmt_str) :: args_to_use, loc))
       else None
   | x :: xs -> find_string func loc (args_before @ [ x ]) xs
 
