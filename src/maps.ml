@@ -3,6 +3,7 @@ module Hashtbl = Stdlib.Hashtbl
 module J = Yojson.Basic.Util
 module F = Format
 module L = Logger
+module Cil = ProsysCil.Cil
 
 type loc = { file : string; line : int }
 

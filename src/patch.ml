@@ -5,6 +5,7 @@ module F = Format
 module L = Logger
 module Sys = Stdlib.Sys
 module H = Utils
+module Cil = ProsysCil.Cil
 
 let mk_file_diff orig_path patch_path cand_donor target_alarm out_dir =
   Sys.command

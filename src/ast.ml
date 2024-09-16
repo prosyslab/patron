@@ -1,5 +1,7 @@
 open Core
-open Cil
+open ProsysCil.Cil
+module Pretty = ProsysCil.Pretty
+module Escape = ProsysCil.Escape
 module L = Logger
 module Hashtbl = Stdlib.Hashtbl
 
@@ -23,11 +25,9 @@ let is_fun = function Fun _ -> true | _ -> false
 let is_stmt = function Stmt _ -> true | _ -> false
 let is_exp = function Exp _ -> true | _ -> false
 let is_lv = function Lval _ -> true | _ -> false
-let is_blk = function Cil.Block _ | Cil.Loop _ | Cil.If _ -> true | _ -> false
-let is_instr = function Cil.Instr _ -> true | _ -> false
-
-let get_instrs stmt =
-  match stmt.Cil.skind with Cil.Instr instrs -> instrs | _ -> []
+let is_blk = function Block _ | Loop _ | If _ -> true | _ -> false
+let is_instr = function Instr _ -> true | _ -> false
+let get_instrs stmt = match stmt.skind with Instr instrs -> instrs | _ -> []
 
 (* for the reference *)
 type edge = t * t
@@ -66,28 +66,28 @@ let string_of_list ?(first = "[") ?(last = "]") ?(sep = ";") string_of_v list =
   let add_string_of_v v acc = link_by_sep sep (string_of_v v) acc in
   first ^ list_fold add_string_of_v list "" ^ last
 
-let get_loc_filename (loc : Cil.location) =
+let get_loc_filename (loc : location) =
   String.split ~on:'/' loc.file |> List.last_exn
 
-let get_loc_line (loc : Cil.location) = loc.line
+let get_loc_line (loc : location) = loc.line
 let get_stmt_line stmt = get_loc_line (get_stmtLoc stmt.skind)
 
 let get_global_loc glob =
   match glob with
-  | Cil.GFun (_, loc)
-  | Cil.GVar (_, _, loc)
-  | Cil.GType (_, loc)
-  | Cil.GCompTag (_, loc)
-  | Cil.GCompTagDecl (_, loc)
-  | Cil.GEnumTag (_, loc)
-  | Cil.GEnumTagDecl (_, loc)
-  | Cil.GVarDecl (_, loc)
-  | Cil.GAsm (_, loc)
-  | Cil.GPragma (_, loc) ->
+  | GFun (_, loc)
+  | GVar (_, _, loc)
+  | GType (_, loc)
+  | GCompTag (_, loc)
+  | GCompTagDecl (_, loc)
+  | GEnumTag (_, loc)
+  | GEnumTagDecl (_, loc)
+  | GVarDecl (_, loc)
+  | GAsm (_, loc)
+  | GPragma (_, loc) ->
       loc
   | _ -> L.error "get_global_loc error"
 
-let s_location (loc : Cil.location) =
+let s_location (loc : location) =
   get_loc_filename loc ^ ":" ^ string_of_int loc.line
 
 let tostring s = Escape.escape_string (Pretty.sprint ~width:0 s)
@@ -97,7 +97,7 @@ let s_attr attr = tostring (d_attr () attr)
 let s_glob g =
   match g with
   | GFun (f, _) -> "function:" ^ f.svar.vname
-  | _ -> Cil.printGlobal !Cil.printerForMaincil () g |> Pretty.sprint ~width:80
+  | _ -> printGlobal !printerForMaincil () g |> Pretty.sprint ~width:80
 
 let rec s_exps es = string_of_list ~first:"(" ~last:")" ~sep:", " s_exp es
 
@@ -183,33 +183,32 @@ let pp_path fmt path =
   List.iter ~f:(fun node -> Format.fprintf fmt "%s\n -->\n" (s_node node)) path
 
 let is_cil_goto = function
-  | Cil.Goto (s, _) ->
+  | Goto (s, _) ->
       List.exists
         ~f:(function
-          | Cil.Label (name, _, _) ->
+          | Label (name, _, _) ->
               String.is_prefix ~prefix:"while_break" name
               || String.is_prefix ~prefix:"while_continue" name
           | _ -> false)
         !s.labels
   | _ -> false
 
-let is_empty_instr stmt =
-  match stmt.Cil.skind with Cil.Instr [] -> true | _ -> false
+let is_empty_instr stmt = match stmt.skind with Instr [] -> true | _ -> false
 
 let pp_path fmt path =
   List.iter ~f:(fun node -> Format.fprintf fmt "%s\n -->\n" (s_node node)) path
 
 let eq_typ typ_info1 typ_info2 =
   match (typ_info1, typ_info2) with
-  | Cil.TVoid _, Cil.TVoid _
-  | Cil.TInt _, Cil.TInt _
-  | Cil.TFloat _, Cil.TFloat _
-  | Cil.TPtr _, Cil.TPtr _
-  | Cil.TArray _, Cil.TArray _
-  | Cil.TFun _, Cil.TFun _
-  | Cil.TNamed _, Cil.TNamed _
-  | Cil.TComp _, Cil.TComp _
-  | Cil.TEnum _, Cil.TEnum _ ->
+  | TVoid _, TVoid _
+  | TInt _, TInt _
+  | TFloat _, TFloat _
+  | TPtr _, TPtr _
+  | TArray _, TArray _
+  | TFun _, TFun _
+  | TNamed _, TNamed _
+  | TComp _, TComp _
+  | TEnum _, TEnum _ ->
       true
   | _ -> String.equal (s_type typ_info1) (s_type typ_info2)
 
@@ -238,41 +237,39 @@ let eq_tmpvar str1 str2 =
 let eq_var s1 s2 = if eq_tmpvar s1 s2 then true else String.equal s1 s2
 let isom_exp e1 e2 = String.equal (s_exp e1) (s_exp e2)
 let isom_lv l1 l2 = String.equal (s_lv l1) (s_lv l2)
-let is_loop = function Cil.Loop _ -> true | _ -> false
+let is_loop = function Loop _ -> true | _ -> false
 
 let eq_bop a b =
   match (a, b) with
-  | Cil.PlusA, Cil.PlusA
-  | Cil.PlusPI, Cil.PlusPI
-  | Cil.IndexPI, Cil.IndexPI
-  | Cil.MinusA, Cil.MinusA
-  | Cil.MinusPI, Cil.MinusPI
-  | Cil.MinusPP, Cil.MinusPP
-  | Cil.Mod, Cil.Mod
-  | Cil.Shiftlt, Cil.Shiftlt
-  | Cil.Shiftrt, Cil.Shiftrt
-  | Cil.BAnd, Cil.BAnd
-  | Cil.BXor, Cil.BXor
-  | Cil.BOr, Cil.BOr
-  | Cil.Mult, Cil.Mult
-  | Cil.Div, Cil.Div
-  | Cil.Eq, Cil.Eq
-  | Cil.Ne, Cil.Ne
-  | Cil.Lt, Cil.Lt
-  | Cil.Le, Cil.Le
-  | Cil.Gt, Cil.Gt
-  | Cil.Ge, Cil.Ge
-  | Cil.LAnd, Cil.LAnd
-  | Cil.LOr, Cil.LOr ->
+  | PlusA, PlusA
+  | PlusPI, PlusPI
+  | IndexPI, IndexPI
+  | MinusA, MinusA
+  | MinusPI, MinusPI
+  | MinusPP, MinusPP
+  | Mod, Mod
+  | Shiftlt, Shiftlt
+  | Shiftrt, Shiftrt
+  | BAnd, BAnd
+  | BXor, BXor
+  | BOr, BOr
+  | Mult, Mult
+  | Div, Div
+  | Eq, Eq
+  | Ne, Ne
+  | Lt, Lt
+  | Le, Le
+  | Gt, Gt
+  | Ge, Ge
+  | LAnd, LAnd
+  | LOr, LOr ->
       true
   | _ -> false
 
 let eq_uop a b =
-  match (a, b) with
-  | Cil.LNot, Cil.LNot | Cil.BNot, Cil.BNot | Cil.Neg, Cil.Neg -> true
-  | _ -> false
+  match (a, b) with LNot, LNot | BNot, BNot | Neg, Neg -> true | _ -> false
 
-let rec eq_exp (a : Cil.exp) (b : Cil.exp) =
+let rec eq_exp (a : exp) (b : exp) =
   match (a, b) with
   | Lval (Var a, NoOffset), Lval (Var b, NoOffset) -> eq_var a.vname b.vname
   | Lval (Mem a, NoOffset), Lval (Mem b, NoOffset) -> eq_exp a b
@@ -285,7 +282,7 @@ let rec eq_exp (a : Cil.exp) (b : Cil.exp) =
   | StartOf (Var a, NoOffset), StartOf (Var b, NoOffset) ->
       eq_var a.vname b.vname
   | StartOf (Mem a, NoOffset), StartOf (Mem b, NoOffset) -> eq_exp a b
-  | Cil.SizeOfE a, Cil.SizeOfE b -> eq_exp a b
+  | SizeOfE a, SizeOfE b -> eq_exp a b
   | Const a, Const b -> String.equal (s_const a) (s_const b)
   | Lval (Var a, NoOffset), StartOf (Var b, NoOffset)
   | StartOf (Var a, NoOffset), Lval (Var b, NoOffset) ->
@@ -294,9 +291,9 @@ let rec eq_exp (a : Cil.exp) (b : Cil.exp) =
       eq_exp a d && eq_exp b e && eq_exp c f
   | _ -> isom_exp a b
 
-let rec diff_exp a b =
+let rec diff_exp (a : exp) (b : exp) =
   match (a, b) with
-  | Cil.Lval (Var a', NoOffset), Cil.Lval (Var b', NoOffset) ->
+  | Lval (Var a', NoOffset), Lval (Var b', NoOffset) ->
       if eq_var a'.vname b'.vname then [] else [ (a, b) ]
   | Lval (Mem a', NoOffset), Lval (Mem b', NoOffset) -> diff_exp a' b'
   | BinOp (a', b', c', _), BinOp (d', e', f', _) ->
@@ -312,7 +309,7 @@ let rec diff_exp a b =
   | StartOf (Var a', NoOffset), StartOf (Var b', NoOffset) ->
       if eq_var a'.vname b'.vname then [] else [ (a, b) ]
   | StartOf (Mem a', NoOffset), StartOf (Mem b', NoOffset) -> diff_exp a' b'
-  | Cil.SizeOfE a', Cil.SizeOfE b' -> diff_exp a' b'
+  | SizeOfE a', SizeOfE b' -> diff_exp a' b'
   | Const a', Const b' ->
       if String.equal (s_const a') (s_const b') then [] else [ (a, b) ]
   | Lval (Var a', NoOffset), StartOf (Var b', NoOffset)
@@ -322,7 +319,7 @@ let rec diff_exp a b =
       diff_exp a' d' @ diff_exp b' e' @ diff_exp c' f'
   | _ -> if isom_exp a b then [] else [ (a, b) ]
 
-let eq_lval (l1 : Cil.lval) (l2 : Cil.lval) =
+let eq_lval (l1 : lval) (l2 : lval) =
   match (l1, l2) with
   | (host1, _), (host2, _) -> (
       match (host1, host2) with
@@ -336,34 +333,34 @@ let eq_instr i1 i2 =
   else if List.is_empty i1 || List.is_empty i2 then false
   else
     match (i1, i2) with
-    | Cil.Set (lv1, _, _) :: _, Cil.Set (lv2, _, _) :: _ -> eq_lval lv1 lv2
-    | Cil.Call (lv1, _, _, _) :: _, Cil.Call (lv2, _, _, _) :: _ -> (
+    | Set (lv1, _, _) :: _, Set (lv2, _, _) :: _ -> eq_lval lv1 lv2
+    | Call (lv1, _, _, _) :: _, Call (lv2, _, _, _) :: _ -> (
         match (lv1, lv2) with
         | None, None -> true
         | Some lv1, Some lv2 -> isom_lv lv1 lv2
         | _ -> false)
-    | Cil.Asm _ :: _, Cil.Asm _ :: _ -> true
+    | Asm _ :: _, Asm _ :: _ -> true
     | _ -> false
 
 let rec eq_stmt skind1 skind2 =
   match (skind1, skind2) with
-  | Cil.Instr i1, Cil.Instr i2 -> eq_instr i1 i2
-  | Cil.Return (Some e1, _), Cil.Return (Some e2, _) -> isom_exp e1 e2
-  | Cil.Return (None, _), Cil.Return (None, _) -> true
-  | Cil.Goto (dest1, _), Cil.Goto (dest2, _) ->
+  | Instr i1, Instr i2 -> eq_instr i1 i2
+  | Return (Some e1, _), Return (Some e2, _) -> isom_exp e1 e2
+  | Return (None, _), Return (None, _) -> true
+  | Goto (dest1, _), Goto (dest2, _) ->
       if eq_stmt !dest1.skind !dest2.skind then true else false
-  | Cil.If (cond1, _, _, _), Cil.If (cond2, _, _, _) -> eq_exp cond1 cond2
-  | Cil.Loop _, Cil.Loop _
-  | Cil.ComputedGoto _, Cil.ComputedGoto _
-  | Cil.Block _, Cil.Block _
-  | Cil.TryExcept _, Cil.TryExcept _
-  | Cil.TryFinally _, Cil.TryFinally _
-  | Cil.Break _, Cil.Break _
-  | Cil.Continue _, Cil.Continue _ ->
+  | If (cond1, _, _, _), If (cond2, _, _, _) -> eq_exp cond1 cond2
+  | Loop _, Loop _
+  | ComputedGoto _, ComputedGoto _
+  | Block _, Block _
+  | TryExcept _, TryExcept _
+  | TryFinally _, TryFinally _
+  | Break _, Break _
+  | Continue _, Continue _ ->
       true
   | _ -> false
 
-let eq_blk (b1 : Cil.block) (b2 : Cil.block) =
+let eq_blk (b1 : block) (b2 : block) =
   let stmts1 = b1.bstmts in
   let stmts2 = b2.bstmts in
   let rec aux stmts1 stmts2 =
@@ -385,21 +382,18 @@ let eq_location l1 l2 = String.equal (s_location l1) (s_location l2)
 
 let eq_global glob1 glob2 =
   match (glob1, glob2) with
-  | Cil.GFun (func_info1, _), Cil.GFun (func_info2, _) ->
+  | GFun (func_info1, _), GFun (func_info2, _) ->
       String.equal func_info1.svar.vname func_info2.svar.vname
-  | Cil.GType (typinfo1, _), Cil.GType (typinfo2, _) ->
+  | GType (typinfo1, _), GType (typinfo2, _) ->
       String.equal typinfo1.tname typinfo2.tname
       && eq_typ typinfo1.ttype typinfo2.ttype
-  | Cil.GCompTag _, Cil.GCompTag _
-  | Cil.GCompTagDecl _, Cil.GCompTagDecl _
-  | Cil.GEnumTag _, Cil.GEnumTag _
-  | Cil.GEnumTagDecl _, Cil.GEnumTagDecl _ ->
+  | GCompTag _, GCompTag _
+  | GCompTagDecl _, GCompTagDecl _
+  | GEnumTag _, GEnumTag _
+  | GEnumTagDecl _, GEnumTagDecl _ ->
       true
-  | Cil.GVarDecl (v1, _), Cil.GVarDecl (v2, _) -> String.equal v1.vname v2.vname
-  | Cil.GVar _, Cil.GVar _
-  | Cil.GAsm _, Cil.GAsm _
-  | Cil.GPragma _, Cil.GPragma _
-  | Cil.GText _, Cil.GText _ ->
+  | GVarDecl (v1, _), GVarDecl (v2, _) -> String.equal v1.vname v2.vname
+  | GVar _, GVar _ | GAsm _, GAsm _ | GPragma _, GPragma _ | GText _, GText _ ->
       true
   | _ -> false
 
@@ -407,7 +401,7 @@ let cil_stmts = ref []
 
 class copyStmtVisitor =
   object
-    inherit Cil.nopCilVisitor
+    inherit nopCilVisitor
 
     method! vstmt stmt =
       cil_stmts := stmt :: !cil_stmts;
@@ -417,14 +411,14 @@ class copyStmtVisitor =
 let extract_stmts file =
   cil_stmts := [];
   let vis = new copyStmtVisitor in
-  Cil.visitCilFile vis file;
+  visitCilFile vis file;
   !cil_stmts
 
-let extract_globs file = file.Cil.globals
+let extract_globs file = file.globals
 
 let glob2func_name glob =
   match glob with
-  | Cil.GFun (func_info, _) -> func_info.svar.vname
+  | GFun (func_info, _) -> func_info.svar.vname
   | _ -> L.error "Not a function"
 
 let eq_exp_ref e1 e2 = String.equal e1 e2 || String.equal e1 ("&" ^ e2)
@@ -439,7 +433,7 @@ let found_stmt = ref []
 
 class findStmtVisitor stmt =
   object
-    inherit Cil.nopCilVisitor
+    inherit nopCilVisitor
 
     method! vstmt s =
       if isom_stmt s stmt then found_stmt := s :: !found_stmt;
@@ -450,7 +444,7 @@ let get_patent_path stmt ast =
   let rec aux stmt acc =
     found_stmt := [];
     let vis = new findStmtVisitor stmt in
-    Cil.visitCilFile vis ast;
+    visitCilFile vis ast;
     if List.length !found_stmt = 1 then
       let stmt = List.hd_exn !found_stmt in
       stmt :: acc |> aux stmt

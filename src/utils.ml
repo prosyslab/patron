@@ -3,6 +3,7 @@ module Hashtbl = Stdlib.Hashtbl
 module Sys = Stdlib.Sys
 module J = Yojson.Basic.Util
 module F = Format
+module Cil = ProsysCil.Cil
 
 let print_ekind exp =
   match exp with

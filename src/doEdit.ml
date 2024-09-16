@@ -3,6 +3,7 @@ module D = Diff
 module EF = EditFunction
 module H = Utils
 module L = Logger
+module Cil = ProsysCil.Cil
 
 let target_func = ref []
 
@@ -210,8 +211,7 @@ let transform_return e loc fundec =
     | Cil.TInt _ ->
         if Option.is_none e then
           Cil.Return
-            ( Some (Cil.Const (Cil.CInt64 (Int64.of_int (-1), Cil.IInt, None))),
-              loc )
+            (Some (Cil.Const (Cil.CInt64 (Z.of_int (-1), Cil.IInt, None))), loc)
         else Cil.Return (e, loc)
     | Cil.TFun (t, _, _, _) -> match_func_type t
     | _ -> Cil.Return (e, loc)

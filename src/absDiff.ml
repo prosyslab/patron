@@ -7,6 +7,7 @@ module H = Utils
 module D = Diff
 module L = Logger
 module StrSet = Set.Make (String)
+module Cil = ProsysCil.Cil
 
 type abs_ast =
   | Null
@@ -461,7 +462,7 @@ and to_sunop op =
 
 and to_sconst c =
   match c with
-  | Cil.CInt64 (i, _, _) -> SIntConst (Int64.to_int_exn i)
+  | Cil.CInt64 (i, _, _) -> SIntConst (Z.to_int i)
   | Cil.CReal (f, _, _) -> SFloatConst f
   | Cil.CChr c -> SCharConst c
   | Cil.CStr s -> SStringConst s

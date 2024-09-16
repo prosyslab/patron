@@ -1,4 +1,4 @@
-open Cil
+open ProsysCil
 module E = Errormsg
 module H = Hashtbl
 module IH = Inthash
@@ -10,7 +10,7 @@ let flip f y x = f x y
 let list_fold f list init = List.fold_left (flip f) init list
 let id x = x
 
-let get_loc_filename loc =
+let get_loc_filename (loc : Cil.location) =
   try
     let idx = String.rindex loc.file '/' in
     let len = String.length loc.file in
@@ -77,7 +77,7 @@ module IntraCfg = struct
     let nid = ref 0
 
     let fromCilStmt s =
-      if !nid < s.sid then nid := s.sid;
+      if !nid < s.Cil.sid then nid := s.sid;
       Node s.sid
 
     let make () =
@@ -90,6 +90,8 @@ module IntraCfg = struct
   module NodeSet = BatSet.Make (Node)
 
   module Cmd = struct
+    open Cil
+
     type t =
       | Cinstr of instr list * location
       | Cif of exp * block * block * location
@@ -253,7 +255,7 @@ module IntraCfg = struct
                       if t.sid = Node.id s2 then (s1, s2) else (s2, s1)
                 in
                 let tassert = Cmd.Cassume (e, true, loc) in
-                let not_e = UnOp (LNot, e, Cil.typeOf e) in
+                let not_e = Cil.UnOp (LNot, e, Cil.typeOf e) in
                 let fassert = Cmd.Cassume (not_e, false, loc) in
                 (add_new_node n fassert fbn >>> add_new_node n tassert tbn) g
               else
@@ -294,7 +296,7 @@ module IntraCfg = struct
               List.map
                 (fun i ->
                   match i with
-                  | Set (lv, e, loc) -> Cmd.Cset (lv, e, loc)
+                  | Cil.Set (lv, e, loc) -> Cmd.Cset (lv, e, loc)
                   | Call (lvo, f, args, loc) -> Cmd.Ccall (lvo, f, args, loc)
                   | Asm (a, b, c, d, e, f) -> Cmd.Casm (a, b, c, d, e, f))
                 instrs
@@ -346,7 +348,7 @@ module IntraCfg = struct
     let init_node = Node.make () in
     let idxinfo = Cil.makeTempVar fd (Cil.TInt (IInt, [])) in
     let idx = (Cil.Var idxinfo, Cil.NoOffset) in
-    let init_value = Cil.Const (Cil.CInt64 (Int64.zero, IInt, None)) in
+    let init_value = Cil.Const (Cil.CInt64 (Z.zero, IInt, None)) in
     let init_cmd = Cmd.Cset (idx, init_value, loc) in
     let g = add_cmd init_node init_cmd g in
     let skip_node = Node.make () in
@@ -375,7 +377,7 @@ module IntraCfg = struct
           Cil.BinOp
             ( Cil.PlusA,
               Cil.Lval idx,
-              Cil.Const (Cil.CInt64 (Int64.one, IInt, None)),
+              Cil.Const (Cil.CInt64 (Z.one, IInt, None)),
               Cil.intType ),
           loc )
     in
@@ -385,7 +387,7 @@ module IntraCfg = struct
     (nassume_node, g)
 
   let rec make_nested_array fd lv typ exp local loc entry initialize g =
-    let typ = unrollTypeDeep typ in
+    let typ = Cil.unrollTypeDeep typ in
     match typ with
     | TArray (t, Some size, _) ->
         let f assume_node element g =
@@ -425,7 +427,7 @@ module IntraCfg = struct
         match Cil.unrollTypeDeep fieldinfo.ftype with
         | TArray (typ, Some exp, _) ->
             let field =
-              addOffsetLval (Cil.Field (fieldinfo, Cil.NoOffset)) lv
+              Cil.addOffsetLval (Cil.Field (fieldinfo, Cil.NoOffset)) lv
             in
             let tmp =
               (Cil.Var (Cil.makeTempVar fd Cil.voidPtrType), Cil.NoOffset)
@@ -448,7 +450,7 @@ module IntraCfg = struct
             generate_allocs_field t lv local fd term g
         | TComp (comp, _) ->
             let field =
-              addOffsetLval (Cil.Field (fieldinfo, Cil.NoOffset)) lv
+              Cil.addOffsetLval (Cil.Field (fieldinfo, Cil.NoOffset)) lv
             in
             let term, g = make_struct field comp local fieldinfo.floc entry g in
             let term, g =
@@ -458,14 +460,14 @@ module IntraCfg = struct
         | _ -> generate_allocs_field t lv local fd entry g)
 
   and get_base_type = function
-    | TArray (t, _, _) | TPtr (t, _) -> get_base_type t
+    | Cil.TArray (t, _, _) | TPtr (t, _) -> get_base_type t
     | typ -> typ
 
   let rec generate_local_allocs fd vl entry g =
     match vl with
     | [] -> (entry, g)
     | varinfo :: t -> (
-        match Cil.unrollTypeDeep varinfo.vtype with
+        match Cil.unrollTypeDeep varinfo.Cil.vtype with
         | TArray (typ, Some exp, _) ->
             let lv = (Cil.Var varinfo, Cil.NoOffset) in
             let tmp =
@@ -476,7 +478,7 @@ module IntraCfg = struct
             let cast_cmd =
               Cmd.Cset
                 ( lv,
-                  Cil.CastE (Cil.TPtr (unrollTypeDeep typ, []), Cil.Lval tmp),
+                  Cil.CastE (Cil.TPtr (Cil.unrollTypeDeep typ, []), Cil.Lval tmp),
                   varinfo.vdecl )
             in
             let g =
@@ -507,12 +509,12 @@ module IntraCfg = struct
   let transform_string_allocs fd g =
     let rec replace_str e =
       match e with
-      | Const (CStr s) ->
+      | Cil.Const (CStr s) ->
           let tempinfo =
             Cil.makeTempVar fd (Cil.TPtr (Cil.TInt (IChar, []), []))
           in
           let temp = (Cil.Var tempinfo, Cil.NoOffset) in
-          (Lval temp, [ (temp, s) ])
+          (Cil.Lval temp, [ (temp, s) ])
       | Lval (Mem exp, off) -> (
           let exp', l = replace_str exp in
           match l with [] -> (e, l) | _ -> (Lval (Mem exp', off), l))
@@ -634,13 +636,13 @@ module IntraCfg = struct
   let transform_malloc fd g =
     let rec transform lv exp loc node g =
       match exp with
-      | BinOp (Mult, SizeOf typ, e, _)
+      | Cil.BinOp (Mult, SizeOf typ, e, _)
       | BinOp (Mult, e, SizeOf typ, _)
       | BinOp (Mult, CastE (_, SizeOf typ), e, _)
       | BinOp (Mult, e, CastE (_, SizeOf typ), _) -> (
           let typ = Cil.unrollTypeDeep typ in
           match (lv, typ) with
-          | (Var _, NoOffset), TComp (_, _) ->
+          | (Cil.Var _, Cil.NoOffset), TComp (_, _) ->
               let cmd = Cmd.Calloc (lv, Cmd.Array exp, false, false, loc) in
               let g = add_cmd node cmd g in
               make_nested_array fd lv typ e false loc node false g
@@ -690,7 +692,8 @@ module IntraCfg = struct
       match (fname, args) with
       | "malloc", size :: _ | "__builtin_alloca", size :: _ -> Some size
       | "realloc", _ :: size :: _ -> Some size
-      | "calloc", n :: size :: _ -> Some (BinOp (Mult, n, size, Cil.uintType))
+      | "calloc", n :: size :: _ ->
+          Some (Cil.BinOp (Mult, n, size, Cil.uintType))
       | _, _ -> None
     in
     fold_node
@@ -711,7 +714,7 @@ module IntraCfg = struct
                 let lv =
                   match lv with
                   | Var v, NoOffset ->
-                      (Var { v with vtype = voidPtrType }, NoOffset)
+                      (Cil.Var { v with vtype = Cil.voidPtrType }, Cil.NoOffset)
                   | _ -> lv
                 in
                 let term, g = transform lv arg loc new_node g in
@@ -742,7 +745,8 @@ module IntraCfg = struct
     let add_return node acc =
       match find_cmd node g with
       | Cmd.Creturn _ -> acc
-      | _ -> add_new_node node (Cmd.Creturn (None, locUnknown)) Node.EXIT acc
+      | _ ->
+          add_new_node node (Cmd.Creturn (None, Cil.locUnknown)) Node.EXIT acc
     in
     list_fold add_return (pred Node.EXIT g) g
 
@@ -821,7 +825,7 @@ module IntraCfg = struct
 
   let rec process_init fd lv i loc entry g =
     match i with
-    | SingleInit exp ->
+    | Cil.SingleInit exp ->
         let new_node = Node.make () in
         let cmd = Cmd.Cset (lv, exp, loc) in
         let g = add_edge entry new_node (add_cmd new_node cmd g) in
@@ -834,7 +838,7 @@ module IntraCfg = struct
           (entry, g) ilist
 
   let process_gvar fd lv i loc entry g =
-    match (Cil.typeOfLval lv, i.init) with
+    match (Cil.typeOfLval lv, i.Cil.init) with
     | _, None -> process_gvardecl fd lv None loc entry g
     | _, Some (SingleInit _ as init) -> process_init fd lv init loc entry g
     | _, Some (CompoundInit (_, ilist) as init) ->
@@ -857,14 +861,14 @@ module IntraCfg = struct
 
   let process_fundecl fundecl loc node g =
     let new_node = Node.make () in
-    let cmd = Cmd.Cfalloc ((Var fundecl.svar, NoOffset), fundecl, loc) in
+    let cmd = Cmd.Cfalloc ((Var fundecl.Cil.svar, NoOffset), fundecl, loc) in
     let g = add_edge node new_node (add_cmd new_node cmd g) in
     (new_node, g)
 
   let generate_cmd_args fd loc g =
     let argc, argv =
-      ( (Cil.Var (List.nth fd.sformals 0), Cil.NoOffset),
-        (Cil.Var (List.nth fd.sformals 1), Cil.NoOffset) )
+      ( (Cil.Var (List.nth fd.Cil.sformals 0), Cil.NoOffset),
+        (Cil.Var (List.nth fd.Cil.sformals 1), Cil.NoOffset) )
     in
     let arg_node = Node.make () in
     let arg_cmd =
@@ -899,7 +903,7 @@ module IntraCfg = struct
 
   let ignore_function fd =
     List.map (fun str -> Str.regexp (".*" ^ str ^ ".*")) []
-    |> List.exists (fun re -> Str.string_match re fd.svar.vname 0)
+    |> List.exists (fun re -> Str.string_match re fd.Cil.svar.vname 0)
 
   let init fd loc =
     let g =
@@ -943,7 +947,7 @@ module IntraCfg = struct
       |> insert_return_nodes |> insert_return_before_exit
 
   let ignore_file regexps loc =
-    List.exists (fun re -> Str.string_match re loc.file 0) regexps
+    List.exists (fun re -> Str.string_match re loc.Cil.file 0) regexps
 
   let generate_global_proc globals fd =
     let entry = Node.ENTRY in
@@ -1114,7 +1118,7 @@ module InterCfg = struct
   let global_proc = "_G_"
 
   let ignore_file regexps loc =
-    List.exists (fun re -> Str.string_match re loc.file 0) regexps
+    List.exists (fun re -> Str.string_match re loc.Cil.file 0) regexps
 
   let gen_cfgs file =
     let regexps = List.map (fun str -> Str.regexp (".*" ^ str ^ ".*")) [] in
@@ -1657,41 +1661,42 @@ exception Recursion (* Used to signal recursion *)
 
 (* A visitor that makes a deep copy of a function body for use inside a host 
  * function, replacing duplicate labels, returns, etc. *)
-class copyBodyVisitor (host : fundec)
+class copyBodyVisitor (host : Cil.fundec)
   (* The host of the 
-   * inlining *) (inlining : varinfo)
+   * inlining *) (inlining : Cil.varinfo)
   (* Function being 
-   * inlined *) (replVar : varinfo -> varinfo)
+   * inlined *) (replVar : Cil.varinfo -> Cil.varinfo)
   (* Maps locals of the 
    * inlined function 
    * to locals of the 
    * host *)
-    (retlval : varinfo option) (* The destination 
-                                * for the "return" *)
-  (replLabel : string -> string)
+    (retlval : Cil.varinfo option)
+  (* The destination
+     * for the "return" *) (replLabel : string -> string)
   (* A renamer for 
    * labels *)
-    (retlab : stmt) (* The label for the 
-                     * return *) =
+    (retlab : Cil.stmt)
+    (* The label for the
+       * return *) =
   object
-    inherit nopCilVisitor
+    inherit Cil.nopCilVisitor
 
     (* Keep here a maping from statements to their copies, indexed by their 
      * original ID *)
-    val stmtmap : stmt IH.t = IH.create 113
+    val stmtmap : Cil.stmt IH.t = IH.create 113
 
     (* Keep here a list of statements to be patched *)
-    val patches : stmt list ref = ref []
+    val patches : Cil.stmt list ref = ref []
     val argid = ref 0
 
     (* This is the entry point *)
-    method! vfunc (f : fundec) : fundec visitAction =
-      let patchfunction (f' : fundec) =
+    method! vfunc (f : Cil.fundec) : Cil.fundec Cil.visitAction =
+      let patchfunction (f' : Cil.fundec) =
         let findStmt (i : int) =
           try IH.find stmtmap i
-          with Not_found -> E.s (bug "Cannot find the copy of stmt#%d" i)
+          with Not_found -> E.s (Cil.bug "Cannot find the copy of stmt#%d" i)
         in
-        let patchstmt (s : stmt) =
+        let patchstmt (s : Cil.stmt) =
           match s.skind with
           | Goto (sr, l) ->
               if debug then E.log "patching goto\n";
@@ -1701,7 +1706,10 @@ class copyBodyVisitor (host : fundec)
           | Switch (e, body, cases, l) ->
               s.skind <-
                 Switch
-                  (e, body, Util.list_map (fun cs -> findStmt cs.sid) cases, l)
+                  ( e,
+                    body,
+                    Util.list_map (fun cs -> findStmt cs.Cil.sid) cases,
+                    l )
           | _ -> ()
         in
         List.iter patchstmt !patches;
@@ -1712,20 +1720,20 @@ class copyBodyVisitor (host : fundec)
       ChangeDoChildrenPost (f, patchfunction)
 
     (* We must replace references to local variables *)
-    method! vvrbl (v : varinfo) =
+    method! vvrbl (v : Cil.varinfo) =
       if v.vglob then SkipChildren
       else
         let v' = replVar v in
         if v == v' then SkipChildren else ChangeTo v'
 
-    method! vinst (i : instr) =
+    method! vinst (i : Cil.instr) =
       match i with
       | Call (_, Lval (Var vi, _), _, _) when vi.vid == inlining.vid ->
           raise Recursion
       | _ -> DoChildren
 
     (* Replace statements. *)
-    method! vstmt (s : stmt) : stmt visitAction =
+    method! vstmt (s : Cil.stmt) : Cil.stmt Cil.visitAction =
       (* There is a possibility that we did not have the statements IDed 
        * propertly. So, we change the ID even on the replaced copy so that we 
        * can index on them ! *)
@@ -1744,13 +1752,13 @@ class copyBodyVisitor (host : fundec)
       | _ -> ());
 
       (* Change the returns *)
-      let postProc (s' : stmt) : stmt =
+      let postProc (s' : Cil.stmt) : Cil.stmt =
         (* Rename the labels if necessary *)
         s'.labels <-
           Util.list_map
             (fun lb ->
               match lb with
-              | Label (n, l, fromsrc) -> Label (replLabel n, l, fromsrc)
+              | Cil.Label (n, l, fromsrc) -> Cil.Label (replLabel n, l, fromsrc)
               | _ -> lb)
             s'.labels;
 
@@ -1763,15 +1771,16 @@ class copyBodyVisitor (host : fundec)
                 (* Function called with no return lval *)
                 s'.skind <- Goto (ref retlab, l)
             | None, _ ->
-                ignore (warn "Found return without value in inlined function");
+                ignore
+                  (Cil.warn "Found return without value in inlined function");
                 s'.skind <- Goto (ref retlab, l)
             | Some rv, Some retvar ->
                 s'.skind <-
                   Block
-                    (mkBlock
+                    (Cil.mkBlock
                        [
-                         mkStmt (Instr [ Set (var retvar, rv, l) ]);
-                         mkStmt (Goto (ref retlab, l));
+                         Cil.mkStmt (Instr [ Set (Cil.var retvar, rv, l) ]);
+                         Cil.mkStmt (Goto (ref retlab, l));
                        ]))
         | _ -> ());
         s'
@@ -1780,49 +1789,49 @@ class copyBodyVisitor (host : fundec)
       ChangeDoChildrenPost (s', postProc)
 
     (* Copy blocks since they are mutable *)
-    method! vblock (b : block) =
+    method! vblock (b : Cil.block) =
       ChangeDoChildrenPost ({ b with bstmts = b.bstmts }, fun x -> x)
 
-    method! vglob _ = E.s (bug "copyFunction should not be used on globals")
+    method! vglob _ = E.s (Cil.bug "copyFunction should not be used on globals")
   end
 
 (** Replace a statement with the result of inlining *)
-let replaceStatement (host : fundec) (* The host *)
-    (inlineWhat : varinfo -> fundec option) (* What to inline *)
+let replaceStatement (host : Cil.fundec) (* The host *)
+    (inlineWhat : Cil.varinfo -> Cil.fundec option) (* What to inline *)
     (replLabel : string -> string)
     (* label 
      * replacement *) (anyInlining : bool ref)
     (* will set this 
      * to true if we 
      * did any 
-     * inlining *) (s : stmt) : stmt =
+     * inlining *) (s : Cil.stmt) : Cil.stmt =
   match s.skind with
   | Instr il when il <> [] ->
-      let prevrstmts : stmt list ref = ref [] in
+      let prevrstmts : Cil.stmt list ref = ref [] in
       (* Reversed list of previous 
        * statements *)
-      let prevrinstr : instr list ref = ref [] in
+      let prevrinstr : Cil.instr list ref = ref [] in
       (* Reverse list of previous 
        * instructions, in this 
        * statement *)
       let emptyPrevrinstr () =
         if !prevrinstr <> [] then (
-          prevrstmts := mkStmt (Instr (List.rev !prevrinstr)) :: !prevrstmts;
+          prevrstmts := Cil.mkStmt (Instr (List.rev !prevrinstr)) :: !prevrstmts;
           prevrinstr := [])
       in
 
-      let rec loop (rest : instr list) : unit =
+      let rec loop (rest : Cil.instr list) : unit =
         (* Remaining instructions *)
         match rest with
         | [] -> (* Done *) ()
         | (Call (lvo, Lval (Var fvi, NoOffset), args, l) as i) :: resti -> (
             if debug then E.log "Checking whether to inline %s\n" fvi.vname;
-            let replo : fundec option =
+            let replo : Cil.fundec option =
               match inlineWhat fvi with
               | Some repl ->
                   if repl.svar.vid = host.svar.vid then (
                     ignore
-                      (warn
+                      (Cil.warn
                          "Inliner encountered recursion in inlined function %s"
                          host.svar.vname);
                     None)
@@ -1840,26 +1849,27 @@ let replaceStatement (host : fundec) (* The host *)
 
                 (* We must inline *)
                 (* Prepare the mapping of local variables *)
-                let vmap : varinfo IH.t = IH.create 13 in
-                let replVar (vi : varinfo) =
+                let vmap : Cil.varinfo IH.t = IH.create 13 in
+                let replVar (vi : Cil.varinfo) =
                   if vi.vglob then vi
                   else
                     try IH.find vmap vi.vid
                     with Not_found ->
                       E.s
-                        (bug "Cannot find the new copy of local variable %s"
+                        (Cil.bug "Cannot find the new copy of local variable %s"
                            vi.vname)
                 in
                 (* Do the actual arguments, and keep extending prevrinstr *)
-                let rec loopArgs (args : exp list) (formals : varinfo list) =
+                let rec loopArgs (args : Cil.exp list)
+                    (formals : Cil.varinfo list) =
                   match (args, formals) with
                   | [], [] -> ()
                   | a :: args', f :: formals' ->
                       (* We must copy the argument even if it is already a 
                        * variable, to obey call by value *)
                       (* Make a local and a copy *)
-                      let f' = makeTempVar host ~name:f.vname f.vtype in
-                      prevrinstr := Set (var f', a, l) :: !prevrinstr;
+                      let f' = Cil.makeTempVar host ~name:f.vname f.vtype in
+                      prevrinstr := Set (Cil.var f', a, l) :: !prevrinstr;
                       IH.add vmap f.vid f';
 
                       loopArgs args' formals'
@@ -1870,25 +1880,28 @@ let replaceStatement (host : fundec) (* The host *)
                 (* Copy the locals *)
                 List.iter
                   (fun loc ->
-                    let loc' = makeTempVar host ~name:loc.vname loc.vtype in
-                    IH.add vmap loc.vid loc')
+                    let loc' =
+                      Cil.makeTempVar host ~name:loc.Cil.vname loc.vtype
+                    in
+                    IH.add vmap loc.Cil.vid loc')
                   repl.slocals;
 
                 (* Make the return statement *)
-                let (ret : stmt), (retvar : varinfo option) =
-                  let rt, _, _, _ = splitFunctionType repl.svar.vtype in
+                let (ret : Cil.stmt), (retvar : Cil.varinfo option) =
+                  let rt, _, _, _ = Cil.splitFunctionType repl.svar.vtype in
                   match rt with
-                  | TVoid _ -> (mkStmt (Instr []), None)
+                  | TVoid _ -> (Cil.mkStmt (Instr []), None)
                   | _ -> (
                       match lvo with
-                      | None -> (mkStmt (Instr []), None)
+                      | None -> (Cil.mkStmt (Instr []), None)
                       | Some lv ->
                           (* Make a return variable *)
                           let rv =
-                            makeTempVar host ~name:("ret_" ^ repl.svar.vname) rt
+                            Cil.makeTempVar host
+                              ~name:("ret_" ^ repl.svar.vname) rt
                           in
-                          (mkStmtOneInstr (Set (lv, Lval (var rv), l)), Some rv)
-                      )
+                          ( Cil.mkStmtOneInstr (Set (lv, Lval (Cil.var rv), l)),
+                            Some rv ))
                 in
                 ret.labels <-
                   [ Label (replLabel ("Lret_" ^ repl.svar.vname), l, false) ];
@@ -1896,20 +1909,20 @@ let replaceStatement (host : fundec) (* The host *)
                 (* Now replace the body *)
                 (try
                    ignore
-                     (visitCilFunction
+                     (Cil.visitCilFunction
                         (new copyBodyVisitor
                            host repl.svar replVar retvar replLabel ret)
                         repl);
-                   currentLoc := l;
+                   Cil.currentLoc := l;
                    let body' = repl.sbody in
                    (* Replace the old body in the function to inline *)
                    repl.sbody <- oldBody;
 
                    emptyPrevrinstr ();
-                   prevrstmts := ret :: mkStmt (Block body') :: !prevrstmts
+                   prevrstmts := ret :: Cil.mkStmt (Block body') :: !prevrstmts
                  with Recursion ->
                    ignore
-                     (warn "Encountered recursion in function %s"
+                     (Cil.warn "Encountered recursion in function %s"
                         repl.svar.vname);
                    prevrinstr := i :: !prevrinstr);
 
@@ -1922,14 +1935,14 @@ let replaceStatement (host : fundec) (* The host *)
 
       emptyPrevrinstr ();
       if List.length !prevrstmts > 1 then
-        s.skind <- Block (mkBlock (List.rev !prevrstmts));
+        s.skind <- Block (Cil.mkBlock (List.rev !prevrstmts));
 
       s
   | _ -> s
 
 (** Apply inlining to a function, modify in place *)
-let doFunction (host : fundec) (* The function into which to inline *)
-    (inlineWhat : varinfo -> fundec option)
+let doFunction (host : Cil.fundec) (* The function into which to inline *)
+    (inlineWhat : Cil.varinfo -> Cil.fundec option)
     (* The functions to 
      * inline, as a 
      * partial map 
@@ -1942,15 +1955,15 @@ let doFunction (host : fundec) (* The function into which to inline *)
   (* Scan the host function and build the alpha-conversion table for labels *)
   let labTable : (string, unit A.alphaTableData ref) H.t = H.create 5 in
   ignore
-    (visitCilBlock
+    (Cil.visitCilBlock
        (object
-          inherit nopCilVisitor
+          inherit Cil.nopCilVisitor
 
-          method! vstmt (s : stmt) =
+          method! vstmt (s : Cil.stmt) =
             List.iter
               (fun l ->
                 match l with
-                | Label (ln, _, _) ->
+                | Cil.Label (ln, _, _) ->
                     ignore
                       (A.registerAlphaName ~alphaTable:labTable ~undolist:None
                          ~data:() ~lookupname:ln)
@@ -1967,12 +1980,12 @@ let doFunction (host : fundec) (* The function into which to inline *)
     ln'
   in
   (* Now scan the function to do the inlining *)
-  let body' : block =
-    visitCilBlock
+  let body' : Cil.block =
+    Cil.visitCilBlock
       (object
-         inherit nopCilVisitor
+         inherit Cil.nopCilVisitor
 
-         method! vstmt (s : stmt) =
+         method! vstmt (s : Cil.stmt) =
            ChangeDoChildrenPost
              (s, replaceStatement host inlineWhat replLabel anyInlining)
       end)
@@ -1982,10 +1995,10 @@ let doFunction (host : fundec) (* The function into which to inline *)
   ()
 
 (** Apply inlining to a whole file *)
-let doFile (inlineWhat : varinfo -> fundec option)
+let doFile (inlineWhat : Cil.varinfo -> Cil.fundec option)
     (* What to inline. See 
-     * comments for [doFunction] *) (fl : file) =
-  iterGlobals fl (fun g ->
+     * comments for [doFunction] *) (fl : Cil.file) =
+  Cil.iterGlobals fl (fun g ->
       match g with
       | GFun (fd, _) ->
           (* Keep doing inlining until there is no more. We will catch 
@@ -2000,20 +2013,20 @@ let doFile (inlineWhat : varinfo -> fundec option)
 (* Function names to inline *)
 let toinline : string list ref = ref []
 
-let doit (fl : file) =
+let doit (fl : Cil.file) =
   (* Scan the file and build the hashtable of functions to inline *)
-  let inlineTable : (string, fundec) H.t = H.create 5 in
-  visitCilFile
+  let inlineTable : (string, Cil.fundec) H.t = H.create 5 in
+  Cil.visitCilFile
     (object
-       inherit nopCilVisitor
+       inherit Cil.nopCilVisitor
 
-       method! vfunc (fd : fundec) =
+       method! vfunc (fd : Cil.fundec) =
          if List.mem fd.svar.vname !toinline then
            H.add inlineTable fd.svar.vname fd;
          SkipChildren
     end)
     fl;
-  let inlineWhat (vi : varinfo) : fundec option =
+  let inlineWhat (vi : Cil.varinfo) : Cil.fundec option =
     try Some (H.find inlineTable vi.vname) with Not_found -> None
   in
   (* Give warnings if we cannot find some fundecs *)
@@ -2021,7 +2034,7 @@ let doit (fl : file) =
     (fun fn ->
       if not (H.mem inlineTable fn) then
         ignore
-          (warn
+          (Cil.warn
              "Cannot inline function %s because we cannot find its definition"
              fn))
     !toinline;
@@ -2050,7 +2063,7 @@ let rec unnecessary_blk_remover stmts acc =
   match stmts with
   | [] -> acc
   | hd :: tl -> (
-      match hd.skind with
+      match hd.Cil.skind with
       | Block b -> unnecessary_blk_remover tl acc @ b.bstmts
       | _ -> unnecessary_blk_remover tl (acc @ [ hd ]))
 
@@ -2060,7 +2073,7 @@ class blockRemoveVisitor =
 
     method! vstmt (s : Cil.stmt) =
       match s.skind with
-      | Block b when b.bstmts = [] -> ChangeTo (mkEmptyStmt ())
+      | Block b when b.bstmts = [] -> ChangeTo (Cil.mkEmptyStmt ())
       | If (a, tb, fb, l) ->
           ChangeTo
             (Cil.mkStmt
@@ -2093,7 +2106,7 @@ let inline opt (global : Global.t) =
     Ast.list_fold
       (fun global to_inline ->
         match global with
-        | GFun (fd, _)
+        | Cil.GFun (fd, _)
           when List.exists
                  (fun regexp -> Str.string_match regexp fd.svar.vname 0)
                  regexps ->

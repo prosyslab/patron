@@ -4,6 +4,7 @@ module Map = Stdlib.Map
 module L = Logger
 module F = Format
 module Sys = Stdlib.Sys
+module Cil = ProsysCil.Cil
 
 let parse_facts facts func_name =
   Chc.fold
@@ -59,9 +60,9 @@ class blockVisitor =
 
 let parse_ast target_dir inline_funcs =
   let file = Utils.get_target_file target_dir in
-  if !Cilutil.printStages then ignore ();
-  let cil = Frontc.parse file () in
-  Rmtmps.removeUnusedTemps cil;
+  if !ProsysCil.Cilutil.printStages then ignore ();
+  let cil = ProsysCil.Frontc.parse file () in
+  ProsysCil.Rmtmps.removeUnusedTemps cil;
   Cil.visitCilFile (new blockVisitor) cil;
   let post_processed_cil =
     if List.length inline_funcs <> 0 then Inline.perform inline_funcs cil

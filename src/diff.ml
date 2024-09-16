@@ -2,6 +2,7 @@ open Core
 module H = Utils
 module F = Format
 module L = Logger
+module Cil = ProsysCil.Cil
 
 type action_type = Insertion | Deletion | Update
 type parent_branch = NoBranch | TrueBranch | FalseBranch

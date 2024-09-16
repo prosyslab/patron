@@ -9,6 +9,7 @@ module H = Utils
 module L = Logger
 module AstSet = Set.Make (Ast)
 module StrSet = Set.Make (String)
+module Cil = ProsysCil.Cil
 
 let translate_id sol_map id = Hashtbl.find_opt sol_map id
 
