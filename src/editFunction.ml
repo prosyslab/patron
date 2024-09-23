@@ -270,8 +270,12 @@ let translate_update_callexp maps sol_map s s2 =
   let new_s2 = translate_new_stmt maps sol_map s2.A.ast in
   D.UpdateCallExp (target_func_name, new_s, new_s2)
 
-let translate sol_map maps abs_diff =
+let translate donor_name maps out_dir target_alarm abs_diff =
   Logger.info "Translating patch...";
+  let sol_map = Hashtbl.create 1000 in
+  Hashtbl.reset sol_map;
+  let sm_file = F.asprintf "%s_%s_sol.map" donor_name target_alarm in
+  H.parse_map out_dir sm_file sol_map;
   List.map
     ~f:(fun diff ->
       match diff with

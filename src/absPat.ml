@@ -364,7 +364,6 @@ let patch2chc facts abs_diff patch_exps n snk =
       abs_exp2chc facts patch_exps guard_cond Chc.empty
     in
     Chc.singleton (Chc.Elt.assume n cond_exp)
-    |> Chc.add (Chc.Elt.duedge n snk)
     |> Chc.union patch_chc
 
 let gen_patpat abs_diff snk facts =
