@@ -295,8 +295,8 @@ let lv2exp facts lv =
     facts []
   |> List.hd
   |> fun e ->
-  if Option.is_none e then mk_arbitrary_exp ()
-  else Option.value_exn e |> Chc.Elt.to_sym
+  if Option.is_none e then (mk_arbitrary_exp (), false)
+  else (Option.value_exn e |> Chc.Elt.to_sym, true)
 
 let abs_lv2chc facts patch_exps abs_ast =
   match abs_ast with
@@ -305,53 +305,60 @@ let abs_lv2chc facts patch_exps abs_ast =
       | AbsDiff.SELval lv_node ->
           let parent_exp = mk_arbitrary_exp () in
           let lval_opt = get_eq_exp lv_node patch_exps in
-          if Option.is_none lval_opt then parent_exp
+          if Option.is_none lval_opt then (parent_exp, false)
           else lv2exp facts (Option.value_exn lval_opt)
-      | _ -> mk_arbitrary_exp ())
+      | _ -> (mk_arbitrary_exp (), false))
   | _ -> L.error "non-Exp node in abs_lv2chc"
 
 let rec abs_exp2chc facts patch_exps abs_node acc =
   match abs_node.AbsDiff.ast with
   | AbsDiff.AbsExp _ when AbsDiff.is_selv abs_node.AbsDiff.ast ->
-      let exp = abs_lv2chc facts patch_exps abs_node.AbsDiff.ast in
-      (exp, acc)
+      let exp, is_arb = abs_lv2chc facts patch_exps abs_node.AbsDiff.ast in
+      (exp, acc, is_arb)
   | AbsDiff.AbsExp (abs_exp, _) ->
       let exp_opt = get_eq_exp abs_node patch_exps in
-      let exp =
-        if Option.is_none exp_opt then mk_arbitrary_exp ()
-        else Option.value_exn exp_opt
+      let exp, is_arb =
+        if Option.is_none exp_opt then (mk_arbitrary_exp (), false)
+        else (Option.value_exn exp_opt, true)
       in
-      (exp, fold_patch facts patch_exps abs_exp exp acc)
+      let acc', is_arb' = fold_patch facts patch_exps abs_exp exp acc in
+      (exp, acc', is_arb || is_arb')
   | _ -> L.error "non-Exp node in abs_exp2chc"
 
 and fold_patch facts patch_exps abs_exp parent acc =
   match abs_exp with
   | AbsDiff.SBinOp (op, e1, e2, _) ->
-      let e1', acc1 =
+      let (e1', is_arb1), acc1 =
         if AbsDiff.is_selv e1.ast then (abs_lv2chc facts patch_exps e1.ast, acc)
-        else abs_exp2chc facts patch_exps e1 acc
+        else
+          let e1'', acc', is_arb = abs_exp2chc facts patch_exps e1 acc in
+          ((e1'', is_arb), acc')
       in
-      let e2', acc2 =
+      let (e2', is_arb2), acc2 =
         if AbsDiff.is_selv e2.ast then (abs_lv2chc facts patch_exps e2.ast, acc1)
-        else abs_exp2chc facts patch_exps e2 acc1
+        else
+          let e2'', acc', is_arb = abs_exp2chc facts patch_exps e2 acc1 in
+          ((e2'', is_arb), acc')
       in
       let chc_op = absbinop2chcop op in
-      Chc.add (Chc.Elt.binop parent chc_op e1' e2') acc2
+      (Chc.add (Chc.Elt.binop parent chc_op e1' e2') acc2, is_arb1 || is_arb2)
   | SUnOp (op, e, _) ->
-      let e', acc' =
+      let (e', is_arb), acc' =
         if AbsDiff.is_selv e.ast then (abs_lv2chc facts patch_exps e.ast, acc)
-        else abs_exp2chc facts patch_exps e acc
+        else
+          let e'', acc', is_arb' = abs_exp2chc facts patch_exps e acc in
+          ((e'', is_arb'), acc')
       in
-      if is_arbitrary_exp e' then acc
+      if is_arbitrary_exp e' then (acc, false)
       else
         let chc_op = absunop2chcop op in
-        Chc.add (Chc.Elt.unop parent chc_op e') acc'
+        (Chc.add (Chc.Elt.unop parent chc_op e') acc', is_arb)
   | SELval lv_node ->
-      let _, acc' = abs_exp2chc facts patch_exps lv_node acc in
-      acc'
+      let _, acc', is_arb = abs_exp2chc facts patch_exps lv_node acc in
+      (acc', is_arb)
   | SConst _ | SSizeOf _ | SSizeOfE _ | SSizeOfStr _ | SQuestion _ | SCastE _
   | SAddrOf _ | SAddrOfLabel _ | SStartOf _ | SENULL ->
-      acc
+      (acc, false)
 
 let patch2chc facts abs_diff patch_exps n snk =
   let guard_cond_opt = AbsDiff.get_guard_cond_opt abs_diff in
@@ -360,11 +367,14 @@ let patch2chc facts abs_diff patch_exps n snk =
     |> Chc.add (mk_arbitrary_exp () |> Chc.Elt.assume n)
   else
     let guard_cond = Option.value_exn guard_cond_opt in
-    let cond_exp, patch_chc =
+    let cond_exp, patch_chc, is_contain_sym =
       abs_exp2chc facts patch_exps guard_cond Chc.empty
     in
-    Chc.singleton (Chc.Elt.assume n cond_exp)
-    |> Chc.union patch_chc
+    let out_chc =
+      Chc.singleton (Chc.Elt.assume n cond_exp) |> Chc.union patch_chc
+    in
+    if is_contain_sym then out_chc
+    else Chc.singleton (Chc.Elt.duedge n snk) |> Chc.union out_chc
 
 let gen_patpat abs_diff snk facts =
   let n = mk_arbitrary_node () in
