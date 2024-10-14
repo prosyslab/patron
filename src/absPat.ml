@@ -240,7 +240,8 @@ let abs_by_comps ?(new_ad = false) maps dug patch_comps snk alarm_exps alarm_lvs
       AbsDiff.change_def defs abs_diff
       |> AbsDiff.change_use (StrSet.singleton snk)
     in
-    ( Chc.union filetered_patch_comps collected_by_alarm_comps,
+    ( Chc.union filetered_patch_comps collected_by_alarm_comps
+      |> Chc.remove_detached_edges,
       if new_ad then abs_diff' else abs_diff )
 
 let num_of_rels rels =
@@ -396,7 +397,7 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
     abs_by_comps maps dug patch_comps snk alarm_exps alarm_lvs facts abs_diff
       cmd
   in
-  L.info "Original Pattern - %s" (num_of_rels abs_facts);
+  L.info "Abstract Pattern - %s" (num_of_rels abs_facts);
   let pattern_in_numeral =
     Chc.Elt.Implies (abs_facts |> Chc.to_list, errtrace)
   in

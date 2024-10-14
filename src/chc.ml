@@ -473,6 +473,27 @@ let partition_to_filter chc cmd_map =
   in
   (assume_set, skip_set, duedges)
 
+let remove_detached_edges chc =
+  let find_node node =
+    exists
+      (fun elt ->
+        match elt with
+        | Elt.FuncApply ("Set", [ n; _; _ ])
+        | Elt.FuncApply ("Assume", [ n; _ ])
+        | Elt.FuncApply ("Return", [ n; _ ])
+        | Elt.FuncApply ("EvalLv", [ n; _; _ ]) ->
+            Elt.equal n node
+        | _ -> false)
+      chc
+  in
+  filter
+    (fun elt ->
+      match elt with
+      | Elt.FuncApply ("DUEdge", [ src; dest ]) ->
+          find_node src && find_node dest
+      | _ -> true)
+    chc
+
 let list2chc lst =
   List.fold_left ~init:empty ~f:(fun chc term -> add term chc) lst
 

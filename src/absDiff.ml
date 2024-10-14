@@ -462,7 +462,7 @@ and to_sunop op =
 
 and to_sconst c =
   match c with
-  | Cil.CInt64 (i, _, _) -> SIntConst (Z.to_int i)
+  | Cil.CInt64 (i, _, _) -> SIntConst (try Z.to_int i with _ -> 2147483647)
   | Cil.CReal (f, _, _) -> SFloatConst f
   | Cil.CChr c -> SCharConst c
   | Cil.CStr s -> SStringConst s
