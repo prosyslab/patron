@@ -244,7 +244,7 @@ let main_cmd =
       `S Manpage.s_description;
       `P "$(tname) transplant a correct patch from matched bug pattern.";
       `S Manpage.s_bugs;
-      `P "Report bugs to <jaeho.kim@prosys.kaist.ac.kr>";
+      `P "Report bugs to <changgong.lee@prosys.kaist.ac.kr>";
     ]
   in
   let info = Cmd.info name ~version:"0.0.1" ~doc ~man in

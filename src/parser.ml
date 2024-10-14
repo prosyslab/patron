@@ -78,13 +78,22 @@ let mk_term s =
       let splitted = String.split ~on:'-' s in
       if List.length splitted = 1 then Chc.Elt.Var s else Chc.Elt.FDNumeral s
 
-let find_non_skip start duedges skip_set =
+let is_sparrow_duedge src skip_set assume_set =
+  Chc.mem (Chc.Elt.FuncApply ("Skip", [ src ])) skip_set
+  || Chc.exists
+       (fun e ->
+         match e with
+         | Chc.Elt.FuncApply ("Assume", [ src'; _ ]) -> Chc.Elt.equal src src'
+         | _ -> false)
+       assume_set
+
+let find_non_skip start duedges skip_set assume_set =
   let rec aux stack visited acc =
     match stack with
     | [] -> acc
     | node :: rest ->
         if
-          Chc.mem (Chc.Elt.FuncApply ("Skip", [ node ])) skip_set
+          is_sparrow_duedge node skip_set assume_set
           && not (Chc.mem node visited)
         then
           let new_nodes =
@@ -103,49 +112,40 @@ let find_non_skip start duedges skip_set =
   in
   aux [ start ] Chc.empty []
 
-let process_edge src dst duedges skip_set cmd_map =
+(* make it work properly
+   add assume to this to make consistent with theoretical def-use chain
+   t2p_compose_pdf_page-43310	t2p_compose_pdf_page-43217 t2p_compose_pdf_page-43321
+*)
+let expand_edges src dst duedges skip_set assume_set cmd_map =
   let elt = Chc.Elt.FuncApply ("DUEdge", [ src; dst ]) in
-  if Chc.mem (Chc.Elt.FuncApply ("Skip", [ src ])) skip_set then
+  if is_sparrow_duedge src skip_set assume_set then
     let cmd = Chc.Elt.to_sym src |> Hashtbl.find cmd_map in
     match cmd with
-    | Maps.Skip s ->
-        if String.equal s "" then
-          let new_srcs = find_non_skip src duedges skip_set in
-          List.fold_left ~init:Chc.empty
-            ~f:(fun acc new_src ->
-              Chc.add (Chc.Elt.FuncApply ("DUEdge", [ new_src; dst ])) acc)
-            new_srcs
-          |> Chc.add elt
-        else Chc.add elt Chc.empty
+    | Maps.Skip _ | Maps.Assume _ ->
+        let new_srcs = find_non_skip src duedges skip_set assume_set in
+        List.fold_left ~init:Chc.empty
+          ~f:(fun acc new_src ->
+            Chc.add (Chc.Elt.FuncApply ("DUEdge", [ new_src; dst ])) acc)
+          new_srcs
+        |> Chc.add elt
     | _ -> Chc.add elt Chc.empty
   else Chc.add elt Chc.empty
 
-let filter_skip_nodes (cmd_map : (string, Maps.cmd) Hashtbl.t) chc =
-  let rest, duedges =
-    Chc.partition
-      (fun elt ->
-        match elt with Chc.Elt.FuncApply ("DUEdge", _) -> false | _ -> true)
-      chc
-  in
-  let skip_set =
-    Chc.partition
-      (fun elt ->
+let connect_true_duedges (cmd_map : (string, Maps.cmd) Hashtbl.t) chc =
+  let assume_set, skip_set, duedges = Chc.partition_to_filter chc cmd_map in
+  Chc.cardinal duedges |> L.info "Before: %d";
+  let t =
+    Chc.fold
+      (fun elt acc ->
         match elt with
-        | Chc.Elt.FuncApply ("Skip", t) -> (
-            let cmd = List.hd_exn t |> Chc.Elt.to_sym |> Hashtbl.find cmd_map in
-            match cmd with Maps.Skip s -> String.equal s "" | _ -> false)
-        | _ -> false)
-      rest
-    |> fst
+        | Chc.Elt.FuncApply ("DUEdge", [ src; dst ]) ->
+            expand_edges src dst duedges skip_set assume_set cmd_map
+            |> Chc.union acc
+        | _ -> acc)
+      duedges Chc.empty
   in
-  Chc.fold
-    (fun elt acc ->
-      match elt with
-      | Chc.Elt.FuncApply ("DUEdge", [ src; dst ]) ->
-          process_edge src dst duedges skip_set cmd_map |> Chc.union acc
-      | _ -> acc)
-    duedges Chc.empty
-  |> Chc.union chc
+  Chc.cardinal t |> L.info "After: %d";
+  Chc.union chc t
 
 let file2func = function
   | "AllocExp.facts" -> "AllocExp"
@@ -430,8 +430,9 @@ let make_facts target_dir target_alarm ast out_dir cmd =
   Cil.visitCilFile (new mkAstMap maps) ast;
   let du_facts =
     match cmd with
-    | Options.DonorToDonee -> make_du_facts alarm_dir
-    | _ -> make_du_facts alarm_dir |> filter_skip_nodes maps.Maps.cmd_map
+    | Options.DonorToDonee | Options.DB -> make_du_facts alarm_dir
+    | Options.Patch ->
+        make_du_facts alarm_dir |> connect_true_duedges maps.Maps.cmd_map
   in
   Chc.pretty_dump (Filename.concat out_dir target_alarm) du_facts;
   Chc.sexp_dump (Filename.concat out_dir target_alarm) du_facts;

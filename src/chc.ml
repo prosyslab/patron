@@ -447,6 +447,32 @@ end
 
 include Set.Make (Elt)
 
+let partition_to_filter chc cmd_map =
+  let rest, duedges =
+    partition
+      (fun elt ->
+        match elt with Elt.FuncApply ("DUEdge", _) -> false | _ -> true)
+      chc
+  in
+  let rest', skip_set =
+    partition
+      (fun elt ->
+        match elt with Elt.FuncApply ("Skip", _) -> false | _ -> true)
+      rest
+  in
+  let assume_set =
+    partition
+      (fun elt ->
+        match elt with
+        | Elt.FuncApply ("Assume", [ n; _ ]) -> (
+            let cmd = n |> Elt.to_sym |> Hashtbl.find cmd_map in
+            match cmd with Maps.Assume _ -> true | _ -> false)
+        | _ -> false)
+      rest'
+    |> fst
+  in
+  (assume_set, skip_set, duedges)
+
 let list2chc lst =
   List.fold_left ~init:empty ~f:(fun chc term -> add term chc) lst
 

@@ -21,12 +21,8 @@ let mk_file_diff orig_path patch_path cand_donor target_alarm out_dir =
        ])
   |> ignore
 
-let concretize_patpat sol_map patpat =
-  (* TODO: convert patch pattern and rearrange the DUEdge *)
-  patpat
-
-let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
-    out_dir i cmd =
+let match_once z3env cand_donor donor_dir buggy_maps target_maps
+    (donee_facts, donee_src, donee_snk) target_alarm ast out_dir i cmd =
   let src_ic = Filename.concat donor_dir "src" in
   Z3env.buggy_src := In_channel.read_all src_ic;
   let snk_ic = Filename.concat donor_dir "snk" in
@@ -47,13 +43,11 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
   in
   let diff = Marshal.from_channel cdp_ic in
   In_channel.close cdp_ic;
-  let facts, (src, snk, _, _), target_maps =
-    Parser.make_facts donee_dir target_alarm ast out_dir cmd
-  in
+  L.info "Pattern Matching on %d-th level pattern" i;
   L.info "First, trying to match %s with bug pattern" target_alarm;
   let is_bug =
-    Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
-      pattern
+    Chc.match_and_log z3env out_dir target_alarm target_maps donee_facts
+      donee_src donee_snk pattern
   in
   Maps.dump target_alarm target_maps out_dir;
   if Option.is_some is_bug then
@@ -63,8 +57,8 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
       match cmd with
       | Options.DonorToDonee -> None
       | _ ->
-          Chc.match_and_log z3env out_dir target_alarm target_maps facts src snk
-            patpat
+          Chc.match_and_log z3env out_dir target_alarm target_maps donee_facts
+            donee_src donee_snk patpat
     in
     if Option.is_none is_pat then (
       L.info "%s is not Matched with patch pattern (Good)" target_alarm;
@@ -80,7 +74,7 @@ let match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm ast
       in
       DoEdit.write_out out_file_orig ast;
       let patch_file =
-        Ast.extract_snk_stmt target_maps.ast_map snk
+        Ast.extract_snk_stmt target_maps.ast_map donee_snk
         |> DoEdit.run ast target_diff
       in
       let out_file_patch =
@@ -106,12 +100,15 @@ let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
     Filename.concat donor_dir "buggy_numeral.map" |> In_channel.create
   in
   Maps.load_numeral_map buggy_ic buggy_maps.numeral_map;
+  Cil.resetCIL ();
+  let donee_ast = Parser.parse_ast donee_dir inline_funcs in
+  let facts, (src, snk, _, _), target_maps =
+    Parser.make_facts donee_dir target_alarm donee_ast out_dir cmd
+  in
   List.fold_until ~init:()
     ~f:(fun _ i ->
-      Cil.resetCIL ();
-      let donee_ast = Parser.parse_ast donee_dir inline_funcs in
-      match_once z3env cand_donor donor_dir buggy_maps donee_dir target_alarm
-        donee_ast out_dir i cmd)
+      match_once z3env cand_donor donor_dir buggy_maps target_maps
+        (facts, src, snk) target_alarm donee_ast out_dir i cmd)
     [ 0; 1 ] ~finish:ignore
 
 let match_one_alarm ?(db = false) z3env donee_dir inline_funcs out_dir db_dir
@@ -131,6 +128,7 @@ let match_one_alarm ?(db = false) z3env donee_dir inline_funcs out_dir db_dir
 
 let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir cmd =
   Sys_unix.ls_dir (Filename.concat donee_dir "sparrow-out/taint/datalog")
+  |> List.rev
   |> List.iter ~f:(fun ta ->
          if String.is_suffix ta ~suffix:".map" then ()
          else
