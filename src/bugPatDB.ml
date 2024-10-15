@@ -8,7 +8,9 @@ module Sys = Stdlib.Sys
 
 let preproc_using_pattern is_altpat_useful z3env maps src snk facts out_dir i
     (pattern_in_numeral, pattern, patpat, diff) =
-  if is_altpat_useful then (
+  if (not is_altpat_useful) && Int.equal i 2 then
+    L.info "No useful alternative pattern found."
+  else
     let i_str = string_of_int i in
     Chc.sexp_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
     Chc.pretty_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;
@@ -29,8 +31,7 @@ let preproc_using_pattern is_altpat_useful z3env maps src snk facts out_dir i
       |> Out_channel.create
     in
     Marshal.to_channel diff_oc diff [];
-    Out_channel.close diff_oc)
-  else L.info "No useful alternative pattern found."
+    Out_channel.close diff_oc
 
 let run z3env inline_funcs write_out true_alarm buggy_dir patch_dir out_dir cmd
     =

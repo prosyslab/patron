@@ -349,7 +349,6 @@ let lv2exp facts lv =
     (fun c acc ->
       match c with
       | Chc.Elt.FuncApply ("LvalExp", [ e; lv' ]) ->
-          Chc.Elt.to_sym lv' |> print_endline;
           if Chc.Elt.to_sym lv' |> String.equal lv then e :: acc else acc
       | _ -> acc)
     facts []
@@ -510,9 +509,12 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
       abs_diff' )
   in
   let is_altpat_eq_abspat =
-    Chc.fold
-      (fun elt acc ->
-        acc && Chc.exists (fun e -> Chc.Elt.equal e elt) abs_facts)
-      alt_pc true
+    if List.is_empty alt_pat then false
+    else
+      let abs, _, _, _ = abs_pat in
+      let alt, _, _, _ = List.hd_exn alt_pat in
+      Chc.fold
+        (fun elt acc -> acc && Chc.exists (fun e -> Chc.Elt.equal e elt) abs)
+        alt true
   in
   (full_pat :: abs_pat :: alt_pat, not is_altpat_eq_abspat)

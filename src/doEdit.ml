@@ -474,7 +474,6 @@ class insertStmtfirstVisitor ?(update = false) snk before after ss =
     method! vblock b =
       if Option.is_some after then
         if is_in_stmt after b.bstmts then (
-          Option.value_exn after |> Ast.s_stmt |> print_endline;
           let new_stmts =
             insert_ss ~using:After ~update snk before after ss b.bstmts
           in
@@ -526,9 +525,7 @@ class insertStmtVisitor ?(update = false) target_func snk_opt before after ss =
         then is_patched := true;
         match (!first_patch_strat, !second_patch_strat) with
         | Some first_opt, Some second_opt ->
-            string_of_int !patch_strat_priority |> print_endline;
             if Int.equal !patch_strat_priority first_strat then
-              let _ = print_endline "first" in
               ChangeTo (mk_patched_func f first_opt !first_strat_parent)
             else ChangeTo (mk_patched_func f second_opt !second_strat_parent)
         | _, Some second_opt ->
