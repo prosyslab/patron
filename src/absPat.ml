@@ -244,6 +244,65 @@ let abs_by_comps ?(new_ad = false) maps dug patch_comps snk alarm_exps alarm_lvs
       |> Chc.remove_detached_edges,
       if new_ad then abs_diff' else abs_diff )
 
+let get_ast_rels_by_node dug node =
+  let node_info = Dug.info_of_v dug node in
+  node_info.Dug.rels
+
+let get_src_rels dug src edges =
+  let src_asts = get_ast_rels_by_node dug src in
+  let src_duedge = List.hd_exn edges |> Dug.edge2rel in
+  ( Chc.filter
+      (fun c ->
+        match c with
+        | Chc.Elt.FuncApply ("Set", _)
+        | Chc.Elt.FuncApply ("CallExp", _)
+        | Chc.Elt.FuncApply ("ReadCallExp", _)
+        | Chc.Elt.FuncApply ("LibCallExp", _)
+        | Chc.Elt.FuncApply ("AllocExp", _) ->
+            true
+        | _ -> false)
+      src_asts
+    |> Chc.add src_duedge,
+    List.tl_exn edges )
+
+let filter_interesting_rels duedge rels =
+  if
+    Chc.exists
+      (fun c ->
+        match c with
+        | Chc.Elt.FuncApply ("BinOpExp", _)
+        | Chc.Elt.FuncApply ("ReadCallExp", _)
+        | Chc.Elt.FuncApply ("LibCallExp", _)
+        | Chc.Elt.FuncApply ("AllocExp", _)
+        | Chc.Elt.FuncApply ("CallExp", _) ->
+            true
+        | _ -> false)
+      rels
+  then Chc.add duedge rels
+  else Chc.empty
+
+let mk_complete_pat maps dug patch_comps src snk alarm_exps alarm_lvs facts
+    abs_diff cmd =
+  let abs_facts, abs_diff' =
+    abs_by_comps maps dug patch_comps snk alarm_exps alarm_lvs facts abs_diff
+      cmd
+  in
+  let edges = Dug.shortest_path dug src snk in
+  let src_rels, edges' = get_src_rels dug src edges in
+  let full_facts =
+    List.fold ~init:src_rels
+      ~f:(fun acc edge ->
+        let src_node = Dug.I.E.src edge in
+        let duedge = Dug.edge2rel edge in
+        let filtered_rels =
+          get_ast_rels_by_node dug src_node |> filter_interesting_rels duedge
+        in
+        Chc.union filtered_rels acc)
+      edges'
+    |> Chc.union abs_facts
+  in
+  (full_facts, abs_facts, abs_diff')
+
 let num_of_rels rels =
   F.asprintf "#Rels: %d, #DUEdges: %d" (Chc.cardinal rels)
     (Chc.filter Chc.Elt.is_duedge rels |> Chc.cardinal)
@@ -393,9 +452,17 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
-  let abs_facts, abs_diff' =
-    abs_by_comps maps dug patch_comps snk alarm_exps alarm_lvs facts abs_diff
-      cmd
+  let full_facts, abs_facts, abs_diff' =
+    mk_complete_pat maps dug patch_comps src snk alarm_exps alarm_lvs facts
+      abs_diff cmd
+  in
+  L.info "Full Pattern - %s" (num_of_rels full_facts);
+  let full_pattern_in_numeral =
+    Chc.Elt.Implies (full_facts |> Chc.to_list, errtrace)
+  in
+  let full_patpat =
+    Chc.Elt.Implies (gen_patpat abs_diff snk full_facts |> Chc.to_list, errtrace)
+    |> Chc.Elt.numer2var |> Chc.singleton
   in
   L.info "Abstract Pattern - %s" (num_of_rels abs_facts);
   let pattern_in_numeral =
@@ -430,8 +497,22 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
           alt_diff' );
       ]
   in
-  ( pattern_in_numeral |> Chc.singleton,
-    pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton,
-    patpat,
-    abs_diff' )
-  :: alt_pat
+  let full_pat =
+    ( full_pattern_in_numeral |> Chc.singleton,
+      full_pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton,
+      full_patpat,
+      abs_diff' )
+  in
+  let abs_pat =
+    ( pattern_in_numeral |> Chc.singleton,
+      pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton,
+      patpat,
+      abs_diff' )
+  in
+  let is_altpat_eq_abspat =
+    Chc.fold
+      (fun elt acc ->
+        acc && Chc.exists (fun e -> Chc.Elt.equal e elt) abs_facts)
+      alt_pc true
+  in
+  (full_pat :: abs_pat :: alt_pat, not is_altpat_eq_abspat)

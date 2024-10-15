@@ -166,6 +166,11 @@ let is_skip_node cmd_map n =
   | Maps.Skip _ | Maps.Assume _ -> true
   | _ -> false
 
+let edge2rel (edge : W.edge) =
+  let src = I.E.src edge in
+  let dst = I.E.dst edge in
+  Chc.Elt.duedge src dst
+
 let of_facts lval_map cmd_map rels =
   let module NodeSet = Set.Make (String) in
   let du_rels, ast_rels = Chc.partition Chc.Elt.is_duedge rels in

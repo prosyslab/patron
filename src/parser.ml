@@ -133,19 +133,15 @@ let expand_edges src dst duedges skip_set assume_set cmd_map =
 
 let connect_true_duedges (cmd_map : (string, Maps.cmd) Hashtbl.t) chc =
   let assume_set, skip_set, duedges = Chc.partition_to_filter chc cmd_map in
-  Chc.cardinal duedges |> L.info "Before: %d";
-  let t =
-    Chc.fold
-      (fun elt acc ->
-        match elt with
-        | Chc.Elt.FuncApply ("DUEdge", [ src; dst ]) ->
-            expand_edges src dst duedges skip_set assume_set cmd_map
-            |> Chc.union acc
-        | _ -> acc)
-      duedges Chc.empty
-  in
-  Chc.cardinal t |> L.info "After: %d";
-  Chc.union chc t
+  Chc.fold
+    (fun elt acc ->
+      match elt with
+      | Chc.Elt.FuncApply ("DUEdge", [ src; dst ]) ->
+          expand_edges src dst duedges skip_set assume_set cmd_map
+          |> Chc.union acc
+      | _ -> acc)
+    duedges Chc.empty
+  |> Chc.union chc
 
 let file2func = function
   | "AllocExp.facts" -> "AllocExp"
