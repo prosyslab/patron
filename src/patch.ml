@@ -118,7 +118,7 @@ let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
     ~f:(fun _ i ->
       match_once z3env cand_donor donor_dir buggy_maps target_maps
         (facts, src, snk) target_alarm donee_ast out_dir i cmd)
-    [ 0; 1; 2 ] ~finish:ignore
+    [ 0; 1; 2; 3 ] ~finish:ignore
 
 let match_one_alarm ?(db = false) z3env donee_dir inline_funcs out_dir db_dir
     target_alarm cmd =
