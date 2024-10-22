@@ -8,7 +8,7 @@ module Sys = Stdlib.Sys
 
 let preproc_using_pattern is_altpat_useful z3env maps src snk facts out_dir i
     (pattern_in_numeral, pattern, patpat, diff) =
-  if (not is_altpat_useful) && i > 2 then
+  if (not is_altpat_useful) && i > 1 then
     L.info "No useful alternative pattern found."
   else
     let i_str = string_of_int i in
