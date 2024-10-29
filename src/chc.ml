@@ -773,11 +773,11 @@ let subst_pattern_for_target src snk = map (Elt.subst src snk)
 let pattern_match z3env out_dir ver_name maps facts src snk pattern =
   let solver = Z3env.mk_fixedpoint z3env.Z3env.z3ctx in
   Z3env.reg_rel_to_solver z3env solver;
-  L.info "Start making Z3 instance from facts and rels";
+  L.info "\t\t\tStart making Z3 instance from facts and rels";
   let pattern' = subst_pattern_for_target src snk pattern in
   Z3utils.numer_cnt := 24;
   add_all z3env maps solver (union facts pattern');
-  L.info "Complete making Z3 instance from facts and rels";
+  L.info "\t\t\tComplete making Z3 instance from facts and rels";
   Z3utils.dump_solver_to_smt (ver_name ^ "_formula") solver out_dir;
   let status =
     Z3.Fixedpoint.query solver

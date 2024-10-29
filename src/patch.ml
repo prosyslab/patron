@@ -49,8 +49,8 @@ let match_once z3env cand_donor donor_dir buggy_maps target_maps
       in
       let diff = Marshal.from_channel cdp_ic in
       In_channel.close cdp_ic;
-      L.info "Pattern Matching on %d-th level pattern" i;
-      L.info "First, trying to match %s with bug pattern" target_alarm;
+      L.info "\tPattern Matching on %d-th level pattern" i;
+      L.info "\t\tFirst, trying to match %s with bug pattern" target_alarm;
       let is_bug =
         Chc.match_and_log z3env out_dir target_alarm target_maps donee_facts
           donee_src donee_snk pattern
@@ -58,8 +58,8 @@ let match_once z3env cand_donor donor_dir buggy_maps target_maps
       Maps.dump target_alarm target_maps out_dir;
       if Option.is_some is_bug then
         let is_pat =
-          L.info "%s is Matched with bug pattern" target_alarm;
-          L.info "Now, trying to match %s with patch pattern" target_alarm;
+          L.info "\t\t\t%s is Matched with bug pattern" target_alarm;
+          L.info "\t\tNow, trying to match %s with patch pattern" target_alarm;
           match cmd with
           | Options.DonorToDonee -> None
           | _ ->
@@ -67,15 +67,15 @@ let match_once z3env cand_donor donor_dir buggy_maps target_maps
                 donee_facts donee_src donee_snk patpat
         in
         if Option.is_none is_pat then (
-          L.info "%s is not Matched with patch pattern (Good)" target_alarm;
+          L.info "\t\t\t%s is not Matched with patch pattern (Good)" target_alarm;
           Modeling.match_ans buggy_maps target_maps target_alarm i cand_donor
             donor_dir out_dir;
-          L.info "Matching with %s is done" target_alarm;
+          L.info "\t\tMatching with %s is done" target_alarm;
           let target_diff =
             EditFunction.translate cand_donor target_maps out_dir target_alarm
               diff
           in
-          L.info "Applying patch on the target file ...";
+          L.info "\tApplying patch on the target file ...";
           let out_file_orig =
             F.asprintf "%s/orig_%s_%s_%d.c" out_dir cand_donor target_alarm i
           in
@@ -94,10 +94,10 @@ let match_once z3env cand_donor donor_dir buggy_maps target_maps
             out_dir;
           Stop ())
         else (
-          L.info "%s is Matched with patch pattern (Bad)" target_alarm;
+          L.info "\t\t\t%s is Matched with patch pattern (Bad)" target_alarm;
           Continue ())
       else (
-        L.info "%s is Not Matched with bug pattern" target_alarm;
+        L.info "\t\t\t%s is Not Matched with bug pattern" target_alarm;
         Continue ())
 
 let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
