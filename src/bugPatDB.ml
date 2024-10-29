@@ -8,8 +8,9 @@ module Sys = Stdlib.Sys
 
 let preproc_using_pattern is_altpat_useful z3env maps src snk facts out_dir i
     (pattern_in_numeral, pattern, patpat, diff) =
-  if (not is_altpat_useful) && i > 1 then
-    L.info "No useful alternative pattern found."
+  if (not is_altpat_useful) && i = 1 then
+    L.info
+      "No useful alternative pattern found. Skipping the alternative pattern."
   else
     let i_str = string_of_int i in
     Chc.sexp_dump (Filename.concat out_dir "pattern_" ^ i_str) pattern;

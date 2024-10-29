@@ -547,13 +547,18 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
       patpat,
       abs_diff' )
   in
+  let abs, _, _, _ = abs_pat in
+  let patterns_in_use =
+    if Chc.cardinal abs <= 10 || List.is_empty alt_pat then
+      [ full_pat; full_alt_pat ]
+    else abs_pat :: alt_pat
+  in
   let is_altpat_eq_abspat =
     if List.is_empty alt_pat then false
     else
-      let abs, _, _, _ = abs_pat in
-      let alt, _, _, _ = List.hd_exn alt_pat in
+      let alt, _, _, _ = alt_pat |> List.hd_exn in
       Chc.fold
         (fun elt acc -> acc && Chc.exists (fun e -> Chc.Elt.equal e elt) abs)
         alt true
   in
-  (full_pat :: abs_pat :: full_alt_pat :: alt_pat, not is_altpat_eq_abspat)
+  (patterns_in_use, is_altpat_eq_abspat)
