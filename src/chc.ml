@@ -43,7 +43,6 @@ module Elt = struct
     | Implies of t list * t
 
   let numer s = FDNumeral s
-  let to_sym = function FDNumeral s -> s | _ -> L.error "to_sym - wrong chc"
 
   let compare a b =
     match (a, b) with
@@ -196,6 +195,13 @@ module Elt = struct
   let is_duedge = function FuncApply ("DUEdge", _) -> true | _ -> false
   let is_dupath = function FuncApply ("DUPath", _) -> true | _ -> false
   let is_assume = function FuncApply ("Assume", _) -> true | _ -> false
+
+  let to_sym s =
+    match s with
+    | FDNumeral s -> s
+    | x ->
+        L.error "to_sym - wrong chc, %a\n The given facts file must be broken\n"
+          pp x
 
   let get_body = function
     | Implies (body, _) -> body

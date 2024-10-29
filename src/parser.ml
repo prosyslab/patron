@@ -72,11 +72,10 @@ let parse_ast target_dir inline_funcs =
 
 let mk_term s =
   if Z3utils.is_binop s || Z3utils.is_unop s then Chc.Elt.FDNumeral s
+  else if Utils.is_digit s then Chc.Elt.Const (Z.of_string s)
   else
-    try Chc.Elt.Const (Z.of_string s)
-    with _ ->
-      let splitted = String.split ~on:'-' s in
-      if List.length splitted = 1 then Chc.Elt.Var s else Chc.Elt.FDNumeral s
+    let splitted = String.split ~on:'-' s in
+    if List.length splitted = 1 then Chc.Elt.Var s else Chc.Elt.FDNumeral s
 
 let is_sparrow_duedge src skip_set assume_set =
   Chc.mem (Chc.Elt.FuncApply ("Skip", [ src ])) skip_set

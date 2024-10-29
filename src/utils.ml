@@ -5,6 +5,14 @@ module J = Yojson.Basic.Util
 module F = Format
 module Cil = ProsysCil.Cil
 
+let is_alpha str =
+  let check_char = function 'a' .. 'z' | 'A' .. 'Z' -> true | _ -> false in
+  String.for_all ~f:check_char str
+
+let is_digit =
+  let check_char = function '0' .. '9' -> true | _ -> false in
+  String.for_all ~f:check_char
+
 let print_ekind exp =
   match exp with
   | Cil.Const _ -> print_endline "Const"
