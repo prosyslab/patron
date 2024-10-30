@@ -67,7 +67,8 @@ let match_once z3env cand_donor donor_dir buggy_maps target_maps
                 donee_facts donee_src donee_snk patpat
         in
         if Option.is_none is_pat then (
-          L.info "\t\t\t%s is not Matched with patch pattern (Good)" target_alarm;
+          L.info "\t\t\t%s is not Matched with patch pattern (Good)"
+            target_alarm;
           Modeling.match_ans buggy_maps target_maps target_alarm i cand_donor
             donor_dir out_dir;
           L.info "\t\tMatching with %s is done" target_alarm;
