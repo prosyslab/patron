@@ -60,6 +60,7 @@ class blockVisitor =
 
 let parse_ast target_dir inline_funcs =
   let file = Utils.get_target_file target_dir in
+  ProsysCil.Cil.resetCIL ();
   if !ProsysCil.Cilutil.printStages then ignore ();
   let cil = ProsysCil.Frontc.parse file () in
   ProsysCil.Rmtmps.removeUnusedTemps cil;
