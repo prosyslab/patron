@@ -68,7 +68,7 @@ let sort_rule_optimize ref deps =
   (lcs |> List.rev) @ (unsorted |> List.rev)
 
 let run z3env inline_funcs write_out true_alarm buggy_dir patch_dir donee_dir
-    out_dir cmd =
+    out_dir cmd z3_mem_limit =
   BugPatDB.run z3env inline_funcs write_out true_alarm buggy_dir patch_dir
     out_dir cmd;
-  Patch.run z3env inline_funcs "" donee_dir out_dir cmd
+  Patch.run z3env inline_funcs "" donee_dir out_dir cmd z3_mem_limit

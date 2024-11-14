@@ -102,7 +102,7 @@ let match_once z3env cand_donor donor_dir buggy_maps target_maps
         Continue ())
 
 let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
-    inline_funcs out_dir cmd cand_donor =
+    inline_funcs out_dir cmd z3_mem_limit cand_donor =
   L.info "Try matching with %s..." cand_donor;
   let donor_dir = if db then Filename.concat bt_dir cand_donor else out_dir in
   let buggy_maps = Maps.create_maps () in
@@ -110,8 +110,10 @@ let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
     Filename.concat donor_dir "buggy_numeral.map" |> In_channel.create
   in
   Maps.load_numeral_map buggy_ic buggy_maps.numeral_map;
-  Cil.resetCIL ();
   let donee_ast = Parser.parse_ast donee_dir inline_funcs in
+  Z3.Memory.reset ();
+  if z3_mem_limit then Z3.set_global_param "memory_high_watermark" "4294967295";
+  let z3env = Z3env.mk_env 1000000 in
   let facts, (src, snk, _, _), target_maps =
     Parser.make_facts donee_dir target_alarm donee_ast out_dir cmd
   in
@@ -120,11 +122,10 @@ let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
       match_once z3env cand_donor donor_dir buggy_maps target_maps
         (facts, src, snk) target_alarm donee_ast out_dir i cmd)
     [ 0; 1; 2; 3 ] ~finish:ignore;
-  Maps.reset_maps target_maps;
-
+  Maps.reset_maps target_maps
 
 let match_one_alarm ?(db = false) z3env donee_dir inline_funcs out_dir db_dir
-    target_alarm cmd =
+    target_alarm cmd z3_mem_limit =
   L.info "Target Alarm: %s" target_alarm;
   let bug_type = Utils.find_bug_type donee_dir target_alarm in
   if db then
@@ -133,18 +134,19 @@ let match_one_alarm ?(db = false) z3env donee_dir inline_funcs out_dir db_dir
     |> List.iter
          ~f:
            (match_one_by_one ~db z3env bt_dir donee_dir target_alarm
-              inline_funcs out_dir cmd)
+              inline_funcs out_dir cmd z3_mem_limit)
   else
     match_one_by_one ~db z3env "" donee_dir target_alarm inline_funcs out_dir
-      cmd ""
+      cmd z3_mem_limit ""
 
-let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir cmd =
+let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir cmd
+    z3_mem_limit =
   Sys_unix.ls_dir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> List.rev
   |> List.iter ~f:(fun ta ->
          if String.is_suffix ta ~suffix:".map" then ()
          else
-           try
-             match_one_alarm ~db z3env donee_dir inline_funcs out_dir db_dir ta
-               cmd
-           with e -> L.warn "%s" (Exn.to_string e))
+           (* try *)
+           match_one_alarm ~db z3env donee_dir inline_funcs out_dir db_dir ta
+             cmd z3_mem_limit)
+(* with e -> L.warn "%s" (Exn.to_string e)) *)

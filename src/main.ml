@@ -52,11 +52,11 @@ let main () =
         options.Options.command
   | Patch ->
       patch z3env options.inline options.db_dir options.donee_dir
-        options.out_dir options.Options.command
+        options.out_dir options.Options.command options.Options.z3_mem_limit
   | DonorToDonee ->
       dtd z3env options.inline options.write_out options.donor_dir
         options.donee_dir options.true_alarm options.out_dir
-        options.Options.command);
+        options.Options.command options.Options.z3_mem_limit);
   summary options.Options.command options.donor_dir options.donee_dir
 
 let _ = main ()
