@@ -14,25 +14,27 @@ let summary cmd donor_dir donee_dir =
         "Patron procedure on Donor to Donee direct transplantation is finished\n\
          Donor: %s => Donee: %s" donor_dir donee_dir
 
-let db z3env inline_fns write_out donor_dir true_alarm db_dir out_dir cmd =
+let db z3env inline_fns write_out donor_dir true_alarm db_dir out_dir cmd
+    is_strong_pat =
   let buggy_dir = Filename.concat donor_dir "bug" in
   let patch_dir = Filename.concat donor_dir "patch" in
   if exist_all [ buggy_dir; patch_dir; db_dir; out_dir ] then
     BugPatDB.run z3env inline_fns write_out true_alarm buggy_dir patch_dir
-      out_dir cmd
+      out_dir cmd is_strong_pat
   else L.error "No target directory specified"
 
-let patch z3env inline_fns db_dir donee_dir out_dir cmd =
+let patch inline_fns db_dir donee_dir out_dir cmd =
   if exist_all [ donee_dir; out_dir ] then
-    Patch.run ~db:true z3env inline_fns db_dir donee_dir out_dir cmd
+    Patch.run ~db:true inline_fns db_dir donee_dir out_dir cmd
   else L.error "No target directory specified"
 
-let dtd z3env inline_fns write_out donor_dir donee_dir true_alarm out_dir cmd =
+let dtd z3env inline_fns write_out donor_dir donee_dir true_alarm out_dir cmd
+    is_strong_pat =
   let buggy_dir = Filename.concat donor_dir "bug" in
   let patch_dir = Filename.concat donor_dir "patch" in
   if exist_all [ buggy_dir; patch_dir; donor_dir ] then
     PatMat.run z3env inline_fns write_out true_alarm buggy_dir patch_dir
-      donee_dir out_dir cmd
+      donee_dir out_dir cmd is_strong_pat
   else L.error "No target directory specified"
 
 let main () =
@@ -48,15 +50,15 @@ let main () =
   (match options.Options.command with
   | DB ->
       db z3env options.inline options.write_out options.donor_dir
-        options.true_alarm options.db_dir options.out_dir
-        options.Options.command
+        options.true_alarm options.db_dir options.out_dir options.command
+        options.strong_pattern
   | Patch ->
-      patch z3env options.inline options.db_dir options.donee_dir
-        options.out_dir options.Options.command options.Options.z3_mem_limit
+      patch options.inline options.db_dir options.donee_dir options.out_dir
+        options.command options.z3_mem_limit
   | DonorToDonee ->
       dtd z3env options.inline options.write_out options.donor_dir
-        options.donee_dir options.true_alarm options.out_dir
-        options.Options.command options.Options.z3_mem_limit);
+        options.donee_dir options.true_alarm options.out_dir options.command
+        options.z3_mem_limit options.strong_pattern);
   summary options.Options.command options.donor_dir options.donee_dir
 
 let _ = main ()

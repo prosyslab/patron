@@ -474,13 +474,15 @@ let gen_patpat abs_diff snk facts =
     let e = mk_arbitrary_exp () in
     Chc.add (Chc.Elt.duedge n snk) facts |> Chc.add (Chc.Elt.assume n e)
 
-let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
+let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd
+    is_strong_pat =
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
   in
   Z3env.buggy_src := src;
   Z3env.buggy_snk := snk;
+  (* split or make it somehow return differently depending on the cmd *)
   let full_facts, abs_facts, abs_diff', full_alt_facts, alt_facts, alt_diff' =
     mk_patterns maps dug patch_comps src snk alarm_exps alarm_lvs facts abs_diff
       cmd
@@ -549,8 +551,10 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd =
   in
   let abs, _, _, _ = abs_pat in
   let patterns_in_use =
-    if Chc.cardinal abs_facts <= 15 || List.is_empty alt_pat then
-      [ full_pat; full_alt_pat ]
+    if is_strong_pat then
+      if Chc.cardinal abs_facts <= 15 || List.is_empty alt_pat then
+        [ full_pat; full_alt_pat ]
+      else abs_pat :: alt_pat
     else abs_pat :: alt_pat
   in
   let is_altpat_eq_abspat =

@@ -35,7 +35,7 @@ let preproc_using_pattern is_altpat_useful z3env maps src snk facts out_dir i
     Out_channel.close diff_oc
 
 let run z3env inline_funcs write_out true_alarm buggy_dir patch_dir out_dir cmd
-    =
+    is_strong_pat =
   let buggy_ast = Parser.parse_ast buggy_dir inline_funcs in
   let patch_ast = Parser.parse_ast patch_dir inline_funcs in
   L.info "Constructing AST diff...";
@@ -57,7 +57,7 @@ let run z3env inline_funcs write_out true_alarm buggy_dir patch_dir out_dir cmd
     DiffJson.dump abs_diff out_dir);
   let patterns, is_altpat_useful =
     AbsPat.run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff
-      cmd
+      cmd is_strong_pat
   in
   L.info "Making Bug Pattern is done";
   List.iteri

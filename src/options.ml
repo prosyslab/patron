@@ -29,6 +29,8 @@ type t = {
   (* Patch/DTD options *)
   donee_dir : string;
   out_dir : string;
+  (* pattern *)
+  strong_pattern : bool;
 }
 
 let empty =
@@ -48,6 +50,8 @@ let empty =
     (* Patch/DTD options *)
     donee_dir = "";
     out_dir = "";
+    (* pattern *)
+    strong_pattern = false;
   }
 
 let mkdir dirname =
@@ -57,9 +61,17 @@ let mkdir dirname =
     exit 1
   else Core_unix.mkdir ~perm:0o755 dirname
 
-let init inline z3_mem_limit sort_size memtrace debug =
+let init inline z3_mem_limit sort_size memtrace debug strong_pattern =
   if debug then L.set_level L.DEBUG else L.set_level L.INFO;
-  { empty with debug; inline; z3_mem_limit; sort_size; memtrace }
+  {
+    empty with
+    debug;
+    inline;
+    z3_mem_limit;
+    sort_size;
+    memtrace;
+    strong_pattern;
+  }
 
 let common_opt =
   let docs = Manpage.s_common_options in
@@ -91,7 +103,15 @@ let common_opt =
       & info [ "s"; "sort_size" ] ~docs ~docv:"SORT_SIZE"
           ~doc:"Size of finite domain in Z3 context")
   in
-  Term.(const init $ inline_opt $ z3_mem_limit $ sort_size $ memtrace $ debug)
+  let strong_pattern =
+    Arg.(
+      value & flag
+      & info [ "strong_pattern" ] ~docs ~docv:"STRONG_PATTERN"
+          ~doc:"Use strong pattern")
+  in
+  Term.(
+    const init $ inline_opt $ z3_mem_limit $ sort_size $ memtrace $ debug
+    $ strong_pattern)
 
 let db_opt copt donor_dir true_alarm db_dir write_out =
   mkdir db_dir;

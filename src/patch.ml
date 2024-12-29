@@ -101,8 +101,8 @@ let match_once z3env cand_donor donor_dir buggy_maps target_maps
         L.info "\t\t\t%s is Not Matched with bug pattern" target_alarm;
         Continue ())
 
-let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
-    inline_funcs out_dir cmd z3_mem_limit cand_donor =
+let match_one_by_one ?(db = false) bt_dir donee_dir target_alarm inline_funcs
+    out_dir cmd z3_mem_limit cand_donor =
   L.info "Try matching with %s..." cand_donor;
   let donor_dir = if db then Filename.concat bt_dir cand_donor else out_dir in
   let buggy_maps = Maps.create_maps () in
@@ -124,29 +124,33 @@ let match_one_by_one ?(db = false) z3env bt_dir donee_dir target_alarm
     [ 0; 1; 2; 3 ] ~finish:ignore;
   Maps.reset_maps target_maps
 
-let match_one_alarm ?(db = false) z3env donee_dir inline_funcs out_dir db_dir
+let match_one_alarm ?(db = false) donee_dir inline_funcs out_dir db_dir
     target_alarm cmd z3_mem_limit =
   L.info "Target Alarm: %s" target_alarm;
   let bug_type = Utils.find_bug_type donee_dir target_alarm in
   if db then
     let bt_dir = Filename.concat db_dir bug_type in
-    Sys_unix.ls_dir bt_dir
-    |> List.iter
-         ~f:
-           (match_one_by_one ~db z3env bt_dir donee_dir target_alarm
-              inline_funcs out_dir cmd z3_mem_limit)
+    (* check if bt_dir exists *)
+    if not (Sys.file_exists bt_dir) then (
+      L.warn "No bug type directory %s in the database!" bt_dir;
+      ())
+    else
+      Sys_unix.ls_dir bt_dir
+      |> List.iter
+           ~f:
+             (match_one_by_one ~db bt_dir donee_dir target_alarm inline_funcs
+                out_dir cmd z3_mem_limit)
   else
-    match_one_by_one ~db z3env "" donee_dir target_alarm inline_funcs out_dir
-      cmd z3_mem_limit ""
+    match_one_by_one ~db "" donee_dir target_alarm inline_funcs out_dir cmd
+      z3_mem_limit ""
 
-let run ?(db = false) z3env inline_funcs db_dir donee_dir out_dir cmd
-    z3_mem_limit =
+let run ?(db = false) inline_funcs db_dir donee_dir out_dir cmd z3_mem_limit =
   Sys_unix.ls_dir (Filename.concat donee_dir "sparrow-out/taint/datalog")
   |> List.rev
   |> List.iter ~f:(fun ta ->
          if String.is_suffix ta ~suffix:".map" then ()
          else
            (* try *)
-           match_one_alarm ~db z3env donee_dir inline_funcs out_dir db_dir ta
-             cmd z3_mem_limit)
+           match_one_alarm ~db donee_dir inline_funcs out_dir db_dir ta cmd
+             z3_mem_limit)
 (* with e -> L.warn "%s" (Exn.to_string e)) *)
