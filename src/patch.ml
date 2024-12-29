@@ -130,7 +130,6 @@ let match_one_alarm ?(db = false) donee_dir inline_funcs out_dir db_dir
   let bug_type = Utils.find_bug_type donee_dir target_alarm in
   if db then
     let bt_dir = Filename.concat db_dir bug_type in
-    (* check if bt_dir exists *)
     if not (Sys.file_exists bt_dir) then (
       L.warn "No bug type directory %s in the database!" bt_dir;
       ())

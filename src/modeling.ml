@@ -43,6 +43,12 @@ let dump_sol_map target_alarm buggy_maps target_maps cand_donor out_dir pairs =
           (Z3utils.unop_of_int buggy_n)
           (Z3utils.unop_of_int donee_n)
       else
+        (* print_endline "@@@@@@@@@";
+           string_of_int buggy_n |> print_endline;
+           string_of_int donee_n |> print_endline;
+           if 0 <= buggy_n && buggy_n <= 21 then print_endline "true"
+           else print_endline "false";
+           print_endline "@@@@@@@@@"; *)
         F.fprintf fmt "%s\t%s\n"
           (Hashtbl.find buggy_maps.Maps.numeral_map buggy_n)
           (Hashtbl.find target_maps.Maps.numeral_map donee_n))

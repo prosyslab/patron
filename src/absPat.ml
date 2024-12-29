@@ -474,8 +474,60 @@ let gen_patpat abs_diff snk facts =
     let e = mk_arbitrary_exp () in
     Chc.add (Chc.Elt.duedge n snk) facts |> Chc.add (Chc.Elt.assume n e)
 
-let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd
-    is_strong_pat =
+let mk_weak_pattern maps dug patch_comps alarm_exps alarm_lvs src snk facts
+    abs_diff cmd =
+  let errtrace =
+    Chc.Elt.FuncApply
+      ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
+  in
+  Z3env.buggy_src := src;
+  Z3env.buggy_snk := snk;
+  let abs_facts, abs_diff' =
+    abs_by_comps maps dug patch_comps snk alarm_exps alarm_lvs facts abs_diff
+      cmd
+  in
+  L.info "Original Pattern - %s" (num_of_rels abs_facts);
+  let pattern_in_numeral =
+    Chc.Elt.Implies (abs_facts |> Chc.to_list, errtrace)
+  in
+  let patpat =
+    Chc.Elt.Implies (gen_patpat abs_diff snk abs_facts |> Chc.to_list, errtrace)
+    |> Chc.Elt.numer2var |> Chc.singleton
+  in
+  let snk_func = Utils.get_func_name_from_node snk in
+  let alt_pc, alt_diff = find_alt_lvs snk_func facts patch_comps abs_diff in
+  let alt_pat =
+    if Chc.is_empty alt_pc then []
+    else
+      let alt_facts, alt_diff' =
+        abs_by_comps ~new_ad:true maps dug alt_pc snk alarm_exps alarm_lvs facts
+          alt_diff cmd
+      in
+      L.info "Alternative Pattern - %s" (num_of_rels alt_facts);
+      let alt_pattern_in_numeral =
+        Chc.Elt.Implies (alt_facts |> Chc.to_list, errtrace)
+      in
+      let alt_patpat =
+        Chc.Elt.Implies
+          (gen_patpat abs_diff snk alt_facts |> Chc.to_list, errtrace)
+        |> Chc.Elt.numer2var |> Chc.singleton
+      in
+      [
+        ( alt_pattern_in_numeral |> Chc.singleton,
+          alt_pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton,
+          alt_patpat,
+          alt_diff' );
+      ]
+  in
+  ( ( pattern_in_numeral |> Chc.singleton,
+      pattern_in_numeral |> Chc.Elt.numer2var |> Chc.singleton,
+      patpat,
+      abs_diff' )
+    :: alt_pat,
+    true )
+
+let mk_strong_pattern maps dug patch_comps alarm_exps alarm_lvs src snk facts
+    abs_diff cmd =
   let errtrace =
     Chc.Elt.FuncApply
       ("ErrTrace", [ Chc.Elt.FDNumeral src; Chc.Elt.FDNumeral snk ])
@@ -551,10 +603,8 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd
   in
   let abs, _, _, _ = abs_pat in
   let patterns_in_use =
-    if is_strong_pat then
-      if Chc.cardinal abs_facts <= 15 || List.is_empty alt_pat then
-        [ full_pat; full_alt_pat ]
-      else abs_pat :: alt_pat
+    if Chc.cardinal abs_facts <= 15 || List.is_empty alt_pat then
+      [ full_pat; full_alt_pat ]
     else abs_pat :: alt_pat
   in
   let is_altpat_eq_abspat =
@@ -566,3 +616,12 @@ let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd
         alt true
   in
   (patterns_in_use, not is_altpat_eq_abspat)
+
+let run maps dug patch_comps alarm_exps alarm_lvs src snk facts abs_diff cmd
+    is_strong_pat =
+  if is_strong_pat then
+    mk_strong_pattern maps dug patch_comps alarm_exps alarm_lvs src snk facts
+      abs_diff cmd
+  else
+    mk_weak_pattern maps dug patch_comps alarm_exps alarm_lvs src snk facts
+      abs_diff cmd
