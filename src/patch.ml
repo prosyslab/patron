@@ -149,7 +149,8 @@ let run ?(db = false) inline_funcs db_dir donee_dir out_dir cmd z3_mem_limit =
   |> List.iter ~f:(fun ta ->
          if String.is_suffix ta ~suffix:".map" then ()
          else
-           (* try *)
-           match_one_alarm ~db donee_dir inline_funcs out_dir db_dir ta cmd
-             z3_mem_limit)
-(* with e -> L.warn "%s" (Exn.to_string e)) *)
+           (* mute try ... with to debug *)
+           try
+             match_one_alarm ~db donee_dir inline_funcs out_dir db_dir ta cmd
+               z3_mem_limit
+           with e -> L.warn "%s" (Exn.to_string e))
