@@ -4,12 +4,12 @@ int main()
     unsigned char buffer[64];
     int fd = fopen(filename, "rb"); // src
     fread(buffer, 18, 1, fd);
-    unnecessary(buffer, 4, fd);                                                    // L3
-    long biWidth = buffer[0] | buffer[1] << 8 | buffer[2] << 16 | buffer[3] << 24; // n1
-    short biBitCnt = buffer[10] | buffer[11] << 8;                                 // n2
+    unnecessary(buffer, 4, fd);                                                    
+    long biWidth = buffer[0] | buffer[1] << 8 | buffer[2] << 16 | buffer[3] << 24; 
+    short biBitCnt = buffer[10] | buffer[11] << 8;                        
     if ((long)biWidth * biBitCnt > 2147483647)
-        return -1;                                          // Given Patch // P
-    int rowbytes = biWidth * biBitCnt;                        // IO // snk
+        return -1;                                          // Given Patch
+    int rowbytes = biWidth * biBitCnt;                        // IO snk
     void *bitmap = malloc(rowbytes);
     return 0;
 }
