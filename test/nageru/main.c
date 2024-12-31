@@ -1,9 +1,5 @@
-extern int* fopen(char* filename, const char* mode);
-extern int fread(unsigned char* buffer, int size, int count, int* fd);
-extern int strncmp(const char* str1, const char* str2, int n);
-extern void *malloc(unsigned int size);
-
-int read_flow(const char *filename) {
+int main(int argc, char* argv[]) {
+    char * filename = input();
     int *flowfp = fopen(filename, "rb");
     unsigned int hdr, width, height;
     fread(&hdr, sizeof(hdr), 1, flowfp);
@@ -15,12 +11,7 @@ int read_flow(const char *filename) {
 
     void* flow = malloc(width * height); // IO // snk
 
-	fread(&hdr, width * height, 1, flowfp);
+	// fread(&hdr, width * height, 1, flowfp);
 
     return 0;
-}
-
-int main(int argc, char* argv[]) {
-    read_flow(argv[1]);
-
 }

@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+import os, json
+
+FILE_PATH=os.path.dirname(os.path.realpath(__file__))
+
+for root, dirs, files in os.walk(FILE_PATH):
+  for file in files:
+    if file.endswith(".c"):
+      path = os.path.join(root, file)
+      dir_path = os.path.dirname(path)
+      os.chdir(os.path.dirname(path))
+      label_path = os.path.join(dir_path, 'label.json') if os.path.exists(os.path.join(dir_path, 'label.json')) else os.path.join(os.path.dirname(dir_path), 'label.json')
+      with open(label_path) as f:
+        data = json.load(f)
+        bug_type = '-no_bo -' + str(data['BUG_TYPE']).lower() if data['BUG_TYPE'] != 'BO' else '-' + str(data['BUG_TYPE']).lower()
+      if os.path.exists('sparrow-out'):
+        os.system('rm -rf sparrow-out')
+      os.system('sparrow -taint -extract_datalog_fact_full -remove_cast -unwrap_alloc -patron ' + bug_type + ' ' + file)

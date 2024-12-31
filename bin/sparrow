@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+import os, argparse
+
+parser = argparse.ArgumentParser(description='Run Sparrow for Patron')
+parser.add_argument('file', type=str, help='Input .c file path')
+parser.add_argument('-io', action='store_true', help='Integer Overflow Analysis')
+parser.add_argument('-bo', action='store_true', help='Buffer Overflow Analysis')
+parser.add_argument('-tio', action='store_true', help='Times Integer Overflow Analysis')
+parser.add_argument('-pio', action='store_true', help='Plus Integer Overflow Analysis')
+parser.add_argument('-sio', action='store_true', help='Shift Integer Overflow Analysis')
+parser.add_argument('-mio', action='store_true', help='Minus Integer Overflow Analysis')
+parser.add_argument('-dz', action='store_true', help='Division by Zero Analysis')
+parser.add_argument('-nd', action='store_true', help='Null Dereference Analysis')
+
+args = parser.parse_args()
+
+if not os.path.exists(args.file):
+    print("File not found")
+    exit(1)
+if not any([args.io, args.bo, args.tio, args.pio, args.sio, args.mio, args.dz, args.nd]):
+    print("No analysis selected")
+    exit(1)
+CMD='sparrow -taint -unwrap_alloc -patron -remove_cast -extract_datalog_fact_full '
+if not args.bo:
+    CMD += ' -no_bo'
+if args.io:
+    CMD += ' -io'
+if args.tio:
+    CMD += ' -tio'
+if args.pio:
+    CMD += ' -pio'
+if args.sio:
+    CMD += ' -sio'
+if args.mio:
+    CMD += ' -mio'
+if args.dz:
+    CMD += ' -dz'
+if args.nd:
+    CMD += ' -nd'
+CMD += ' ' + args.file
+os.system(CMD)
